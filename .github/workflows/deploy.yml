@@ -4,15 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target deployment environment'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
+
+# Serialize deployments so two CD runs can never overlap. A newer commit on
+# main cancels the in-flight deploy in favor of the latest one.
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -31,13 +28,16 @@ jobs:
     name: Deploy Application
     needs: validate
     runs-on: ubuntu-latest
+    # Hoisted to job level on purpose: a step's `if` is evaluated BEFORE that
+    # step's own `env` is applied, so a step-scoped DEPLOY_HOOK_URL would always
+    # evaluate as empty and the deploy step would be silently skipped.
+    env:
+      DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.DEPLOY_HOOK_URL }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Deploy to Webhook (Render / Railway / Custom PaaS)
         if: env.DEPLOY_HOOK_URL != ''
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.DEPLOY_HOOK_URL }}
         run: |
           echo "Triggering deployment webhook..."
           curl -f -X POST "$DEPLOY_HOOK_URL"
@@ -45,8 +45,6 @@ jobs:
 
       - name: Deployment Fallback / Self-check
         if: env.DEPLOY_HOOK_URL == ''
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.DEPLOY_HOOK_URL }}
         run: |
           echo "No external deployment hook secret detected (RENDER_DEPLOY_HOOK / DEPLOY_HOOK_URL)."
           echo "Package is production-ready for deployment to Render, Railway, Fly.io, or VPS."

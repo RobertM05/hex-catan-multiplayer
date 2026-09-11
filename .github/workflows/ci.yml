@@ -7,6 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One CI run per ref; superseded PR runs are cancelled, main runs are not.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   syntax:
     name: Syntax & Code Check
@@ -32,15 +37,11 @@ jobs:
       - run: npm ci
       - name: Validate server imports
         run: |
-          node -e "
-          Promise.all([
-            import('./server/game/HexGrid.js'),
-            import('./server/game/GameEngine.js'),
-            import('./server/game/BotAI.js'),
-            import('./server/game/RoomManager.js')
-          ]).then(() => console.log('All backend game modules imported successfully'))
-          .catch(err => { console.error('Import error:', err); process.exit(1); });
-          "
+          for f in server/game/*.js; do
+            echo "Importing $f"
+            node --input-type=module -e "import('./$f').catch(err => { console.error('Import error in $f:', err); process.exit(1); })" || exit 1
+          done
+          echo "All backend game modules imported successfully"
 
   test:
     name: Test Suite (Node ${{ matrix.node-version }})

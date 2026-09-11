@@ -8,10 +8,19 @@ on:
         required: false
         default: ''
 
+# The GITHUB_TOKEN needs write access to force-push the rollback commit to main.
+permissions:
+  contents: write
+
 jobs:
   rollback:
     name: Emergency Rollback
     runs-on: ubuntu-latest
+    # CAVEAT: this job force-pushes to main. If branch protection / rulesets on
+    # main forbid force pushes (or require review), `git push --force` is
+    # rejected by GitHub and this workflow fails; either allow force pushes for
+    # this workflow (e.g. add a bypass/exception for admins), or perform the
+    # rollback through a revert PR instead.
     steps:
       - uses: actions/checkout@v4
         with:
