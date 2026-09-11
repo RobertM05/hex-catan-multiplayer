@@ -1,0 +1,504 @@
+/**
+ * qaAuditAndRules.test.js
+ * Comprehensive QA test suite verifying critical rules, edge cases,
+ * input validation, and bug fixes for the Catan engine.
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { HexGrid, RESOURCE_TYPES, HARBOR_TYPES } from '../server/game/HexGrid.js';
+import { GameEngine, GAME_PHASES, COSTS, DEV_CARD_TYPES } from '../server/game/GameEngine.js';
+import { BotAI } from '../server/game/BotAI.js';
+import { RoomManager } from '../server/game/RoomManager.js';
+
+describe('HexGrid & Harbor Generation', () => {
+  it('should generate 9 spaced harbors with 18 distinct vertices and zero collisions', () => {
+    const grid = new HexGrid({ mapSize: 'standard' });
+    const harborEdges = Array.from(grid.edges.values()).filter(e => e.harbor);
+    const harborVertices = Array.from(grid.vertices.values()).filter(v => v.harbor);
+
+    assert.equal(harborEdges.length, 9, 'Standard board must have exactly 9 harbors');
+    assert.equal(harborVertices.length, 18, 'Standard board must have exactly 18 harbor vertices (2 per harbor)');
+
+    // Ensure no two harbor edges share any vertex
+    for (let i = 0; i < harborEdges.length; i++) {
+      for (let j = i + 1; j < harborEdges.length; j++) {
+        const e1 = harborEdges[i];
+        const e2 = harborEdges[j];
+        const sharesVertex = e1.v1 === e2.v1 || e1.v1 === e2.v2 || e1.v2 === e2.v1 || e1.v2 === e2.v2;
+        assert.ok(!sharesVertex, `Harbor edges ${e1.id} and ${e2.id} must not share a vertex`);
+      }
+    }
+  });
+
+  it('should generate valid harbors on extended map without collisions', () => {
+    const grid = new HexGrid({ mapSize: 'extended' });
+    const harborEdges = Array.from(grid.edges.values()).filter(e => e.harbor);
+    assert.equal(harborEdges.length, 11, 'Official extended board must have 11 harbors');
+    for (let i = 0; i < harborEdges.length; i++) {
+      for (let j = i + 1; j < harborEdges.length; j++) {
+        const e1 = harborEdges[i];
+        const e2 = harborEdges[j];
+        const sharesVertex = e1.v1 === e2.v1 || e1.v1 === e2.v2 || e1.v2 === e2.v1 || e1.v2 === e2.v2;
+        assert.ok(!sharesVertex, `Harbors on extended board must not collide`);
+      }
+    }
+  });
+
+  it('should guarantee no adjacent red numbers (6 and 8) on standard and extended maps', () => {
+    for (let iter = 0; iter < 50; iter++) {
+      const standardGrid = new HexGrid({ mapSize: 'standard' });
+      assert.equal(
+        standardGrid.hasAdjacentRedNumbers(),
+        false,
+        `Standard board iteration ${iter} must not have adjacent red numbers (6 and 8)`
+      );
+
+      const extendedGrid = new HexGrid({ mapSize: 'extended' });
+      assert.equal(
+        extendedGrid.hasAdjacentRedNumbers(),
+        false,
+        `Extended board iteration ${iter} must not have adjacent red numbers (6 and 8)`
+      );
+    }
+  });
+});
+
+describe('Robber Discarding & Input Validation', () => {
+  it('should enforce >= 8 threshold and exact floor(total / 2) discard amount', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    // 7 cards: no discard required
+    engine.players[0].resources = { wood: 7, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    // 8 cards: 4 discarded
+    engine.players[1].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    let rollCall = 0;
+    const origRandom = Math.random;
+    Math.random = () => {
+      rollCall++;
+      return rollCall === 1 ? 0.35 : 0.55; // 3 and 4 -> 7
+    };
+
+    engine.rollDice('p1');
+    Math.random = origRandom;
+
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(!engine.pendingDiscards.has('p1'), 'Player with 7 cards should not discard');
+    assert.ok(engine.pendingDiscards.has('p2'), 'Player with 8 cards must discard');
+
+    // Bob tries to discard 3 instead of 4
+    assert.throws(() => {
+      engine.discardCards('p2', { wood: 3 });
+    }, /MUST_DISCARD_EXACTLY_4/);
+
+    // Bob tries to discard negative numbers (exploit test)
+    assert.throws(() => {
+      engine.discardCards('p2', { wood: 5, brick: -1 });
+    }, /DISCARD_COUNT_MUST_BE_NON_NEGATIVE_INTEGER/);
+
+    // Bob tries to discard non-integer
+    assert.throws(() => {
+      engine.discardCards('p2', { wood: 2.5, brick: 1.5 });
+    }, /DISCARD_COUNT_MUST_BE_NON_NEGATIVE_INTEGER/);
+
+    // Bob tries invalid resource name
+    assert.throws(() => {
+      engine.discardCards('p2', { gold: 4 });
+    }, /INVALID_RESOURCE/);
+
+    // Bob discards valid 4 wood
+    engine.discardCards('p2', { wood: 4 });
+    assert.equal(engine.players[1].resources.wood, 4);
+    assert.equal(engine.pendingDiscards.size, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+  });
+});
+
+describe('Knight Card & Dice Roll Phase Transition', () => {
+  it('should return to TURN_ROLL when Knight is played before rolling dice', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    const p1 = engine.players[0];
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.turnNumber = 2;
+    p1.devCards.push({ id: 'k1', type: DEV_CARD_TYPES.KNIGHT, boughtTurn: 1, played: false });
+
+    // Alice plays Knight before rolling
+    engine.playDevCard('p1', 'k1');
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(p1.playedKnights, 1);
+    assert.equal(engine.hasRolledDice, false);
+
+    // Alice moves robber
+    const newHex = Array.from(engine.grid.hexes.keys()).find(h => h !== engine.grid.robberHexId);
+    engine.moveRobber('p1', newHex);
+
+    // Critical fix: phase MUST return to TURN_ROLL because dice have not been rolled yet!
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROLL);
+
+    // Alice now rolls dice
+    const rollResult = engine.rollDice('p1');
+    assert.ok(rollResult.sum >= 2 && rollResult.sum <= 12);
+    assert.equal(engine.hasRolledDice, true);
+  });
+
+  it('should disallow playing dev cards during setup or discard phases', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    engine.players[0].devCards.push({ id: 'k1', type: DEV_CARD_TYPES.KNIGHT, boughtTurn: 0, played: false });
+
+    assert.equal(engine.phase, GAME_PHASES.SETUP_ROUND_1);
+    assert.throws(() => {
+      engine.playDevCard('p1', 'k1');
+    }, /NOT_IN_VALID_PHASE_FOR_DEV_CARD/);
+  });
+});
+
+describe('Port Trading Ratios & Validation', () => {
+  it('should support 4:1, 3:1 generic, and 2:1 specialized port ratios correctly', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    const p1 = engine.players[0];
+    p1.resources = { wood: 10, brick: 10, wool: 10, wheat: 10, ore: 10 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    // Reject trading same resource
+    assert.throws(() => {
+      engine.tradeWithBank('p1', 'wood', 'wood', 4);
+    }, /CANNOT_TRADE_SAME_RESOURCE/);
+
+    // Reject invalid resource
+    assert.throws(() => {
+      engine.tradeWithBank('p1', 'wood', 'diamonds', 4);
+    }, /INVALID_RESOURCE/);
+
+    // Default 4:1 trade without port
+    engine.tradeWithBank('p1', 'wood', 'ore', 4);
+    assert.equal(p1.resources.wood, 6);
+    assert.equal(p1.resources.ore, 11);
+
+    // Give Alice a generic 3:1 harbor
+    const v1 = Array.from(engine.grid.vertices.keys())[0];
+    engine.grid.vertices.get(v1).harbor = { type: HARBOR_TYPES.GENERIC, ratio: 3 };
+    p1.settlementsBuilt.push(v1);
+
+    // 3:1 trade works
+    engine.tradeWithBank('p1', 'brick', 'wool', 3);
+    assert.equal(p1.resources.brick, 7);
+    assert.equal(p1.resources.wool, 11);
+
+    // Give Alice a 2:1 wheat harbor
+    const v2 = Array.from(engine.grid.vertices.keys())[1];
+    engine.grid.vertices.get(v2).harbor = { type: HARBOR_TYPES.WHEAT, ratio: 2 };
+    p1.settlementsBuilt.push(v2);
+
+    // 2:1 wheat trade works
+    engine.tradeWithBank('p1', 'wheat', 'wood', 2);
+    assert.equal(p1.resources.wheat, 8);
+    assert.equal(p1.resources.wood, 7);
+
+    // 2:1 trade on non-wheat resource fails with INVALID_TRADE_RATIO
+    assert.throws(() => {
+      engine.tradeWithBank('p1', 'brick', 'ore', 2);
+    }, /INVALID_TRADE_RATIO/);
+  });
+});
+
+describe('Domestic Trade Security & Validation', () => {
+  it('should reject negative amounts, non-integers, empty trades, and same resource', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    const p1 = engine.players[0];
+    p1.resources = { wood: 5, brick: 5, wool: 0, wheat: 0, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    // Negative give exploit
+    assert.throws(() => {
+      engine.proposeTrade('p1', { wood: -2 }, { brick: 1 });
+    }, /AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER/);
+
+    // Negative want exploit
+    assert.throws(() => {
+      engine.proposeTrade('p1', { wood: 1 }, { brick: -5 });
+    }, /AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER/);
+
+    // Non-integer
+    assert.throws(() => {
+      engine.proposeTrade('p1', { wood: 1.5 }, { brick: 1 });
+    }, /AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER/);
+
+    // Empty trade
+    assert.throws(() => {
+      engine.proposeTrade('p1', {}, { brick: 1 });
+    }, /TRADE_MUST_OFFER_AND_REQUEST_RESOURCES/);
+
+    // Same resource trade
+    assert.throws(() => {
+      engine.proposeTrade('p1', { wood: 1 }, { wood: 1 });
+    }, /CANNOT_TRADE_SAME_RESOURCE/);
+  });
+});
+
+describe('Longest Road & Largest Army Rules', () => {
+  it('should NOT allow ties to steal Longest Road regardless of player order', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    // Both players have 5 roads
+    engine.calculatePlayerLongestRoad = () => 5;
+    engine.longestRoadHolder = { playerId: 'p1', length: 5 };
+
+    // Reverse player array so Bob is checked before Alice
+    engine.players.reverse();
+    engine.recalculateLongestRoad();
+
+    // Alice MUST retain Longest Road (Bob cannot steal on a tie)
+    assert.equal(engine.longestRoadHolder.playerId, 'p1');
+    assert.equal(engine.longestRoadHolder.length, 5);
+
+    // Bob builds 6 roads: Bob strictly exceeds and takes it
+    engine.calculatePlayerLongestRoad = (id) => id === 'p2' ? 6 : 5;
+    engine.recalculateLongestRoad();
+    assert.equal(engine.longestRoadHolder.playerId, 'p2');
+    assert.equal(engine.longestRoadHolder.length, 6);
+  });
+
+  it('should revoke Longest Road when road drops below 5 segments', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    engine.longestRoadHolder = { playerId: 'p1', length: 6 };
+
+    // Alice is cut to 3 roads, Bob has 4 roads (neither has >= 5)
+    engine.calculatePlayerLongestRoad = (id) => id === 'p1' ? 3 : 4;
+    engine.recalculateLongestRoad();
+
+    assert.equal(engine.longestRoadHolder, null, 'Longest road must be revoked if no one has >= 5');
+    engine.recalculateVictoryPoints();
+    assert.equal(engine.players.find(p => p.id === 'p1').publicVictoryPoints, 0);
+  });
+
+  it('should set Longest Road aside on tie when holder loses it', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    engine.startGame('standard');
+
+    engine.longestRoadHolder = { playerId: 'p1', length: 6 };
+
+    // Alice is cut to 3 roads. Both Bob and Charlie have 5 roads.
+    engine.calculatePlayerLongestRoad = (id) => id === 'p1' ? 3 : 5;
+    engine.recalculateLongestRoad();
+
+    assert.equal(engine.longestRoadHolder, null, 'Longest road must be set aside on tie when holder loses it');
+  });
+
+  it('should NOT allow ties to steal Largest Army', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    engine.players[0].playedKnights = 3;
+    engine.players[1].playedKnights = 3;
+    engine.largestArmyHolder = { playerId: 'p1', count: 3 };
+
+    // Bob checked first
+    engine.players.reverse();
+    engine.recalculateLargestArmy();
+
+    assert.equal(engine.largestArmyHolder.playerId, 'p1', 'Ties cannot steal Largest Army');
+  });
+});
+
+describe('Victory Condition Triggers', () => {
+  it('should trigger GAME_OVER immediately when 10 VP is reached during turn', () => {
+    const engine = new GameEngine({ vpTarget: 10 });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    const p1 = engine.players[0];
+    p1.resources = { wood: 5, brick: 5, wool: 5, wheat: 5, ore: 10 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    // Give Alice 4 cities (8 VP) + 1 settlement (1 VP) = 9 VP
+    p1.citiesBuilt = ['v1', 'v2', 'v3', 'v4'];
+    p1.settlementsBuilt = ['v5'];
+    engine.recalculateVictoryPoints();
+    assert.equal(p1.victoryPoints, 9);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+
+    // Build a settlement connected to a road to reach 10 VP
+    const v6 = Array.from(engine.grid.vertices.keys()).find(v => {
+      const vert = engine.grid.vertices.get(v);
+      return !vert.building && !['v1', 'v2', 'v3', 'v4', 'v5'].includes(v);
+    });
+    const edge = engine.grid.vertices.get(v6).adjacentEdges[0];
+    engine.grid.edges.get(edge).road = { playerId: 'p1', color: p1.color };
+
+    engine.buildSettlement('p1', v6);
+
+    // Must be GAME_OVER immediately!
+    assert.equal(p1.victoryPoints, 10);
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+  });
+});
+
+describe('Player Removal & Disconnect Safety', () => {
+  it('should safely adjust currentTurnPlayerIndex and clean up awards on player removal', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    engine.startGame('standard');
+
+    // Bob turn (index 1)
+    engine.currentTurnPlayerIndex = 1;
+    assert.equal(engine.getCurrentPlayer().id, 'p2');
+
+    // Alice holds Longest Road
+    engine.longestRoadHolder = { playerId: 'p1', length: 5 };
+
+    // Remove Alice (index 0)
+    engine.removePlayer('p1');
+    assert.equal(engine.players.length, 2);
+    // Index should adjust to 0, still pointing to Bob
+    assert.equal(engine.currentTurnPlayerIndex, 0);
+    assert.equal(engine.getCurrentPlayer().id, 'p2');
+    // Longest Road was held by Alice, must be cleaned up and recalculated
+    assert.equal(engine.longestRoadHolder, null);
+
+    // If current player (index 1) is removed at the end of array
+    engine.currentTurnPlayerIndex = 1; // Charlie
+    engine.removePlayer('p3');
+    assert.equal(engine.currentTurnPlayerIndex, 0, 'Index must wrap to 0 when last player removed');
+    assert.ok(engine.getCurrentPlayer(), 'Current player must not be undefined');
+  });
+
+  it('should not crash handleTurnTimeout when player disconnects', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'p1', name: 'Alice' });
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Bob' });
+    roomManager.startGame(room.code, 'p1');
+
+    // Disconnect Alice
+    room.players[0].socketId = null;
+
+    // Trigger turn timeout - must not throw or crash
+    assert.doesNotThrow(() => {
+      roomManager.handleTurnTimeout(room);
+    });
+
+    roomManager.destroyRoom(room.code);
+  });
+});
+
+describe('BotAI Port-Aware Trading', () => {
+  it('should trade 2:1 or 3:1 at bank when bot owns corresponding harbor', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'bot1', name: 'Bot Turing', isBot: true });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    const bot = engine.players[0];
+    // Give bot a 2:1 wheat harbor
+    const v1 = Array.from(engine.grid.vertices.keys())[0];
+    engine.grid.vertices.get(v1).harbor = { type: HARBOR_TYPES.WHEAT, ratio: 2 };
+    bot.settlementsBuilt.push(v1);
+
+    // Bot has 2 wheat, 0 wood
+    bot.resources = { wood: 0, brick: 0, wool: 0, wheat: 2, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    const action = BotAI.decideTurnAction(engine, bot);
+    assert.equal(action.action, 'bank_trade');
+    assert.equal(action.give, 'wheat');
+    assert.equal(action.ratio, 2);
+  });
+});
+
+describe('Dice Roll Production Logging & Transparency', () => {
+  it('should log RESOURCE_PRODUCED events when settlements produce on roll', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    // Find a non-desert hex with token
+    const producingHex = Array.from(engine.grid.hexes.values()).find(h => h.token && h.resource !== RESOURCE_TYPES.DESERT);
+    assert.ok(producingHex, 'Should find producing hex');
+
+    // Put Alice settlement on a vertex touching producingHex
+    const targetVertex = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(producingHex.id));
+    assert.ok(targetVertex);
+    targetVertex.building = { type: 'settlement', playerId: 'p1', color: '#e63946' };
+    engine.players[0].settlementsBuilt.push(targetVertex.id);
+
+    // Mock dice roll to producingHex.token
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const token = producingHex.token;
+    const d1 = Math.min(6, Math.max(1, Math.floor(token / 2)));
+    const d2 = token - d1;
+    let rollCall = 0;
+    const origRandom = Math.random;
+    Math.random = () => {
+      rollCall++;
+      return rollCall === 1 ? (d1 - 1) / 6 : (d2 - 1) / 6;
+    };
+
+    const res = engine.rollDice('p1');
+    Math.random = origRandom;
+
+    assert.equal(res.sum, token);
+    const prodLogs = engine.eventLog.filter(e => e.type === 'RESOURCE_PRODUCED');
+    assert.ok(prodLogs.length > 0, 'Must have at least one RESOURCE_PRODUCED log');
+    assert.equal(prodLogs[0].args.playerName, 'Alice');
+    assert.equal(prodLogs[0].args.resource, producingHex.resource);
+  });
+});
+
+describe('RoomManager Deduplication & Socket Safety', () => {
+  it('should not create duplicate players when joinRoom is called for existing player or socket', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'host1', name: 'Host', socketId: 'sock1' }, { maxPlayers: 4 });
+
+    assert.equal(room.players.length, 1);
+
+    // Host calls joinRoom with same id
+    const resSameId = roomManager.joinRoom(room.code, { id: 'host1', name: 'Host Rejoined', socketId: 'sock1' });
+    assert.equal(resSameId.reconnected, false);
+    assert.equal(room.players.length, 1, 'Must not duplicate player with same ID');
+
+    // Player calls joinRoom with same socketId
+    const resSameSock = roomManager.joinRoom(room.code, { id: 'different_id', name: 'Clone', socketId: 'sock1' });
+    assert.equal(room.players.length, 1, 'Must not duplicate player with same socket ID');
+
+    roomManager.destroyRoom(room.code);
+  });
+});
+

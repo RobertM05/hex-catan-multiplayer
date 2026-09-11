@@ -1,0 +1,261 @@
+/**
+ * main.css
+ * Core design system & theme variables.
+ * Clean, tactile, modern board-game tabletop aesthetic.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* Color Palette - Clean Tabletop & Board Game Slate */
+  --bg-primary: #11151e;
+  --bg-surface: #181e2b;
+  --bg-surface-elevated: #202738;
+  --bg-surface-hover: #262f43;
+  --bg-input: #121620;
+  --border-subtle: #293347;
+  --border-focus: #d97706;
+
+  --gold-primary: #d97706;
+  --gold-hover: #b45309;
+  --gold-subtle: rgba(217, 119, 6, 0.14);
+  --crimson-accent: #dc2626;
+  --emerald-accent: #16a34a;
+  --cyan-accent: #0284c7;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Resources */
+  --res-wood: #2d6a4f;
+  --res-brick: #b91c1c;
+  --res-wool: #15803d;
+  --res-wheat: #ca8a04;
+  --res-ore: #475569;
+  --res-desert: #a16207;
+
+  /* Fonts */
+  --font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Tactile Shadows & Elevation */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+
+  /* Transitions */
+  --transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 0),
+    linear-gradient(180deg, #11151e 0%, #151b27 100%);
+  background-size: 20px 20px, 100% 100%;
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Header & Top Bar */
+.app-header {
+  height: 60px;
+  background: #151b27;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: relative;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Tactile Buttons */
+.btn-glass {
+  background: #202738;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.btn-glass:hover {
+  background: var(--bg-surface-hover);
+  border-color: #3b4760;
+}
+
+.btn-glass:active {
+  transform: translateY(1px);
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn-primary {
+  background: #d97706;
+  border: 1px solid #b45309;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+  background: #b45309;
+  border-color: #92400e;
+  transform: none;
+}
+
+.btn-primary:active {
+  background: #92400e;
+  transform: translateY(1px);
+}
+
+.btn-danger {
+  background: #991b1b;
+  border: 1px solid #7f1d1d;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #991b1b;
+}
+
+.btn-danger:active {
+  transform: translateY(1px);
+}
+
+/* Language Switcher */
+.lang-selector {
+  display: flex;
+  background: #11151e;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.lang-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+}
+
+.lang-btn.active {
+  background: #d97706;
+  color: #ffffff;
+}
+
+/* Views Management */
+.view-screen {
+  display: none;
+  min-height: calc(100vh - 60px);
+}
+
+.view-screen.active {
+  display: flex;
+}
+
+/* Toast Notifications */
+#toast-container {
+  position: fixed;
+  top: 72px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid #d97706;
+  color: var(--text-primary);
+  padding: 10px 16px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.toast.toast-error {
+  border-left-color: #ef4444;
+}
+
+.toast-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

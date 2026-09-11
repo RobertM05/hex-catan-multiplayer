@@ -1,0 +1,19 @@
+{
+  "name": "hex-catan-multiplayer",
+  "version": "1.0.0",
+  "description": "Bilingual real-time multiplayer hexagonal strategy game with room hosting",
+  "main": "server/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": ["catan", "hexagonal", "board-game", "multiplayer", "bilingual"],
+  "author": "RobertM05",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

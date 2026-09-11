@@ -1,0 +1,564 @@
+/**
+ * i18n.js
+ * Comprehensive bilingual localization system for Hexagonal Strategy Game.
+ * Supports Romanian (RO) and English (EN) with live dynamic switching.
+ */
+
+export const TRANSLATIONS = {
+  en: {
+    // App Header & Navigation
+    APP_TITLE: "HexSettlers Online",
+    TAGLINE: "Hexagonal Strategy & Trading Board Game",
+    LANG_SELECT: "Language",
+    SOUND_TOGGLE: "Sound",
+    RULES_BUTTON: "Game Rules",
+    LEAVE_ROOM: "Leave Room",
+
+    // Lobby
+    LOBBY_TITLE: "Multiplayer Lobby",
+    HOST_ROOM_TAB: "Host Game",
+    JOIN_ROOM_TAB: "Join Game",
+    PUBLIC_ROOMS_TAB: "Public Lobbies",
+    PLAYER_NAME_LABEL: "Player Name",
+    PLAYER_NAME_PLACEHOLDER: "Enter your name...",
+    ROOM_NAME_LABEL: "Room Name",
+    ROOM_NAME_PLACEHOLDER: "e.g. Catan Table 1...",
+    MAX_PLAYERS_LABEL: "Max Players",
+    GAME_MODE_LABEL: "Game Mode",
+    MODE_BASE: "Base Game (10 VP)",
+    MODE_ADVANCED: "Expanded Game (Cities & Knights - 13 VP)",
+    MAP_SIZE_LABEL: "Map Size",
+    MAP_AUTO: "Auto-Scale with Players",
+    MAP_STANDARD: "Standard (19 Hexes)",
+    MAP_EXTENDED: "Extended (30 Hexes)",
+    TURN_TIMER_LABEL: "Turn Timer",
+    TIMER_30S: "30 Seconds (Blitz)",
+    TIMER_60S: "60 Seconds (Standard)",
+    TIMER_90S: "90 Seconds (Casual)",
+    TIMER_NONE: "No Timer",
+    CREATE_ROOM_BTN: "Create Room",
+    ROOM_CODE_LABEL: "Room Code",
+    ROOM_CODE_PLACEHOLDER: "e.g. K9X4A",
+    JOIN_ROOM_BTN: "Join Game",
+    NO_ROOMS_AVAILABLE: "No active public rooms found. Create one to get started!",
+    HOST_LABEL: "Host",
+    PLAYERS_LABEL: "Players",
+
+    // Waiting Room
+    WAITING_ROOM_TITLE: "Lobby",
+    ROOM_CODE_BADGE: "Room Code:",
+    SHARE_LINK_BTN: "Copy Invite Link",
+    LINK_COPIED: "Link copied to clipboard!",
+    CHOOSE_COLOR: "Color:",
+    STATUS_READY: "Ready",
+    STATUS_NOT_READY: "Not Ready",
+    TOGGLE_READY_BTN: "Toggle Ready",
+    ADD_BOT_BTN: "Add Bot",
+    START_GAME_BTN: "Start Game",
+    WAITING_FOR_HOST: "Waiting for host to start the game...",
+    NEED_MORE_PLAYERS: "Need at least 2 players to start",
+    KICK_PLAYER: "Kick",
+
+    // Game Board & Layout
+    ROUND_LABEL: "Round",
+    TURN_LABEL: "Turn",
+    TIME_LEFT: "Sec",
+    DICE_TOTAL: "Total",
+    CURRENT_TURN: "Current Turn:",
+    YOUR_TURN_ALERT: "It is your turn! Choose your move.",
+    OPPONENT_TURN: "is taking their turn...",
+
+    // Resources
+    RES_WOOD: "Wood",
+    RES_BRICK: "Brick",
+    RES_WOOL: "Wool",
+    RES_WHEAT: "Wheat",
+    RES_ORE: "Ore",
+    RES_DESERT: "Desert",
+
+    // Buildings & Costs
+    BUILD_ROAD: "Road",
+    BUILD_SETTLEMENT: "Settlement",
+    BUILD_CITY: "City",
+    BUY_DEV_CARD: "Dev Card",
+    COST_ROAD: "1 Wood, 1 Brick",
+    COST_SETTLEMENT: "1 Wood, 1 Brick, 1 Wool, 1 Wheat",
+    COST_CITY: "3 Ore, 2 Wheat",
+    COST_DEV_CARD: "1 Ore, 1 Wool, 1 Wheat",
+
+    // Actions
+    ACTION_ROLL: "Roll Dice",
+    ACTION_END_TURN: "End Turn",
+    ACTION_TRADE_BANK: "Bank Trade",
+    ACTION_TRADE_PLAYER: "Player Trade",
+    ACTION_PLAY_CARD: "Play Card",
+    CANCEL_ACTION: "Cancel",
+
+    // Dev Cards
+    CARD_KNIGHT: "Knight",
+    CARD_KNIGHT_DESC: "Move the robber and steal 1 resource card from an adjacent player.",
+    CARD_VICTORY_POINT: "Victory Point",
+    CARD_VICTORY_POINT_DESC: "+1 Hidden Victory Point. Revealed at end of game.",
+    CARD_ROAD_BUILDING: "Road Building",
+    CARD_ROAD_BUILDING_DESC: "Place 2 roads immediately without resource cost.",
+    CARD_YEAR_OF_PLENTY: "Year of Plenty",
+    CARD_YEAR_OF_PLENTY_DESC: "Take any 2 resource cards from the bank.",
+    CARD_MONOPOLY: "Monopoly",
+    CARD_MONOPOLY_DESC: "Select 1 resource. All other players must give you all their cards of that type.",
+    MY_DEV_CARDS: "Cards",
+    MY_DEV_CARDS_TITLE: "Development Cards",
+    DREW_DEV_CARD: "You drew: {card}!",
+    CANNOT_PLAY_TURN_BOUGHT: "Cannot play on turn bought (Catan rule)",
+    VP_COUNTED_AUTO: "counted automatically",
+    KNIGHT_PLAYED_TOAST: "Knight played! Click a hex on the board to move the robber.",
+    ROAD_BUILDING_PLAYED_TOAST: "Road Building activated! Place your 2 free roads on the board.",
+    ROAD_BUILDING_SECOND_ROAD: "1 free road remaining to place!",
+    NO_DEV_CARDS_IN_HAND: "No development cards in hand.",
+    CHOOSE_RESOURCE: "Choose a resource",
+    MONOPOLY_SELECT_TITLE: "Monopoly: Choose Resource",
+    YEAR_OF_PLENTY_SELECT_TITLE: "Year of Plenty: Choose 2 Resources",
+    YEAR_OF_PLENTY_SLOT_1: "First Resource",
+    YEAR_OF_PLENTY_SLOT_2: "Second Resource",
+
+    // Awards
+    LONGEST_ROAD: "Longest Road (+2 VP)",
+    LARGEST_ARMY: "Largest Army (+2 VP)",
+    VICTORY_POINTS_ABBR: "VP",
+
+    // Trade Dialog
+    TRADE_TITLE: "Resource Trading",
+    TAB_TRADE_PLAYER: "Player Trade",
+    TAB_TRADE_BANK: "Bank & Harbor",
+    TRADE_OFFER_GIVE: "You offer:",
+    TRADE_OFFER_GIVE_SUB: "From your hand",
+    TRADE_OFFER_WANT: "You want:",
+    TRADE_OFFER_WANT_SUB: "From opponents",
+    AVAILABLE_IN_HAND: "({count} in hand)",
+    BANK_EXCHANGE_TITLE: "Bank & Harbor Trade",
+    BANK_RATE_LABEL: "Exchange Rate:",
+    BANK_RATE_DESC: "Give {giveCount} to get 1",
+    BANK_GIVE_LABEL: "You Give",
+    BANK_RECEIVE_LABEL: "You Receive",
+    BANK_RECEIVE_SUB: "1 card of your choice",
+    BANK_RATIO_STANDARD: "Standard Bank (4:1)",
+    BANK_RATIO_GENERIC: "Generic Harbor (3:1)",
+    BANK_RATIO_SPECIAL: "Specialized Harbor (2:1)",
+    BANK_HARBORS_OWNED: "Harbors owned: {harbors}",
+    BANK_NO_HARBORS: "No harbors owned",
+    SELECT_GIVE: "Select resource to give",
+    SELECT_RECEIVE: "Select resource to receive",
+    TRADE_INVALID_SELECTION: "Select at least 1 resource to offer and 1 to receive.",
+    TRADE_SAME_BANK_RESOURCE: "Give and receive resources must be different.",
+    PROPOSE_TRADE_BTN: "Propose Trade",
+    ACCEPT_TRADE_BTN: "Accept Trade",
+    DECLINE_TRADE_BTN: "Decline",
+    CONFIRM_TRADE_WITH: "Accept trade with",
+    ACTIVE_OFFER: "Active Trade Offer:",
+    NO_OFFERS: "No active trade offers.",
+    BANK_TRADE_SUCCESS: "Traded {ratio} {give} for 1 {receive} with the bank!",
+    BANK_SELECT_RESOURCES: "Select resources to trade",
+    BANK_CARDS_HAVE: "{count} in hand",
+    BANK_CARDS_NEED_MORE: "need {need} more",
+    BANK_PORT_APPLIED_2: "Specialized {res} port (2:1) applied!",
+    BANK_PORT_APPLIED_3: "Generic port (3:1) applied!",
+    BANK_STANDARD_RATIO: "Standard bank exchange (4:1)",
+
+    // Discard & Robber
+    DISCARD_TITLE: "Discard Cards (Rolled 7)",
+    DISCARD_INSTRUCTION: "You have more than 7 cards. Select half your cards to discard:",
+    DISCARD_COUNT: "Discarded:",
+    CONFIRM_DISCARD_BTN: "Discard Cards",
+    ROBBER_PLACEMENT_TITLE: "Move Robber",
+    ROBBER_INSTRUCTION: "Click on any hex tile to place the robber and block production.",
+    ROBBER_STEAL_TITLE: "Choose Player to Rob",
+    STEAL_FROM_BTN: "Take from",
+    STEAL_1_RES_BTN: "Steal 1 resource",
+    STOLE_RESOURCE_FROM: "You stole 1 {resource} from {player}!",
+    ROBBER_NO_CARDS_TO_STEAL: "Robber moved. Adjacent opponents have no cards to steal.",
+    ROBBER_MOVED_NO_TARGETS: "Robber moved. No adjacent opponents to rob.",
+    ROBBER_STOLE_FROM_YOU: "{robber} stole 1 resource from you!",
+    CARDS_LABEL: "cards",
+
+    // Chat & Event Log
+    CHAT_TAB: "Chat",
+    LOG_TAB: "Game Log",
+    SEND_CHAT_BTN: "Send",
+    CHAT_PLACEHOLDER: "Type a message...",
+
+    // Game Logs
+    LOG_GAME_STARTED: "Game started with {playersCount} players.",
+    LOG_SETUP_COMPLETED: "Initial settlements placed. Regular turns begin.",
+    LOG_BUILT_SETTLEMENT: "{playerName} built a settlement.",
+    LOG_BUILT_ROAD: "{playerName} built a road.",
+    LOG_BUILT_CITY: "{playerName} upgraded a settlement to a city.",
+    LOG_BOOTSTRAP_RESOURCES: "{playerName} received starting resources.",
+    LOG_DICE_ROLLED: "{playerName} rolled {sum} ({d1} + {d2}).",
+    LOG_DISCARD_REQUIRED: "A 7 was rolled! Players with more than 7 cards must discard half.",
+    LOG_PLAYER_DISCARDED: "{playerName} discarded {count} cards.",
+    LOG_ROBBER_MOVED: "{playerName} moved the robber to hex {hexId}.",
+    LOG_ROBBER_STOLE: "{robberName} stole 1 resource from {victimName}.",
+    LOG_BOUGHT_DEV_CARD: "{playerName} bought a Development Card.",
+    LOG_PLAYED_KNIGHT: "{playerName} played a Knight (Total: {totalKnights}).",
+    LOG_PLAYED_ROAD_BUILDING: "{playerName} played Road Building.",
+    LOG_PLAYED_YEAR_OF_PLENTY: "{playerName} played Year of Plenty ({res1}, {res2}).",
+    LOG_PLAYED_MONOPOLY: "{playerName} played Monopoly on {resource}, taking {count} cards.",
+    LOG_BANK_TRADE: "{playerName} traded {ratio} {give} for 1 {receive} with the bank.",
+    LOG_TRADE_PROPOSED: "{playerName} proposed a trade.",
+    LOG_TRADE_COMPLETED: "Trade completed between {initiator} and {partner}.",
+    LOG_TURN_CHANGED: "Turn passed to {playerName} (Round {turnNumber}).",
+    LOG_LONGEST_ROAD: "{playerName} took Longest Road ({length} segments).",
+    LOG_LARGEST_ARMY: "{playerName} took Largest Army ({count} knights).",
+    LOG_VICTORY: "{winnerName} won the game with {points} Victory Points!",
+    LOG_RESOURCE_PRODUCED: "{playerName} received {amount} {resource}.",
+    LOG_NO_RESOURCE_PRODUCED: "No resources produced for roll {sum}.",
+    YOU_RECEIVED_RESOURCE: "You received +{amount} {resource}!",
+    DISCARD_MUST_LABEL: "Must discard:",
+    DISCARD_SELECTED_LABEL: "Selected:",
+
+    // Victory Screen
+    VICTORY_TITLE: "Victory!",
+    VICTORY_MESSAGE: "has won the game!",
+    PLAY_AGAIN_BTN: "Back to Lobby",
+
+    // Errors & Tips
+    ERROR_NOT_YOUR_TURN: "It is not your turn.",
+    ERROR_NOT_ENOUGH_RESOURCES: "Not enough resources.",
+    ERROR_DISTANCE_RULE_VIOLATION: "Distance rule violation: settlements must be at least 2 intersections apart.",
+    ERROR_MUST_CONNECT_TO_ROAD: "Settlement must connect to your road.",
+    ERROR_VERTEX_OCCUPIED: "This intersection already has a building.",
+    ERROR_EDGE_OCCUPIED: "This edge already has a road.",
+    ERROR_MUST_CONNECT_TO_SETUP_SETTLEMENT: "During setup, your road must connect to the settlement just placed.",
+    ERROR_MUST_CONNECT_TO_NETWORK: "Road must connect to your existing roads or settlements.",
+    ERROR_NO_SETTLEMENTS_LEFT: "No settlements remaining in supply.",
+    ERROR_NO_CITIES_LEFT: "No cities remaining in supply.",
+    ERROR_NO_ROADS_LEFT: "No roads remaining in supply.",
+    ERROR_MUST_UPGRADE_OWN_SETTLEMENT: "You can only upgrade your own settlement to a city.",
+    ERROR_DECK_EMPTY: "The development card deck is empty.",
+    ERROR_DEV_CARD_DECK_EMPTY: "The development card deck is empty.",
+    ERROR_ALREADY_PLAYED_DEV_CARD_THIS_TURN: "You may only play 1 development card per turn.",
+    ERROR_CANNOT_PLAY_CARD_TURN_BOUGHT: "You cannot play a development card on the turn it was bought.",
+    ERROR_NOT_IN_VALID_PHASE_FOR_DEV_CARD: "You cannot play development cards in this phase.",
+    ERROR_SPECIFY_VALID_RESOURCE: "Please specify a valid resource.",
+    ERROR_SPECIFY_TWO_VALID_RESOURCES: "Please specify two valid resources.",
+    ERROR_CARD_NOT_FOUND: "Card not found in your hand.",
+    ERROR_INVALID_RESOURCE: "Invalid resource selected.",
+    ERROR_CANNOT_TRADE_SAME_RESOURCE: "Cannot trade for the same resource.",
+    ERROR_INVALID_TRADE_RATIO: "Invalid trade ratio.",
+    ERROR_NOT_IN_ACTION_PHASE: "Action only allowed during action phase.",
+    PAN_ZOOM_HINT: "Drag board to pan • Scroll wheel or pinch to zoom",
+    SETUP_HINT_SETTLEMENT_1: "Setup 1/2: Choose an intersection to place your 1st settlement",
+    SETUP_HINT_ROAD_1: "Setup 1/2: Choose an edge connected to your settlement for your 1st road",
+    SETUP_HINT_SETTLEMENT_2: "Setup 2/2: Choose your 2nd settlement (grants starting resources!)",
+    SETUP_HINT_ROAD_2: "Setup 2/2: Choose an edge connected to your settlement for your 2nd road",
+    SETUP_HINT_WAITING: "Waiting for {playerName} to place initial structures...",
+    ACTION_HINT_ROLL: "Roll the dice to generate resources",
+    ACTION_HINT_ROBBER: "Click a hex tile to move the robber and block production",
+    ACTION_HINT_BUILD_ROAD: "Click a valid edge to build a road",
+    ACTION_HINT_BUILD_SETTLEMENT: "Click an available intersection to build a settlement",
+    ACTION_HINT_BUILD_CITY: "Click one of your settlements to upgrade to a city"
+  },
+
+  ro: {
+    // App Header & Navigation
+    APP_TITLE: "HexSettlers Online",
+    TAGLINE: "Joc de strategie și comerț pe tablă hexagonală",
+    LANG_SELECT: "Limbă",
+    SOUND_TOGGLE: "Sunet",
+    RULES_BUTTON: "Reguli joc",
+    LEAVE_ROOM: "Părăsește camera",
+
+    // Lobby
+    LOBBY_TITLE: "Lobby Multiplayer",
+    HOST_ROOM_TAB: "Găzduiește partidă",
+    JOIN_ROOM_TAB: "Alătură-te",
+    PUBLIC_ROOMS_TAB: "Lobby-uri publice",
+    PLAYER_NAME_LABEL: "Nume jucător",
+    PLAYER_NAME_PLACEHOLDER: "Introdu numele tău...",
+    ROOM_NAME_LABEL: "Nume cameră",
+    ROOM_NAME_PLACEHOLDER: "ex: Masa Catan 1...",
+    MAX_PLAYERS_LABEL: "Număr maxim jucători",
+    GAME_MODE_LABEL: "Mod de joc",
+    MODE_BASE: "Joc de bază (10 PV)",
+    MODE_ADVANCED: "Mod extins (Orașe & Cavaleri - 13 PV)",
+    MAP_SIZE_LABEL: "Dimensiune hartă",
+    MAP_AUTO: "Scalare automată după jucători",
+    MAP_STANDARD: "Standard (19 hexuri)",
+    MAP_EXTENDED: "Extinsă (30 hexuri)",
+    TURN_TIMER_LABEL: "Timp per tură",
+    TIMER_30S: "30 Secunde (Blitz)",
+    TIMER_60S: "60 Secunde (Standard)",
+    TIMER_90S: "90 Secunde (Relaxat)",
+    TIMER_NONE: "Fără limită de timp",
+    CREATE_ROOM_BTN: "Creează cameră",
+    ROOM_CODE_LABEL: "Cod cameră",
+    ROOM_CODE_PLACEHOLDER: "ex: K9X4A",
+    JOIN_ROOM_BTN: "Intră în joc",
+    NO_ROOMS_AVAILABLE: "Nicio cameră publică activă. Creează una pentru a începe!",
+    HOST_LABEL: "Gazdă",
+    PLAYERS_LABEL: "Jucători",
+
+    // Waiting Room
+    WAITING_ROOM_TITLE: "Sală de așteptare",
+    ROOM_CODE_BADGE: "Cod cameră:",
+    SHARE_LINK_BTN: "Copiază linkul",
+    LINK_COPIED: "Link copiat în clipboard!",
+    CHOOSE_COLOR: "Culoare:",
+    STATUS_READY: "Pregătit",
+    STATUS_NOT_READY: "Nepregătit",
+    TOGGLE_READY_BTN: "Schimbă starea",
+    ADD_BOT_BTN: "Adaugă bot",
+    START_GAME_BTN: "Începe jocul",
+    WAITING_FOR_HOST: "Se așteaptă ca gazda să pornească jocul...",
+    NEED_MORE_PLAYERS: "Sunt necesari cel puțin 2 jucători pentru a începe",
+    KICK_PLAYER: "Elimină",
+
+    // Game Board & Layout
+    ROUND_LABEL: "Runda",
+    TURN_LABEL: "Tura",
+    TIME_LEFT: "Sec",
+    DICE_TOTAL: "Total",
+    CURRENT_TURN: "Tura curentă:",
+    YOUR_TURN_ALERT: "Este tura ta! Alege mutarea.",
+    OPPONENT_TURN: "își joacă tura...",
+
+    // Resources
+    RES_WOOD: "Lemn",
+    RES_BRICK: "Cărămidă",
+    RES_WOOL: "Lână",
+    RES_WHEAT: "Grâu",
+    RES_ORE: "Minereu",
+    RES_DESERT: "Deșert",
+
+    // Buildings & Costs
+    BUILD_ROAD: "Drum",
+    BUILD_SETTLEMENT: "Așezare",
+    BUILD_CITY: "Oraș",
+    BUY_DEV_CARD: "Carte dezv.",
+    COST_ROAD: "1 Lemn, 1 Cărămidă",
+    COST_SETTLEMENT: "1 Lemn, 1 Cărămidă, 1 Lână, 1 Grâu",
+    COST_CITY: "3 Minereu, 2 Grâu",
+    COST_DEV_CARD: "1 Minereu, 1 Lână, 1 Grâu",
+
+    // Actions
+    ACTION_ROLL: "Aruncă zarurile",
+    ACTION_END_TURN: "Încheie tura",
+    ACTION_TRADE_BANK: "Schimb la bancă",
+    ACTION_TRADE_PLAYER: "Comerț cu jucători",
+    ACTION_PLAY_CARD: "Joacă carte",
+    CANCEL_ACTION: "Anulează",
+
+    // Dev Cards
+    CARD_KNIGHT: "Cavaler",
+    CARD_KNIGHT_DESC: "Mută hoțul și fură 1 resursă de la o așezare sau un oraș adiacent.",
+    CARD_VICTORY_POINT: "Punct de victorie",
+    CARD_VICTORY_POINT_DESC: "+1 Punct de victorie ascuns. Se dezvăluie la finalul jocului.",
+    CARD_ROAD_BUILDING: "Construcție de drumuri",
+    CARD_ROAD_BUILDING_DESC: "Construiește imediat 2 drumuri fără cost de resurse.",
+    CARD_YEAR_OF_PLENTY: "Anul abundenței",
+    CARD_YEAR_OF_PLENTY_DESC: "Ia oricare 2 cărți de resurse din rezerva băncii.",
+    CARD_MONOPOLY: "Monopol",
+    CARD_MONOPOLY_DESC: "Alege 1 resursă. Toți ceilalți jucători trebuie să-ți predea toate cărțile din acea resursă.",
+    MY_DEV_CARDS: "Cărți",
+    MY_DEV_CARDS_TITLE: "Cărți de dezvoltare",
+    DREW_DEV_CARD: "Ai tras: {card}!",
+    CANNOT_PLAY_TURN_BOUGHT: "Nu se poate juca în tura cumpărării (Regulă Catan)",
+    VP_COUNTED_AUTO: "calculat automat",
+    KNIGHT_PLAYED_TOAST: "Cavaler jucat! Apasă pe un hexagon de pe tablă pentru a muta hoțul.",
+    ROAD_BUILDING_PLAYED_TOAST: "Construcție de drumuri activată! Plasează cele 2 drumuri gratuite pe tablă.",
+    ROAD_BUILDING_SECOND_ROAD: "Mai ai 1 drum gratuit de plasat!",
+    NO_DEV_CARDS_IN_HAND: "Nu ai cărți de dezvoltare în mână.",
+    CHOOSE_RESOURCE: "Alege o resursă",
+    MONOPOLY_SELECT_TITLE: "Monopol: Alege resursa",
+    YEAR_OF_PLENTY_SELECT_TITLE: "Anul Abundenței: Alege 2 resurse",
+    YEAR_OF_PLENTY_SLOT_1: "Prima resursă",
+    YEAR_OF_PLENTY_SLOT_2: "A doua resursă",
+
+    // Awards
+    LONGEST_ROAD: "Cel mai lung drum (+2 PV)",
+    LARGEST_ARMY: "Cea mai mare armată (+2 PV)",
+    VICTORY_POINTS_ABBR: "PV",
+
+    // Trade Dialog
+    TRADE_TITLE: "Comerț cu resurse",
+    TAB_TRADE_PLAYER: "Comerț cu Jucători",
+    TAB_TRADE_BANK: "Bancă & Port",
+    TRADE_OFFER_GIVE: "Oferi:",
+    TRADE_OFFER_GIVE_SUB: "Din cărțile tale",
+    TRADE_OFFER_WANT: "Ceri:",
+    TRADE_OFFER_WANT_SUB: "De la adversari",
+    AVAILABLE_IN_HAND: "({count} în mână)",
+    BANK_EXCHANGE_TITLE: "Schimb Bancă & Port",
+    BANK_RATE_LABEL: "Rată de schimb:",
+    BANK_RATE_DESC: "Dai {giveCount} pentru a primi 1",
+    BANK_GIVE_LABEL: "Dai",
+    BANK_RECEIVE_LABEL: "Primești",
+    BANK_RECEIVE_SUB: "1 carte la alegere",
+    BANK_RATIO_STANDARD: "Bancă standard (4:1)",
+    BANK_RATIO_GENERIC: "Port generic (3:1)",
+    BANK_RATIO_SPECIAL: "Port specializat (2:1)",
+    BANK_HARBORS_OWNED: "Porturi deținute: {harbors}",
+    BANK_NO_HARBORS: "Niciun port deținut",
+    SELECT_GIVE: "Alege resursa oferită",
+    SELECT_RECEIVE: "Alege resursa dorită",
+    TRADE_INVALID_SELECTION: "Selectează cel puțin o resursă de oferit și una de cerut.",
+    TRADE_SAME_BANK_RESOURCE: "Resursa oferită și cea primită trebuie să fie diferite.",
+    PROPOSE_TRADE_BTN: "Propune schimb",
+    ACCEPT_TRADE_BTN: "Acceptă",
+    DECLINE_TRADE_BTN: "Refuză",
+    CONFIRM_TRADE_WITH: "Finalizează schimbul cu",
+    ACTIVE_OFFER: "Ofertă activă de schimb:",
+    NO_OFFERS: "Nicio ofertă activă de schimb.",
+    BANK_TRADE_SUCCESS: "Ai schimbat {ratio} {give} pentru 1 {receive} la bancă!",
+    BANK_SELECT_RESOURCES: "Selectează resursele pentru schimb",
+    BANK_CARDS_HAVE: "{count} în mână",
+    BANK_CARDS_NEED_MORE: "lipsesc {need}",
+    BANK_PORT_APPLIED_2: "Port specializat {res} (2:1) aplicat!",
+    BANK_PORT_APPLIED_3: "Port general (3:1) aplicat!",
+    BANK_STANDARD_RATIO: "Schimb standard cu banca (4:1)",
+
+    // Discard & Robber
+    DISCARD_TITLE: "Decartare cărți (Zar 7)",
+    DISCARD_INSTRUCTION: "Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:",
+    DISCARD_COUNT: "Decartate:",
+    CONFIRM_DISCARD_BTN: "Decartează cărți",
+    ROBBER_PLACEMENT_TITLE: "Mută hoțul",
+    ROBBER_INSTRUCTION: "Apasă pe orice hexagon pentru a plasa hoțul și a bloca producția.",
+    ROBBER_STEAL_TITLE: "Alege jucătorul pentru furt",
+    STEAL_FROM_BTN: "Ia de la",
+    STEAL_1_RES_BTN: "Fură 1 resursă",
+    STOLE_RESOURCE_FROM: "Ai furat 1 {resource} de la {player}!",
+    ROBBER_NO_CARDS_TO_STEAL: "Hoțul a fost mutat. Adversarii adiacenți nu au cărți în mână.",
+    ROBBER_MOVED_NO_TARGETS: "Hoțul a fost mutat. Niciun adversar adiacent.",
+    ROBBER_STOLE_FROM_YOU: "{robber} a furat 1 resursă de la tine!",
+    CARDS_LABEL: "cărți",
+
+    // Chat & Event Log
+    CHAT_TAB: "Chat",
+    LOG_TAB: "Istoric",
+    SEND_CHAT_BTN: "Trimite",
+    CHAT_PLACEHOLDER: "Scrie un mesaj...",
+
+    // Game Logs
+    LOG_GAME_STARTED: "Partida a început cu {playersCount} jucători.",
+    LOG_SETUP_COMPLETED: "Așezările inițiale au fost plasate. Turele normale încep acum.",
+    LOG_BUILT_SETTLEMENT: "{playerName} a construit o așezare.",
+    LOG_BUILT_ROAD: "{playerName} a construit un drum.",
+    LOG_BUILT_CITY: "{playerName} a transformat o așezare în oraș.",
+    LOG_BOOTSTRAP_RESOURCES: "{playerName} a primit resursele inițiale.",
+    LOG_DICE_ROLLED: "{playerName} a dat {sum} ({d1} + {d2}).",
+    LOG_DISCARD_REQUIRED: "S-a dat 7! Jucătorii cu peste 7 cărți trebuie să decarteze jumătate.",
+    LOG_PLAYER_DISCARDED: "{playerName} a decartat {count} cărți.",
+    LOG_ROBBER_MOVED: "{playerName} a mutat hoțul pe hexul {hexId}.",
+    LOG_ROBBER_STOLE: "{robberName} a furat 1 resursă de la {victimName}.",
+    LOG_BOUGHT_DEV_CARD: "{playerName} a cumpărat o Carte de Dezvoltare.",
+    LOG_PLAYED_KNIGHT: "{playerName} a jucat un Cavaler (Total: {totalKnights}).",
+    LOG_PLAYED_ROAD_BUILDING: "{playerName} a jucat Construcție de Drumuri.",
+    LOG_PLAYED_YEAR_OF_PLENTY: "{playerName} a jucat Anul Abundenței ({res1}, {res2}).",
+    LOG_PLAYED_MONOPOLY: "{playerName} a jucat Monopol pe {resource}, obținând {count} cărți.",
+    LOG_BANK_TRADE: "{playerName} a schimbat {ratio} {give} pentru 1 {receive} la bancă/port.",
+    LOG_TRADE_PROPOSED: "{playerName} a propus un schimb.",
+    LOG_TRADE_COMPLETED: "Schimb realizat între {initiator} și {partner}.",
+    LOG_TURN_CHANGED: "Tura a trecut la {playerName} (Runda {turnNumber}).",
+    LOG_LONGEST_ROAD: "{playerName} a preluat Cel Mai Lung Drum ({length} segmente).",
+    LOG_LARGEST_ARMY: "{playerName} a preluat Cea Mai Mare Armată ({count} cavaleri).",
+    LOG_VICTORY: "{winnerName} a câștigat jocul cu {points} Puncte de Victorie!",
+    LOG_RESOURCE_PRODUCED: "{playerName} a primit {amount} {resource}.",
+    LOG_NO_RESOURCE_PRODUCED: "Nicio resursă produsă pentru zarul {sum}.",
+    YOU_RECEIVED_RESOURCE: "Ai primit +{amount} {resource}!",
+    DISCARD_MUST_LABEL: "Trebuie să decartezi:",
+    DISCARD_SELECTED_LABEL: "Selectate:",
+
+    // Victory Screen
+    VICTORY_TITLE: "Victorie!",
+    VICTORY_MESSAGE: "a câștigat jocul!",
+    PLAY_AGAIN_BTN: "Înapoi la meniu",
+
+    // Errors & Tips
+    ERROR_NOT_YOUR_TURN: "Nu este tura ta.",
+    ERROR_NOT_ENOUGH_RESOURCES: "Nu ai suficiente resurse.",
+    ERROR_DISTANCE_RULE_VIOLATION: "Regula distanței: așezările trebuie să fie la cel puțin 2 intersecții distanță.",
+    ERROR_MUST_CONNECT_TO_ROAD: "Așezarea trebuie conectată la un drum propriu.",
+    ERROR_VERTEX_OCCUPIED: "Această intersecție conține deja o clădire.",
+    ERROR_EDGE_OCCUPIED: "Acest traseu conține deja un drum.",
+    ERROR_MUST_CONNECT_TO_SETUP_SETTLEMENT: "În faza inițială, drumul trebuie legat de așezarea proaspăt plasată.",
+    ERROR_MUST_CONNECT_TO_NETWORK: "Drumul nou trebuie conectat la drumurile sau așezările tale.",
+    ERROR_NO_SETTLEMENTS_LEFT: "Nu mai ai așezări disponibile.",
+    ERROR_NO_CITIES_LEFT: "Nu mai ai orașe disponibile.",
+    ERROR_NO_ROADS_LEFT: "Nu mai ai drumuri disponibile.",
+    ERROR_MUST_UPGRADE_OWN_SETTLEMENT: "Poți moderniza într-un oraș doar propria ta așezare.",
+    ERROR_DECK_EMPTY: "Pachetul de cărți de dezvoltare este gol.",
+    ERROR_DEV_CARD_DECK_EMPTY: "Pachetul de cărți de dezvoltare este gol.",
+    ERROR_ALREADY_PLAYED_DEV_CARD_THIS_TURN: "Poți juca doar 1 carte de dezvoltare pe tură.",
+    ERROR_CANNOT_PLAY_CARD_TURN_BOUGHT: "Nu poți juca o carte de dezvoltare în tura în care ai cumpărat-o.",
+    ERROR_NOT_IN_VALID_PHASE_FOR_DEV_CARD: "Nu poți juca cărți de dezvoltare în această fază.",
+    ERROR_SPECIFY_VALID_RESOURCE: "Te rugăm să alegi o resursă validă.",
+    ERROR_SPECIFY_TWO_VALID_RESOURCES: "Te rugăm să alegi două resurse valide.",
+    ERROR_CARD_NOT_FOUND: "Cartea nu a fost găsită în mâna ta.",
+    ERROR_INVALID_RESOURCE: "Resursă selectată invalidă.",
+    ERROR_CANNOT_TRADE_SAME_RESOURCE: "Nu poți schimba pentru aceeași resursă.",
+    ERROR_INVALID_TRADE_RATIO: "Rată de schimb invalidă.",
+    ERROR_NOT_IN_ACTION_PHASE: "Acțiunea este permisă doar în faza de acțiuni.",
+    PAN_ZOOM_HINT: "Trage harta pentru mutare • Rotița sau pinch pentru zoom",
+    SETUP_HINT_SETTLEMENT_1: "Faza de început 1/2: Alege o intersecție pentru prima ta așezare",
+    SETUP_HINT_ROAD_1: "Faza de început 1/2: Alege un traseu legat de așezarea ta pentru primul drum",
+    SETUP_HINT_SETTLEMENT_2: "Faza de început 2/2: Alege a 2-a așezare (vei primi resursele hexagoanelor vecine!)",
+    SETUP_HINT_ROAD_2: "Faza de început 2/2: Alege un traseu legat de a 2-a așezare pentru al 2-lea drum",
+    SETUP_HINT_WAITING: "Așteaptă: {playerName} așază structurile pe tablă...",
+    ACTION_HINT_ROLL: "Aruncă zarurile pentru a genera resurse",
+    ACTION_HINT_ROBBER: "Apasă pe un hexagon pentru a muta hoțul și a bloca producția",
+    ACTION_HINT_BUILD_ROAD: "Apasă pe un traseu valid pentru a construi drumul",
+    ACTION_HINT_BUILD_SETTLEMENT: "Apasă pe o intersecție liberă pentru a construi așezarea",
+    ACTION_HINT_BUILD_CITY: "Apasă pe o așezare proprie pentru a o moderniza în oraș"
+  }
+};
+
+class I18nService {
+  constructor() {
+    this.currentLang = localStorage.getItem('catan_lang') || 'ro'; // Default Romanian, user preference respected
+  }
+
+  getLang() {
+    return this.currentLang;
+  }
+
+  setLang(lang) {
+    if (TRANSLATIONS[lang]) {
+      this.currentLang = lang;
+      localStorage.setItem('catan_lang', lang);
+      this.updateDOM();
+      window.dispatchEvent(new CustomEvent('language_changed', { detail: { lang } }));
+    }
+  }
+
+  t(key, params = {}) {
+    const dict = TRANSLATIONS[this.currentLang] || TRANSLATIONS.en;
+    let text = dict[key] || TRANSLATIONS.en[key] || key;
+
+    for (const [paramKey, val] of Object.entries(params)) {
+      text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), val);
+    }
+    return text;
+  }
+
+  updateDOM() {
+    // Update text content for elements with data-i18n
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      el.textContent = this.t(key);
+    });
+
+    // Update placeholder attributes
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      el.setAttribute('placeholder', this.t(key));
+    });
+
+    // Update title/tooltips
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      el.setAttribute('title', this.t(key));
+    });
+  }
+}
+
+export const i18n = new I18nService();

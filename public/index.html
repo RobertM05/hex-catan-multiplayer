@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HexSettlers Online - Hexagonal Board Game</title>
+  <meta name="description" content="Real-time multiplayer hexagonal board game for 3-8 players in Romanian and English. Build settlements, trade resources, and compete!">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/board.css">
+  <link rel="stylesheet" href="/css/ui.css">
+
+  <!-- Socket.IO Client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Header & Navigation Bar -->
+  <header class="app-header">
+    <div class="brand-section">
+      <span class="brand-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 21 7.2 21 16.8 12 22 3 16.8 3 7.2" fill="#2d3748" stroke="#d97706" stroke-width="2"/>
+          <path d="M12 7l5 4v6H7v-6l5-4z" fill="#d97706" stroke="#f8fafc" stroke-width="1.2"/>
+        </svg>
+      </span>
+      <h1 class="brand-title" data-i18n="APP_TITLE">HexSettlers Online</h1>
+    </div>
+
+    <div class="header-actions">
+      <!-- Language Switcher -->
+      <div class="lang-selector">
+        <button id="lang-ro" class="lang-btn active">RO</button>
+        <button id="lang-en" class="lang-btn">EN</button>
+      </div>
+
+      <!-- Sound Toggle -->
+      <button id="btn-sound-toggle" class="btn-glass" title="Sound">
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+        <span class="sound-label" data-i18n="SOUND_TOGGLE">Sunet</span>
+      </button>
+
+      <!-- Rules Button -->
+      <button id="btn-rules" class="btn-glass">
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <span data-i18n="RULES_BUTTON">Reguli</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================
+   * VIEW 1: LOBBY
+   * ========================================================= -->
+  <main id="view-lobby" class="view-screen active">
+    <div class="lobby-container">
+      <div class="lobby-hero">
+        <h1 data-i18n="APP_TITLE">HexSettlers Online</h1>
+        <p data-i18n="TAGLINE">Joc de strategie și comerț pe tablă hexagonală</p>
+      </div>
+
+      <div class="lobby-tabs">
+        <button id="tab-btn-host" class="lobby-tab-btn active" data-i18n="HOST_ROOM_TAB">Găzduiește partidă</button>
+        <button id="tab-btn-join" class="lobby-tab-btn" data-i18n="JOIN_ROOM_TAB">Alătură-te</button>
+        <button id="tab-btn-public" class="lobby-tab-btn" data-i18n="PUBLIC_ROOMS_TAB">Lobby-uri publice</button>
+      </div>
+
+      <!-- Host Room Form -->
+      <div id="tab-content-host" class="lobby-panel lobby-tab-content">
+        <form id="form-create-room" class="form-grid">
+          <div class="form-group">
+            <label data-i18n="PLAYER_NAME_LABEL">Nume jucător</label>
+            <input type="text" id="host-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER" required maxlength="18" value="Jucător 1">
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="ROOM_NAME_LABEL">Nume cameră</label>
+            <input type="text" id="create-room-name" class="form-input" data-i18n-placeholder="ROOM_NAME_PLACEHOLDER" required maxlength="24" value="Masa Catan 1">
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="MAX_PLAYERS_LABEL">Număr maxim jucători</label>
+            <select id="create-max-players" class="form-select">
+              <option value="3">3 Jucători</option>
+              <option value="4" selected>4 Jucători (Standard)</option>
+              <option value="5">5 Jucători (Extins)</option>
+              <option value="6">6 Jucători (Extins)</option>
+              <option value="7">7 Jucători (Mare)</option>
+              <option value="8">8 Jucători</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="GAME_MODE_LABEL">Mod de joc</label>
+            <select id="create-game-mode" class="form-select">
+              <option value="base" selected data-i18n="MODE_BASE">Joc de bază (10 PV)</option>
+              <option value="advanced" data-i18n="MODE_ADVANCED">Mod extins (Orașe & Cavaleri - 13 PV)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="MAP_SIZE_LABEL">Dimensiune hartă</label>
+            <select id="create-map-size" class="form-select">
+              <option value="auto" selected data-i18n="MAP_AUTO">Scalare automată după jucători</option>
+              <option value="standard" data-i18n="MAP_STANDARD">Standard (19 hexuri)</option>
+              <option value="extended" data-i18n="MAP_EXTENDED">Extinsă (30 hexuri)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="TURN_TIMER_LABEL">Timp per tură</label>
+            <select id="create-turn-timer" class="form-select">
+              <option value="30" data-i18n="TIMER_30S">30 Secunde (Blitz)</option>
+              <option value="60" selected data-i18n="TIMER_60S">60 Secunde (Standard)</option>
+              <option value="90" data-i18n="TIMER_90S">90 Secunde (Relaxat)</option>
+              <option value="9999" data-i18n="TIMER_NONE">Fără limită de timp</option>
+            </select>
+          </div>
+
+          <div class="form-group full-width" style="margin-top: 10px;">
+            <button type="submit" class="btn-glass btn-primary" style="width: 100%; padding: 14px; font-size: 16px;" data-i18n="CREATE_ROOM_BTN">Creează cameră</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Join Room Form -->
+      <div id="tab-content-join" class="lobby-panel lobby-tab-content" style="display: none;">
+        <form id="form-join-room" class="form-grid">
+          <div class="form-group">
+            <label data-i18n="PLAYER_NAME_LABEL">Nume jucător</label>
+            <input type="text" id="join-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER" required maxlength="18" value="Jucător">
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="ROOM_CODE_LABEL">Cod cameră</label>
+            <input type="text" id="join-room-code" class="form-input" data-i18n-placeholder="ROOM_CODE_PLACEHOLDER" required maxlength="6" style="text-transform: uppercase; font-family: monospace; font-size: 18px; letter-spacing: 2px;">
+          </div>
+
+          <div class="form-group full-width" style="margin-top: 10px;">
+            <button type="submit" class="btn-glass btn-primary" style="width: 100%; padding: 14px; font-size: 16px;" data-i18n="JOIN_ROOM_BTN">Intră în joc</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Public Rooms List -->
+      <div id="tab-content-public" class="lobby-panel lobby-tab-content" style="display: none;">
+        <div id="public-rooms-list" class="room-list"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================
+   * VIEW 2: WAITING ROOM
+   * ========================================================= -->
+  <section id="view-waiting" class="view-screen">
+    <div class="waiting-container">
+      <div class="waiting-header">
+        <div>
+          <span style="font-size: 12px; color: var(--text-secondary);" data-i18n="ROOM_CODE_BADGE">Cod cameră:</span>
+          <div id="display-room-code" class="room-code-badge">-----</div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="btn-share-link" class="btn-glass">
+            <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span data-i18n="SHARE_LINK_BTN">Copiază linkul</span>
+          </button>
+          <button id="btn-leave-waiting" class="btn-glass btn-danger" data-i18n="LEAVE_ROOM">Părăsește camera</button>
+        </div>
+      </div>
+
+      <div id="waiting-slots-grid" class="slots-grid"></div>
+
+      <div class="waiting-actions">
+        <div style="display: flex; gap: 12px;">
+          <button id="btn-toggle-ready" class="btn-glass btn-primary" data-i18n="TOGGLE_READY_BTN">Schimbă starea</button>
+          <button id="btn-add-bot" class="btn-glass" data-i18n="ADD_BOT_BTN">+ Adaugă bot</button>
+        </div>
+        <button id="btn-start-game" class="btn-glass btn-primary" style="font-size: 16px; padding: 12px 24px;" data-i18n="START_GAME_BTN">Începe jocul</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+   * VIEW 3: IN-GAME HUD
+   * ========================================================= -->
+  <section id="view-game" class="view-screen">
+    <div class="game-viewport-container">
+
+      <!-- Left HUD (Turn Status, Dice, Building Desk) -->
+      <aside class="hud-left">
+        <div class="turn-banner">
+          <div class="turn-title"><span data-i18n="ROUND_LABEL">Runda</span> <span id="round-number-display">1</span></div>
+          <div id="turn-commander-name" class="turn-commander">---</div>
+          <div class="turn-timer-bar">
+            <svg class="timer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span id="turn-timer-display">60s</span>
+          </div>
+        </div>
+
+        <!-- Dice Roll Desk -->
+        <div class="dice-container">
+          <div class="dice-cubes">
+            <div id="die-1" class="die">?</div>
+            <div id="die-2" class="die">?</div>
+          </div>
+          <div style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">
+            <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" style="color: var(--gold-primary); font-size: 15px;">-</span>
+          </div>
+          <button id="btn-roll-dice" class="btn-glass btn-primary" style="width: 100%;" data-i18n="ACTION_ROLL">Aruncă zarurile</button>
+        </div>
+
+        <!-- Building Actions List -->
+        <div class="build-actions-list">
+          <!-- Road -->
+          <button id="btn-build-road" class="btn-build-action">
+            <span data-i18n="BUILD_ROAD">Drum</span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-wood" title="Lemn">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg> 1
+              </span>
+              <span class="cost-pill pill-brick" title="Cărămidă">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="12" y1="12" x2="12" y2="20"/></svg> 1
+              </span>
+            </div>
+          </button>
+
+          <!-- Settlement -->
+          <button id="btn-build-settlement" class="btn-build-action">
+            <span data-i18n="BUILD_SETTLEMENT">Așezare</span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-wood" title="Lemn">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg> 1
+              </span>
+              <span class="cost-pill pill-brick" title="Cărămidă">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="12" y1="12" x2="12" y2="20"/></svg> 1
+              </span>
+              <span class="cost-pill pill-wool" title="Lână">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> 1
+              </span>
+              <span class="cost-pill pill-wheat" title="Grâu">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 1
+              </span>
+            </div>
+          </button>
+
+          <!-- City -->
+          <button id="btn-build-city" class="btn-build-action">
+            <span data-i18n="BUILD_CITY">Oraș</span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-ore" title="Minereu">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 4 21 19 3 19"/></svg> 3
+              </span>
+              <span class="cost-pill pill-wheat" title="Grâu">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 2
+              </span>
+            </div>
+          </button>
+
+          <!-- Dev Card -->
+          <button id="btn-buy-dev-card" class="btn-build-action">
+            <span data-i18n="BUY_DEV_CARD">Carte dezv.</span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-ore" title="Minereu">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 4 21 19 3 19"/></svg> 1
+              </span>
+              <span class="cost-pill pill-wool" title="Lână">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> 1
+              </span>
+              <span class="cost-pill pill-wheat" title="Grâu">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 1
+              </span>
+            </div>
+          </button>
+        </div>
+
+        <button id="btn-end-turn" class="btn-glass" style="margin-top: auto; padding: 12px; font-weight: 700;" data-i18n="ACTION_END_TURN">Încheie tura</button>
+      </aside>
+
+      <!-- Center Board Viewport -->
+      <div class="board-viewport">
+        <div id="board-container" style="width: 100%; height: 100%;"></div>
+
+        <!-- Floating Pan & Zoom / Dynamic Action Hint -->
+        <div class="board-hint" id="board-hint">
+          <span class="hint-dot"></span>
+          <span id="board-hint-text" data-i18n="PAN_ZOOM_HINT">Trage harta pentru mutare • Rotița sau pinch pentru zoom</span>
+        </div>
+
+        <!-- Floating Zoom Controls -->
+        <div class="board-controls">
+          <button id="btn-zoom-in" class="board-control-btn" title="Zoom In">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+          <button id="btn-zoom-out" class="board-control-btn" title="Zoom Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+          <button id="btn-zoom-reset" class="board-control-btn" title="Reset View">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <circle cx="12" cy="12" r="3" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Active Domestic Trade Floating Banner -->
+        <div id="active-trade-banner" style="display: none; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: var(--bg-surface-elevated); border: 1px solid var(--border-focus); border-radius: 10px; padding: 10px 18px; box-shadow: var(--shadow-lg); z-index: 30; align-items: center; gap: 16px;"></div>
+      </div>
+
+      <!-- Bottom Player Hand Dock -->
+      <footer class="hud-bottom">
+        <!-- Resource Cards -->
+        <div class="resource-cards-deck">
+          <div class="res-card wood" title="Lemn">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="RES_WOOD">Lemn</span>
+            <span id="count-wood" class="res-card-count">0</span>
+          </div>
+          <div class="res-card brick" title="Cărămidă">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="RES_BRICK">Cărămidă</span>
+            <span id="count-brick" class="res-card-count">0</span>
+          </div>
+          <div class="res-card wool" title="Lână">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="RES_WOOL">Lână</span>
+            <span id="count-wool" class="res-card-count">0</span>
+          </div>
+          <div class="res-card wheat" title="Grâu">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="RES_WHEAT">Grâu</span>
+            <span id="count-wheat" class="res-card-count">0</span>
+          </div>
+          <div class="res-card ore" title="Minereu">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="RES_ORE">Minereu</span>
+            <span id="count-ore" class="res-card-count">0</span>
+          </div>
+        </div>
+
+        <!-- VP & Action Buttons -->
+        <div class="bottom-action-buttons">
+          <div class="vp-counter-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+              <path d="M4 22h16"/>
+              <path d="M10 14.66V17c0 .55-.45 1-1 1H8c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1h-1c-.55 0-1-.45-1-1v-2.34"/>
+              <path d="M6 4h12v5a6 6 0 0 1-12 0V4z"/>
+            </svg>
+            <span style="font-weight: 800; font-size: 15px; color: var(--gold-primary);"><span id="my-vp-count">0</span> <span data-i18n="VICTORY_POINTS_ABBR">PV</span></span>
+          </div>
+
+          <button id="btn-open-trade" class="btn-glass">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"/>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+              <polyline points="7 23 3 19 7 15"/>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+            <span data-i18n="ACTION_TRADE_PLAYER">Comerț</span>
+          </button>
+          <button id="btn-open-dev-cards" class="btn-glass" style="position: relative;">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="14" height="17" rx="2"/>
+              <path d="M8 2h10a2 2 0 0 1 2 2v14"/>
+            </svg>
+            <span data-i18n="MY_DEV_CARDS">Cărți</span>
+            <span id="dev-card-badge" class="badge-count" style="display: none;">0</span>
+          </button>
+        </div>
+      </footer>
+
+      <!-- Right HUD (Opponents, Chronicles Log, Tavern Chat) -->
+      <aside class="hud-right">
+        <div id="opponents-list" class="opponents-section"></div>
+
+        <div class="sidebar-tabs">
+          <button id="tab-btn-log" class="sidebar-tab-btn active" data-i18n="LOG_TAB">Istoric</button>
+          <button id="tab-btn-chat" class="sidebar-tab-btn" data-i18n="CHAT_TAB">Chat</button>
+        </div>
+
+        <!-- Log Panel -->
+        <div id="panel-log" class="tab-content">
+          <div id="log-scroll" class="log-scroll"></div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div id="panel-chat" class="tab-content" style="display: none;">
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="chat-form" class="chat-input-bar">
+            <input type="text" id="chat-input" class="form-input" data-i18n-placeholder="CHAT_PLACEHOLDER" maxlength="120" style="padding: 8px 12px; font-size: 13px;">
+            <button type="submit" class="btn-glass btn-primary" style="padding: 8px 14px;" data-i18n="SEND_CHAT_BTN">Trimite</button>
+          </form>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- =========================================================
+   * MODALS (Trade, Discard, Robber, Dev Cards, Rules, Victory)
+   * ========================================================= -->
+
+  <!-- Trade Modal -->
+  <div id="trade-modal" class="modal-overlay">
+    <div class="modal-box trade-modal-box" style="max-width: 580px; width: 94%; box-sizing: border-box; overflow: hidden;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <h3 class="modal-title" style="margin: 0;" data-i18n="TRADE_TITLE">Comerț cu resurse</h3>
+        <button type="button" id="btn-close-trade" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+      </div>
+
+      <!-- Segmented Sub-Tabs -->
+      <div class="segmented-tabs" style="display: flex; gap: 6px; background: rgba(0,0,0,0.25); padding: 4px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--border-subtle);">
+        <button type="button" id="tab-trade-player" class="segmented-tab active" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer;" data-i18n="TAB_TRADE_PLAYER">Comerț cu Jucători</button>
+        <button type="button" id="tab-trade-bank" class="segmented-tab" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer;" data-i18n="TAB_TRADE_BANK">Bancă & Port</button>
+      </div>
+      
+      <!-- Domestic Player Trade Section -->
+      <div id="trade-player-section" class="trade-tab-section">
+        <form id="form-propose-trade" style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="TRADE_OFFER_GIVE">Oferi:</label>
+              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="TRADE_OFFER_GIVE_SUB">Din cărțile tale</span>
+            </div>
+            <div class="trade-steppers-grid">
+              <!-- Wood -->
+              <div class="res-stepper-card res-wood">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
+                  <span class="res-available" id="trade-avail-wood">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-wood">-</button>
+                  <span class="stepper-val" id="val-trade-give-wood">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-wood">+</button>
+                </div>
+                <input type="hidden" id="trade-give-wood" value="0">
+              </div>
+              <!-- Brick -->
+              <div class="res-stepper-card res-brick">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
+                  <span class="res-available" id="trade-avail-brick">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-brick">-</button>
+                  <span class="stepper-val" id="val-trade-give-brick">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-brick">+</button>
+                </div>
+                <input type="hidden" id="trade-give-brick" value="0">
+              </div>
+              <!-- Wool -->
+              <div class="res-stepper-card res-wool">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WOOL">Lână</span>
+                  <span class="res-available" id="trade-avail-wool">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-wool">-</button>
+                  <span class="stepper-val" id="val-trade-give-wool">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-wool">+</button>
+                </div>
+                <input type="hidden" id="trade-give-wool" value="0">
+              </div>
+              <!-- Wheat -->
+              <div class="res-stepper-card res-wheat">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
+                  <span class="res-available" id="trade-avail-wheat">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-wheat">-</button>
+                  <span class="stepper-val" id="val-trade-give-wheat">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-wheat">+</button>
+                </div>
+                <input type="hidden" id="trade-give-wheat" value="0">
+              </div>
+              <!-- Ore -->
+              <div class="res-stepper-card res-ore">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_ORE">Minereu</span>
+                  <span class="res-available" id="trade-avail-ore">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-ore">-</button>
+                  <span class="stepper-val" id="val-trade-give-ore">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-ore">+</button>
+                </div>
+                <input type="hidden" id="trade-give-ore" value="0">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="TRADE_OFFER_WANT">Ceri:</label>
+              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="TRADE_OFFER_WANT_SUB">De la adversari</span>
+            </div>
+            <div class="trade-steppers-grid">
+              <!-- Wood -->
+              <div class="res-stepper-card res-wood">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-wood">-</button>
+                  <span class="stepper-val" id="val-trade-want-wood">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-wood">+</button>
+                </div>
+                <input type="hidden" id="trade-want-wood" value="0">
+              </div>
+              <!-- Brick -->
+              <div class="res-stepper-card res-brick">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-brick">-</button>
+                  <span class="stepper-val" id="val-trade-want-brick">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-brick">+</button>
+                </div>
+                <input type="hidden" id="trade-want-brick" value="0">
+              </div>
+              <!-- Wool -->
+              <div class="res-stepper-card res-wool">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WOOL">Lână</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-wool">-</button>
+                  <span class="stepper-val" id="val-trade-want-wool">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-wool">+</button>
+                </div>
+                <input type="hidden" id="trade-want-wool" value="0">
+              </div>
+              <!-- Wheat -->
+              <div class="res-stepper-card res-wheat">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-wheat">-</button>
+                  <span class="stepper-val" id="val-trade-want-wheat">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-wheat">+</button>
+                </div>
+                <input type="hidden" id="trade-want-wheat" value="0">
+              </div>
+              <!-- Ore -->
+              <div class="res-stepper-card res-ore">
+                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="RES_ORE">Minereu</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-ore">-</button>
+                  <span class="stepper-val" id="val-trade-want-ore">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-ore">+</button>
+                </div>
+                <input type="hidden" id="trade-want-ore" value="0">
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Anulează</button>
+            <button type="submit" class="btn-glass btn-primary" data-i18n="PROPOSE_TRADE_BTN">Propune schimb</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Bank & Port Maritime Trade Section -->
+      <div id="trade-bank-section" class="trade-tab-section" style="display: none;">
+        <form id="form-bank-trade" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="bank-ratio-pill" id="bank-ratio-banner" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <span style="font-size: 13px; font-weight: 700; color: var(--gold-primary);" id="bank-ratio-text">Rată: 4:1</span>
+              <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;" id="bank-ratio-desc">Bancă standard (fără port)</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);" id="bank-harbors-status">Niciun port deținut</span>
+          </div>
+
+          <!-- Visual Give Selection -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="BANK_GIVE_LABEL">Dai:</label>
+              <span style="font-size: 11px; color: var(--text-secondary);" id="bank-give-needed-label">Alege resursa oferită</span>
+            </div>
+            <div class="bank-res-grid" id="bank-give-grid"></div>
+          </div>
+
+          <!-- Exchange Indicator Arrow -->
+          <div class="bank-exchange-arrow" id="bank-exchange-indicator">
+            <span id="bank-give-summary">4x Lemn</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+            <span id="bank-want-summary">1x Cărămidă</span>
+          </div>
+
+          <!-- Visual Receive Selection -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="BANK_RECEIVE_LABEL">Primești:</label>
+              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="BANK_RECEIVE_SUB">1 carte la alegere</span>
+            </div>
+            <div class="bank-res-grid" id="bank-want-grid"></div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Anulează</button>
+            <button type="submit" id="btn-submit-bank-trade" class="btn-glass btn-primary" data-i18n="ACTION_TRADE_BANK">Schimbă cu banca</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Discard Cards Modal (Rolled 7) -->
+  <div id="discard-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 560px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h3 class="modal-title" style="color: #f87171; margin: 0;" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
+      </div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="DISCARD_INSTRUCTION">Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:</p>
+      <div style="font-size: 13px; font-weight: 700; color: var(--gold-primary); margin-bottom: 12px; display: flex; justify-content: space-between;">
+        <span><span data-i18n="DISCARD_MUST_LABEL">Trebuie să decartezi:</span> <strong id="discard-needed-count" style="color: #f87171;">0</strong></span>
+        <span><span data-i18n="DISCARD_SELECTED_LABEL">Selectate:</span> <strong id="discard-current-count" style="color: #38bdf8;">0</strong></span>
+      </div>
+
+      <form id="discard-form" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="trade-steppers-grid">
+          <!-- Wood -->
+          <div class="res-stepper-card res-wood">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
+              <span class="res-available" id="discard-avail-wood">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-wood">&minus;</button>
+              <input type="number" id="discard-wood" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-wood">&plus;</button>
+            </div>
+          </div>
+          <!-- Brick -->
+          <div class="res-stepper-card res-brick">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
+              <span class="res-available" id="discard-avail-brick">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-brick">&minus;</button>
+              <input type="number" id="discard-brick" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-brick">&plus;</button>
+            </div>
+          </div>
+          <!-- Wool -->
+          <div class="res-stepper-card res-wool">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="RES_WOOL">Lână</span>
+              <span class="res-available" id="discard-avail-wool">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-wool">&minus;</button>
+              <input type="number" id="discard-wool" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-wool">&plus;</button>
+            </div>
+          </div>
+          <!-- Wheat -->
+          <div class="res-stepper-card res-wheat">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
+              <span class="res-available" id="discard-avail-wheat">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-wheat">&minus;</button>
+              <input type="number" id="discard-wheat" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-wheat">&plus;</button>
+            </div>
+          </div>
+          <!-- Ore -->
+          <div class="res-stepper-card res-ore">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="RES_ORE">Minereu</span>
+              <span class="res-available" id="discard-avail-ore">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-ore">&minus;</button>
+              <input type="number" id="discard-ore" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-ore">&plus;</button>
+            </div>
+          </div>
+        </div>
+        <button type="submit" id="btn-submit-discard" class="btn-glass btn-primary" data-i18n="CONFIRM_DISCARD_BTN">Decartează cărți</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Robber Target Modal -->
+  <div id="robber-target-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 420px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h3 class="modal-title" style="margin: 0;" data-i18n="ROBBER_STEAL_TITLE">Alege jucătorul pentru furt</h3>
+        <button type="button" id="btn-close-robber-target" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+      </div>
+      <div id="robber-targets-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <!-- Dev Cards In Hand Modal -->
+  <div id="dev-cards-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 480px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 class="modal-title" style="margin: 0;" data-i18n="MY_DEV_CARDS_TITLE">Cărți de dezvoltare</h3>
+        <button type="button" id="btn-close-dev-cards-x" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+      </div>
+      <div id="dev-cards-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; padding: 4px 0;"></div>
+      <button id="btn-close-dev-cards" class="btn-glass" style="margin-top: 8px; width: 100%;" data-i18n="CANCEL_ACTION">Închide</button>
+    </div>
+  </div>
+
+  <!-- Monopoly Resource Selector Modal -->
+  <div id="monopoly-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 420px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 class="modal-title" style="margin: 0;" data-i18n="MONOPOLY_SELECT_TITLE">Monopol: Alege resursa</h3>
+        <button type="button" id="btn-close-monopoly" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;" data-i18n="CARD_MONOPOLY_DESC">
+        Alege 1 resursă. Toți ceilalți jucători trebuie să-ți predea toate cărțile din acea resursă.
+      </p>
+      <div class="modal-res-buttons-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
+        <button type="button" class="btn-glass res-choice-btn" data-res="wood">Lemn</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="brick">Cărămidă</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wool">Lână</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wheat">Grâu</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="ore">Minereu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Year of Plenty Resource Selector Modal -->
+  <div id="year-of-plenty-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 440px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 class="modal-title" style="margin: 0;" data-i18n="YEAR_OF_PLENTY_SELECT_TITLE">Anul Abundenței: Alege 2 resurse</h3>
+        <button type="button" id="btn-close-yop" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;" data-i18n="CARD_YEAR_OF_PLENTY_DESC">
+        Ia oricare 2 cărți de resurse din rezerva băncii.
+      </p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;">Prima resursă</label>
+          <select id="yop-res-1" class="form-select" style="width: 100%;">
+            <option value="wood">Lemn</option>
+            <option value="brick">Cărămidă</option>
+            <option value="wool">Lână</option>
+            <option value="wheat">Grâu</option>
+            <option value="ore">Minereu</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;">A doua resursă</label>
+          <select id="yop-res-2" class="form-select" style="width: 100%;">
+            <option value="wood">Lemn</option>
+            <option value="brick" selected>Cărămidă</option>
+            <option value="wool">Lână</option>
+            <option value="wheat">Grâu</option>
+            <option value="ore">Minereu</option>
+          </select>
+        </div>
+      </div>
+      <button type="button" id="btn-confirm-yop" class="btn-glass btn-primary" style="width: 100%;" data-i18n="ACTION_PLAY_CARD">Joacă carte</button>
+    </div>
+  </div>
+
+  <!-- Rules Cheat Sheet Modal -->
+  <div id="rules-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 680px; max-height: 80vh; overflow-y: auto;">
+      <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
+      <div style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <strong style="color: var(--text-primary);">Resurse:</strong> Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.
+        </div>
+        <div>
+          <strong style="color: var(--text-primary);">Costuri clădiri:</strong><br>
+          • Drum = 1 Lemn + 1 Cărămidă<br>
+          • Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV)<br>
+          • Oraș = 3 Minereu + 2 Grâu (2 PV, înlocuiește o așezare existentă)<br>
+          • Carte Dezvoltare = 1 Minereu + 1 Lână + 1 Grâu
+        </div>
+        <div>
+          <strong style="color: var(--text-primary);">Regula distanței:</strong> Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.
+        </div>
+        <div>
+          <strong style="color: var(--text-primary);">Zarul 7 & Hoțul:</strong> Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.
+        </div>
+        <div>
+          <strong style="color: var(--text-primary);">Titluri speciale:</strong><br>
+          • Cel mai lung drum (minim 5 segmente continue) = +2 PV<br>
+          • Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV
+        </div>
+      </div>
+      <button id="btn-close-rules" class="btn-glass btn-primary" style="margin-top: 12px;" data-i18n="CANCEL_ACTION">Închide</button>
+    </div>
+  </div>
+
+  <!-- Victory Celebration Modal -->
+  <div id="victory-modal" class="modal-overlay">
+    <div class="modal-box" style="text-align: center; align-items: center;">
+      <div class="victory-icon-badge" style="margin-bottom: 8px;">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="6" fill="rgba(217, 119, 6, 0.15)"/>
+          <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>
+        </svg>
+      </div>
+      <h2 class="modal-title" data-i18n="VICTORY_TITLE">Victorie!</h2>
+      <p style="font-size: 18px; margin: 12px 0;">
+        <strong id="victory-winner-name" style="color: var(--gold-primary);">---</strong>
+        <span data-i18n="VICTORY_MESSAGE">a câștigat jocul!</span>
+      </p>
+      <button onclick="window.location.reload()" class="btn-glass btn-primary" style="padding: 14px 28px; font-size: 16px; margin: 0 auto;" data-i18n="PLAY_AGAIN_BTN">Înapoi la meniu</button>
+    </div>
+  </div>
+
+  <!-- Main App Script -->
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
