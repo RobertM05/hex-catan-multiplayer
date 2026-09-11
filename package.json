@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "check": "node --check server/server.js server/game/*.js public/js/*.js tests/*.js"
   },
   "keywords": ["catan", "hexagonal", "board-game", "multiplayer", "bilingual"],
   "author": "RobertM05",

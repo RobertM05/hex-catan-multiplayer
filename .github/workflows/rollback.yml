@@ -1,0 +1,53 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: 'Commit hash to roll back to (leave empty for last good release)'
+        required: false
+        default: ''
+
+jobs:
+  rollback:
+    name: Emergency Rollback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine target commit
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.target_commit }}" ]; then
+            echo "hash=${{ github.event.inputs.target_commit }}" >> $GITHUB_OUTPUT
+          else
+            # Find the last commit with "release" or "stable" tag, or fallback to previous commit
+            TAG=$(git tag --sort=-creatordate | grep -iE 'release|stable' | head -1)
+            if [ -n "$TAG" ]; then
+              echo "hash=$(git rev-parse $TAG)" >> $GITHUB_OUTPUT
+            else
+              echo "hash=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Validate commit
+        run: |
+          if ! git cat-file -e ${{ steps.target.outputs.hash }}^{commit} 2>/dev/null; then
+            echo "ERROR: commit ${{ steps.target.outputs.hash }} not found"
+            exit 1
+          fi
+          echo "Rolling back to: ${{ steps.target.outputs.hash }}"
+          git log -1 --oneline ${{ steps.target.outputs.hash }}
+
+      - name: Create rollback branch
+        run: |
+          git checkout -b rollback/$(date +%Y%m%d-%H%M%S)
+          git reset --hard ${{ steps.target.outputs.hash }}
+
+      - name: Push rollback
+        run: |
+          git push origin HEAD:main --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

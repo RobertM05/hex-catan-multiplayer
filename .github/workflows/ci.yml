@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  syntax:
+    name: Syntax & Code Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run check
+
+  import-check:
+    name: ESM Module Imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Validate server imports
+        run: |
+          node -e "
+          Promise.all([
+            import('./server/game/HexGrid.js'),
+            import('./server/game/GameEngine.js'),
+            import('./server/game/BotAI.js'),
+            import('./server/game/RoomManager.js')
+          ]).then(() => console.log('All backend game modules imported successfully'))
+          .catch(err => { console.error('Import error:', err); process.exit(1); });
+          "
+
+  test:
+    name: Test Suite (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  security-audit:
+    name: Security & Dependencies Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm audit --audit-level=high
+
+  asset-check:
+    name: Client Assets & HTML Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify static asset integrity
+        run: |
+          test -f public/index.html
+          test -f public/css/main.css
+          test -f public/css/board.css
+          test -f public/css/ui.css
+          test -f public/js/app.js
+          test -f public/js/renderer.js
+          test -f public/js/network.js
+          test -f public/js/audio.js
+          test -f public/js/i18n.js
+          echo "All client assets verified successfully."

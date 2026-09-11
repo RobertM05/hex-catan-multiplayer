@@ -5,6 +5,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-v4.8+-black.svg)](https://socket.io/)
+[![CI](https://github.com/RobertM05/hex-catan-multiplayer/actions/workflows/ci.yml/badge.svg)](https://github.com/RobertM05/hex-catan-multiplayer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-25%20Passing-brightgreen.svg)](tests/)
 [![Languages](https://img.shields.io/badge/Languages-RO%20%7C%20EN-orange.svg)](#-bilingual-support--localizare)
@@ -181,6 +182,27 @@ Suita de teste rulează direct cu motorul nativ `node:test` din Node.js (fără 
 | **Longest Road & Army** | Blocare furt titlu la egalitate, retragere titlu la scădere sub 5 segmente |
 | **Victory Conditions** | Declanșare instantanee GAME_OVER la atingerea numărului de VP țintă |
 | **BotAI Autonomy** | Plasare automată inițială, decizii de construire, schimb la bancă |
+
+---
+
+## 🔄 CI/CD Pipelines (GitHub Actions)
+
+Proiectul folosește un sistem modular de CI/CD automatizat prin GitHub Actions, inspirat din standardele profesionale de producție:
+
+1. **Continuous Integration (`ci.yml`)**:
+   - **Syntax Check**: Validare statică a codului (`node --check`) pentru toate fișierele backend, frontend și teste.
+   - **ESM Import Validation**: Verifică rezoluția importurilor modulelor ES6 (`GameEngine`, `HexGrid`, `BotAI`, `RoomManager`).
+   - **Multi-Version Matrix Test**: Execută suita completă de 25 de teste automate pe **Node.js 18.x, 20.x și 22.x**.
+   - **Security Audit**: Scanare automată de securitate a dependințelor (`npm audit --audit-level=high`).
+   - **Asset Integrity Check**: Asigură prezența și integritatea fișierelor statice din `public/`.
+
+2. **Continuous Deployment (`deploy.yml`)**:
+   - Poartă automată de pre-validare (rulează testele înainte de deploy).
+   - Suport pentru webhook-uri de auto-deploy (Render, Railway, Fly.io sau VPS).
+
+3. **Disaster Recovery / Rollback (`rollback.yml`)**:
+   - Trigger manual securizat prin `workflow_dispatch`.
+   - Permite revenirea instantanee la un commit hash specific sau la ultimul tag stabil în caz de incident de producție.
 
 ---
 

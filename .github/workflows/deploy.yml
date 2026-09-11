@@ -1,0 +1,54 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  validate:
+    name: Pre-deployment Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    name: Deploy Application
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Webhook (Render / Railway / Custom PaaS)
+        if: env.DEPLOY_HOOK_URL != ''
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.DEPLOY_HOOK_URL }}
+        run: |
+          echo "Triggering deployment webhook..."
+          curl -f -X POST "$DEPLOY_HOOK_URL"
+          echo "Deployment trigger sent successfully."
+
+      - name: Deployment Fallback / Self-check
+        if: env.DEPLOY_HOOK_URL == ''
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.DEPLOY_HOOK_URL }}
+        run: |
+          echo "No external deployment hook secret detected (RENDER_DEPLOY_HOOK / DEPLOY_HOOK_URL)."
+          echo "Package is production-ready for deployment to Render, Railway, Fly.io, or VPS."
+          echo "Server entrypoint: server/server.js"
+          echo "Port: \${PORT:-3000}"
