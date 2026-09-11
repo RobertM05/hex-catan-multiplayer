@@ -34,6 +34,9 @@
   --res-wheat: #ca8a04;
   --res-ore: #475569;
   --res-desert: #a16207;
+  --comm-cloth: #7c3aed;
+  --comm-coin: #ca8a04;
+  --comm-paper: #0f766e;
 
   /* Fonts */
   --font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

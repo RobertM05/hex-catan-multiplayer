@@ -228,6 +228,10 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.buildCity(currentPlayerId, data.vertexId), cb);
   });
 
+  socket.on('improve_city', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.improveCityTrack(currentPlayerId, data.track), cb);
+  });
+
   socket.on('buy_dev_card', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
   });
