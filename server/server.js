@@ -241,7 +241,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('propose_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.proposeTrade(currentPlayerId, data.give, data.want), cb);
+    handleGameAction(data.code, (engine) => {
+      const trade = engine.proposeTrade(currentPlayerId, data.give, data.want);
+      const room = roomManager.getRoom(currentRoomCode || data.code);
+      if (room) {
+        roomManager.evaluateBotsTrade(room);
+      }
+      return trade;
+    }, cb);
   });
 
   socket.on('respond_trade', (data, cb) => {
@@ -256,6 +263,22 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.cancelTrade(currentPlayerId), cb);
   });
 
+  socket.on('leave_room', (data, cb) => {
+    const code = currentRoomCode || (data && data.code);
+    if (code && currentPlayerId) {
+      const room = roomManager.getRoom(code);
+      if (room) {
+        roomManager.removePlayerOrBot(code, currentPlayerId);
+        socket.leave(code);
+        currentRoomCode = null;
+        if (!room.isStarted) {
+          roomManager.broadcastLobbyState(room);
+        }
+      }
+    }
+    if (cb) cb({ success: true });
+  });
+
   socket.on('end_turn', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.endTurn(currentPlayerId), cb);
   });
@@ -264,10 +287,29 @@ io.on('connection', (socket) => {
     if (currentRoomCode && currentPlayerId) {
       const room = roomManager.getRoom(currentRoomCode);
       if (room) {
-        const player = room.players.find(p => p.id === currentPlayerId);
-        if (player) player.socketId = null;
+        const pId = currentPlayerId;
+        const code = currentRoomCode;
+        const player = room.players.find(p => p.id === pId);
+        if (player) {
+          player.socketId = null;
+        }
+
         if (!room.isStarted) {
+          // In lobby: immediately remove player so empty spot shows up
+          roomManager.removePlayerOrBot(code, pId);
           roomManager.broadcastLobbyState(room);
+        } else {
+          // In an active game: give 10s grace period for page refresh, then remove if still disconnected
+          setTimeout(() => {
+            const curRoom = roomManager.getRoom(code);
+            if (curRoom && curRoom.isStarted) {
+              const p = curRoom.players.find(x => x.id === pId);
+              if (p && !p.socketId && !p.isBot) {
+                console.log(`Player ${p.name} (${pId}) disconnected permanently, removing from game.`);
+                roomManager.removePlayerOrBot(code, pId);
+              }
+            }
+          }, 10000);
         }
       }
     }

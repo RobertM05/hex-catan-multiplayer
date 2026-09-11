@@ -429,6 +429,46 @@ export class RoomManager {
     }, 900);
   }
 
+  evaluateBotsTrade(room) {
+    const engine = room.engine;
+    if (!engine.activeTrade) return;
+
+    for (const player of room.players) {
+      if (player.isBot && player.id !== engine.activeTrade.fromPlayerId) {
+        const botPlayer = engine.players.find(p => p.id === player.id);
+        if (!botPlayer) continue;
+
+        let canAfford = true;
+        for (const [res, amt] of Object.entries(engine.activeTrade.want)) {
+          if ((botPlayer.resources[res] || 0) < amt) {
+            canAfford = false;
+            break;
+          }
+        }
+
+        if (canAfford) {
+          const giveTotal = Object.values(engine.activeTrade.give).reduce((a, b) => a + b, 0);
+          const wantTotal = Object.values(engine.activeTrade.want).reduce((a, b) => a + b, 0);
+          const isFavorable = giveTotal >= wantTotal;
+          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) => (botPlayer.resources[res] || 0) >= amt + 2);
+
+          if (isFavorable || hasSurplus) {
+            setTimeout(() => {
+              if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId !== botPlayer.id) {
+                try {
+                  engine.respondToTrade(botPlayer.id, true);
+                  this.broadcastState(room);
+                } catch (e) {
+                  // ignore
+                }
+              }
+            }, 600);
+          }
+        }
+      }
+    }
+  }
+
   broadcastState(room) {
     const seenSockets = new Set();
     for (const player of room.players) {

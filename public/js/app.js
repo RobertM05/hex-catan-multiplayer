@@ -1670,20 +1670,45 @@ class CatanApp {
     const giveStr = Object.entries(activeTrade.give).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');
     const wantStr = Object.entries(activeTrade.want).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');
 
+    // Build accepted-by confirm buttons for the trade initiator
+    const acceptedPlayers = (activeTrade.acceptedBy || []).map(pid =>
+      this.gameState.players.find(p => p.id === pid)
+    ).filter(Boolean);
+
+    let confirmButtonsHTML = '';
+    if (isMine && acceptedPlayers.length > 0) {
+      confirmButtonsHTML = acceptedPlayers.map(p =>
+        `<button class="btn-glass btn-primary btn-confirm-trade" data-pid="${p.id}" style="background: linear-gradient(135deg, #2d6a4f, #40916c);">✅ ${i18n.t('CONFIRM_WITH')||'Confirm with'} ${p.name}</button>`
+      ).join('');
+    }
+
     banner.innerHTML = `
       <div style="display: flex; flex-direction: column; gap: 2px;">
         <span style="font-weight: 700; color: var(--gold-primary);">${i18n.t('ACTIVE_OFFER')}</span>
         <span style="font-size: 13px;">${giveStr} &rarr; ${wantStr}</span>
+        ${isMine && acceptedPlayers.length > 0 ? `<span style="font-size: 12px; color: #52b788;">✔ ${acceptedPlayers.map(p => p.name).join(', ')} accepted</span>` : ''}
       </div>
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         ${!isMine ? `
           <button class="btn-glass btn-primary btn-accept-trade">${i18n.t('ACCEPT_TRADE_BTN')}</button>
           <button class="btn-glass btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
         ` : `
+          ${confirmButtonsHTML}
           <button class="btn-glass btn-cancel-trade">${i18n.t('CANCEL_ACTION')}</button>
         `}
       </div>
     `;
+
+    // Confirm trade buttons (initiator picks which accepted player to trade with)
+    banner.querySelectorAll('.btn-confirm-trade').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await network.sendAction('confirm_trade', { targetPlayerId: btn.dataset.pid });
+        } catch (err) {
+          this.showToast(err.message, true);
+        }
+      });
+    });
 
     const acceptBtn = banner.querySelector('.btn-accept-trade');
     if (acceptBtn) {

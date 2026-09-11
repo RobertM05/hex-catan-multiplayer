@@ -121,8 +121,9 @@ export class BoardRenderer {
     // Mouse drag pan
     this.svg.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      // If clicking interactive vertex/edge, don't initiate pan
+      // If clicking interactive vertex/edge or robber-target hex, don't initiate pan
       if (e.target.classList.contains('interactive-node') || e.target.classList.contains('interactive-edge')) return;
+      if (e.target.closest('.hex-robber-target')) return;
       this.isPanning = true;
       this.startPoint = { x: e.clientX, y: e.clientY };
     });
@@ -267,7 +268,8 @@ export class BoardRenderer {
         poly.setAttribute('stroke', '#ffb703');
         poly.setAttribute('stroke-width', '4');
         g.style.cursor = 'pointer';
-        g.addEventListener('click', () => {
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
           if (this.onHexClick) this.onHexClick(hex.id);
         });
       }
