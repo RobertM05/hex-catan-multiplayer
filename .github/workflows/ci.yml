@@ -59,6 +59,26 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  qa:
+    name: QA Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Code hygiene gate
+        run: |
+          if grep -rnE "TODO|FIXME|HACK|debugger" server/ public/js/ tests/ --include='*.js'; then
+            echo "QA violation: TODO/FIXME/HACK comments or debugger statements found."
+            exit 1
+          fi
+          echo "Code hygiene gate passed."
+      - run: npm ci
+      - name: QA rules and game engine tests
+        run: node --test tests/qaAuditAndRules.test.js tests/gameEngine.test.js
+
   security-audit:
     name: Security & Dependencies Audit
     runs-on: ubuntu-latest
