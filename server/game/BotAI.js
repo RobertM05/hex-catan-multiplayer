@@ -101,23 +101,30 @@ export class BotAI {
   static decideDiscard(engine, botPlayer) {
     const total = engine.countTotalCards(botPlayer);
     const needed = Math.floor(total / 2);
-    const discarded = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    const discarded = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0, cloth: 0, coin: 0, paper: 0 };
     let leftToDiscard = needed;
 
-    // Discard from resources with greatest quantity first
     while (leftToDiscard > 0) {
-      let maxRes = null;
+      let maxKey = null;
       let maxCount = -1;
-      for (const [res, count] of Object.entries(botPlayer.resources)) {
+
+      for (const [res, count] of Object.entries(botPlayer.resources || {})) {
         const remaining = count - (discarded[res] || 0);
         if (remaining > maxCount && remaining > 0) {
           maxCount = remaining;
-          maxRes = res;
+          maxKey = res;
+        }
+      }
+      for (const [com, count] of Object.entries(botPlayer.commodities || {})) {
+        const remaining = count - (discarded[com] || 0);
+        if (remaining > maxCount && remaining > 0) {
+          maxCount = remaining;
+          maxKey = com;
         }
       }
 
-      if (!maxRes) break;
-      discarded[maxRes]++;
+      if (!maxKey) break;
+      discarded[maxKey]++;
       leftToDiscard--;
     }
 

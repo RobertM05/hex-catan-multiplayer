@@ -23,6 +23,16 @@ class CatanApp {
     this.init();
   }
 
+  isCitiesKnights() {
+    return this.gameState?.mode === 'cities_knights';
+  }
+
+  getHandCardTypes() {
+    const types = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    if (this.isCitiesKnights()) types.push('cloth', 'coin', 'paper');
+    return types;
+  }
+
   async init() {
     // Setup i18n language buttons
     this.setupLanguageSelector();
@@ -184,7 +194,7 @@ class CatanApp {
           mode,
           turnDuration,
           mapSize,
-          vpTarget: mode === 'advanced' ? 13 : 10
+          vpTarget: mode === 'cities_knights' ? 13 : 10
         });
         this.enterWaitingRoom(res.roomCode);
       } catch (err) {
@@ -615,7 +625,7 @@ class CatanApp {
     const form = document.getElementById('discard-form');
 
     const updateDiscardSum = () => {
-      const currentCount = ['wood', 'brick', 'wool', 'wheat', 'ore'].reduce((sum, res) => {
+      const currentCount = this.getHandCardTypes().reduce((sum, res) => {
         const inp = document.getElementById(`discard-${res}`);
         return sum + (parseInt(inp?.value, 10) || 0);
       }, 0);
@@ -646,7 +656,7 @@ class CatanApp {
       let currentVal = parseInt(input.value, 10) || 0;
       const maxVal = parseInt(input.max, 10) || 0;
 
-      const totalSelected = ['wood', 'brick', 'wool', 'wheat', 'ore'].reduce((sum, res) => {
+      const totalSelected = this.getHandCardTypes().reduce((sum, res) => {
         const inp = document.getElementById(`discard-${res}`);
         return sum + (parseInt(inp?.value, 10) || 0);
       }, 0);
@@ -677,13 +687,10 @@ class CatanApp {
       const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
       if (!me) return;
 
-      const discarded = {
-        wood: parseInt(document.getElementById('discard-wood').value) || 0,
-        brick: parseInt(document.getElementById('discard-brick').value) || 0,
-        wool: parseInt(document.getElementById('discard-wool').value) || 0,
-        wheat: parseInt(document.getElementById('discard-wheat').value) || 0,
-        ore: parseInt(document.getElementById('discard-ore').value) || 0
-      };
+      const discarded = {};
+      for (const type of this.getHandCardTypes()) {
+        discarded[type] = parseInt(document.getElementById(`discard-${type}`).value, 10) || 0;
+      }
 
       const sumDiscarded = Object.values(discarded).reduce((a, b) => a + b, 0);
       const neededCount = parseInt(document.getElementById('discard-needed-count')?.textContent, 10) || 0;
@@ -720,13 +727,15 @@ class CatanApp {
       }
       if (!me) return;
 
-      const resCounts = {
-        wood: (me.resources && typeof me.resources.wood === 'number') ? me.resources.wood : 0,
-        brick: (me.resources && typeof me.resources.brick === 'number') ? me.resources.brick : 0,
-        wool: (me.resources && typeof me.resources.wool === 'number') ? me.resources.wool : 0,
-        wheat: (me.resources && typeof me.resources.wheat === 'number') ? me.resources.wheat : 0,
-        ore: (me.resources && typeof me.resources.ore === 'number') ? me.resources.ore : 0
-      };
+      const handTypes = this.getHandCardTypes();
+      const resCounts = {};
+      for (const type of handTypes) {
+        if (['cloth', 'coin', 'paper'].includes(type)) {
+          resCounts[type] = (me.commodities && typeof me.commodities[type] === 'number') ? me.commodities[type] : 0;
+        } else {
+          resCounts[type] = (me.resources && typeof me.resources[type] === 'number') ? me.resources[type] : 0;
+        }
+      }
 
       const total = typeof me.resources?.total === 'number'
         ? me.resources.total
@@ -738,8 +747,9 @@ class CatanApp {
 
       const isAlreadyActive = modal.classList.contains('active');
 
-      // Populate input max attributes & available count badges
-      ['wood', 'brick', 'wool', 'wheat', 'ore'].forEach(res => {
+      document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
+
+      handTypes.forEach(res => {
         const inp = document.getElementById(`discard-${res}`);
         const count = resCounts[res];
         if (inp) {
@@ -747,7 +757,6 @@ class CatanApp {
           if (!isAlreadyActive) {
             inp.value = 0;
           } else {
-            // Keep current value but clamp to max available
             const cur = parseInt(inp.value, 10) || 0;
             inp.value = Math.min(cur, count);
           }
@@ -758,7 +767,7 @@ class CatanApp {
         }
       });
 
-      const currentCount = ['wood', 'brick', 'wool', 'wheat', 'ore'].reduce((sum, res) => {
+      const currentCount = handTypes.reduce((sum, res) => {
         const inp = document.getElementById(`discard-${res}`);
         return sum + (parseInt(inp?.value, 10) || 0);
       }, 0);
@@ -1478,9 +1487,16 @@ class CatanApp {
     // Update My Resources
     const me = s.players.find(p => p.id === this.myPlayerId);
     if (me) {
+      document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
+
       if (me.resources && typeof me.resources.wood === 'number') {
         ['wood', 'brick', 'wool', 'wheat', 'ore'].forEach(res => {
-          document.getElementById(`count-${res}`).textContent = me.resources[res] || 0;
+          const el = document.getElementById(`count-${res}`);
+          if (el) el.textContent = me.resources[res] || 0;
+        });
+        ['cloth', 'coin', 'paper'].forEach(com => {
+          const el = document.getElementById(`count-${com}`);
+          if (el) el.textContent = (me.commodities && me.commodities[com]) || 0;
         });
         document.getElementById('my-vp-count').textContent = me.victoryPoints;
       }
@@ -1498,7 +1514,13 @@ class CatanApp {
     s.players.forEach(p => {
       const card = document.createElement('div');
       card.className = 'opponent-mini-card';
-      const cardCount = typeof p.resources.total === 'number' ? p.resources.total : Object.values(p.resources).reduce((a,b)=>a+b,0);
+      const resourceCount = typeof p.resources.total === 'number'
+        ? p.resources.total
+        : Object.values(p.resources || {}).reduce((a, b) => a + b, 0);
+      const commodityCount = typeof p.commodities?.total === 'number'
+        ? 0 // already folded into resources.total for opponents
+        : Object.values(p.commodities || {}).reduce((a, b) => a + b, 0);
+      const cardCount = typeof p.resources.total === 'number' ? resourceCount : resourceCount + commodityCount;
 
       card.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px;">

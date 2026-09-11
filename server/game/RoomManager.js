@@ -3,7 +3,7 @@
  * Manages multiplayer game rooms, lobby state, bot lifecycle, and turn timers.
  */
 
-import { GameEngine, GAME_PHASES } from './GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 
 export class RoomManager {
@@ -23,10 +23,11 @@ export class RoomManager {
 
   createRoom(hostData, options = {}) {
     const code = this.generateRoomCode();
+    const mode = normalizeGameMode(options.mode);
     const engine = new GameEngine({
       roomId: code,
-      mode: options.mode || 'base',
-      vpTarget: options.vpTarget || (options.mode === 'advanced' ? 13 : 10),
+      mode,
+      vpTarget: options.vpTarget || (mode === GAME_MODES.CITIES_KNIGHTS ? 13 : 10),
       turnDuration: options.turnDuration || 60
     });
 
@@ -35,7 +36,7 @@ export class RoomManager {
       name: options.name || `Room ${code}`,
       hostId: hostData.id,
       maxPlayers: Math.max(2, Math.min(8, options.maxPlayers || 4)),
-      mode: options.mode || 'base',
+      mode,
       mapSize: options.mapSize || 'auto',
       turnDuration: options.turnDuration || 60,
       vpTarget: engine.vpTarget,

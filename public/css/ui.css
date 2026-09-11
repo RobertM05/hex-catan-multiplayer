@@ -573,6 +573,16 @@
 .res-card.wool { background: #15803d; }
 .res-card.wheat { background: #854d0e; }
 .res-card.ore { background: #334155; }
+.res-card.cloth { background: #5b21b6; }
+.res-card.coin { background: #a16207; }
+.res-card.paper { background: #115e59; }
+
+.ck-only { display: none !important; }
+body.mode-cities-knights .res-card.ck-only { display: flex !important; }
+body.mode-cities-knights .res-stepper-card.ck-only { display: flex !important; }
+body.mode-cities-knights #discard-form .trade-steppers-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 
 .res-card-icon {
   display: flex;
@@ -808,6 +818,9 @@
 .res-stepper-card.res-wool::before { background: var(--res-wool); }
 .res-stepper-card.res-wheat::before { background: var(--res-wheat); }
 .res-stepper-card.res-ore::before { background: var(--res-ore); }
+.res-stepper-card.res-cloth::before { background: var(--comm-cloth); }
+.res-stepper-card.res-coin::before { background: var(--comm-coin); }
+.res-stepper-card.res-paper::before { background: var(--comm-paper); }
 
 .stepper-label {
   display: flex;
