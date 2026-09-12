@@ -19,6 +19,9 @@ class CatanApp {
     this.bankTrade = { give: null, receive: null };
     this.lastEventDie = null;
     this.barbarianOverlayKey = null;
+    this.diceAnim = null;
+    this.diceFaceTimer = null;
+    this.deferredProductionToasts = [];
     this.myPlayerId = localStorage.getItem('catan_player_id') || `p_${Math.random().toString(36).substring(2, 8)}`;
     localStorage.setItem('catan_player_id', this.myPlayerId);
     network.currentPlayerId = this.myPlayerId;
@@ -380,16 +383,16 @@ class CatanApp {
   setupInGameActions() {
     // Roll dice button
     document.getElementById('btn-roll-dice').addEventListener('click', async () => {
+      if (this.diceAnim) return;
+      const rollBtn = document.getElementById('btn-roll-dice');
       try {
-        const diceCubes = document.querySelectorAll('.dice-cubes .die');
-        diceCubes.forEach(d => d.classList.add('rolling'));
+        rollBtn.disabled = true;
         audio.playDiceRoll();
-
-        setTimeout(async () => {
-          diceCubes.forEach(d => d.classList.remove('rolling'));
-          await network.sendAction('roll_dice');
-        }, 400);
+        this.beginDiceAnimation();
+        await network.sendAction('roll_dice');
       } catch (err) {
+        this.cancelDiceAnimation();
+        rollBtn.disabled = false;
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
       }
     });
@@ -487,6 +490,74 @@ class CatanApp {
         input.value = '';
       }
     });
+  }
+
+  prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  numberDice() {
+    return [document.getElementById('die-1'), document.getElementById('die-2')].filter(Boolean);
+  }
+
+  beginDiceAnimation() {
+    this.clearDiceTimers();
+    const reduced = this.prefersReducedMotion();
+    const duration = reduced ? 0 : 520;
+    this.diceAnim = { until: Date.now() + duration, pending: null };
+    this.numberDice().forEach(d => {
+      d.classList.add('rolling');
+      d.classList.remove('die-seven');
+    });
+    if (!reduced) {
+      this.diceFaceTimer = setInterval(() => {
+        this.numberDice().forEach(d => {
+          d.textContent = String(1 + Math.floor(Math.random() * 6));
+        });
+      }, 360);
+    }
+    this.diceSettleTimer = setTimeout(() => this.settleDiceAnimation(), duration);
+  }
+
+  cancelDiceAnimation() {
+    this.clearDiceTimers();
+    this.numberDice().forEach(d => d.classList.remove('rolling'));
+    this.diceAnim = null;
+  }
+
+  clearDiceTimers() {
+    if (this.diceFaceTimer) {
+      clearInterval(this.diceFaceTimer);
+      this.diceFaceTimer = null;
+    }
+    if (this.diceSettleTimer) {
+      clearTimeout(this.diceSettleTimer);
+      this.diceSettleTimer = null;
+    }
+  }
+
+  settleDiceAnimation() {
+    const pending = this.diceAnim?.pending || this.gameState?.dice;
+    this.clearDiceTimers();
+    this.diceAnim = null;
+    const dice = this.numberDice();
+    dice.forEach(d => d.classList.remove('rolling'));
+    if (pending && pending.length >= 2) {
+      document.getElementById('die-1').textContent = pending[0];
+      document.getElementById('die-2').textContent = pending[1];
+      document.getElementById('dice-sum').textContent = pending[0] + pending[1];
+      if (pending[0] + pending[1] === 7) {
+        dice.forEach(d => d.classList.add('die-seven'));
+        this.showToast(i18n.t('ROBBER_ROLLED'), true);
+        setTimeout(() => dice.forEach(d => d.classList.remove('die-seven')), 700);
+      }
+    }
+    this.flushDeferredProductionToasts();
+  }
+
+  flushDeferredProductionToasts() {
+    const queued = this.deferredProductionToasts.splice(0);
+    queued.forEach(message => this.showToast(message));
   }
 
   setupRendererInteractions() {
@@ -1680,9 +1751,13 @@ class CatanApp {
 
     // Update Dice Values
     if (s.dice) {
-      document.getElementById('die-1').textContent = s.dice[0];
-      document.getElementById('die-2').textContent = s.dice[1];
-      document.getElementById('dice-sum').textContent = s.dice[0] + s.dice[1];
+      if (this.diceAnim) {
+        this.diceAnim.pending = s.dice;
+      } else {
+        document.getElementById('die-1').textContent = s.dice[0];
+        document.getElementById('die-2').textContent = s.dice[1];
+        document.getElementById('dice-sum').textContent = s.dice[0] + s.dice[1];
+      }
     }
 
     this.renderCkHud(s, s.players.find(p => p.id === this.myPlayerId), isActionPhase);
@@ -1854,7 +1929,9 @@ class CatanApp {
           this.showToast(i18n.t('ROBBER_STOLE_FROM_YOU', { robber: entry.args.robberName }), true);
         } else if (entry.type === 'RESOURCE_PRODUCED' && me && entry.args && entry.args.playerName === me.name) {
           const resLocalized = i18n.t(`RES_${entry.args.resource.toUpperCase()}`);
-          this.showToast(i18n.t('YOU_RECEIVED_RESOURCE', { amount: entry.args.amount, resource: resLocalized }));
+          const message = i18n.t('YOU_RECEIVED_RESOURCE', { amount: entry.args.amount, resource: resLocalized });
+          if (this.diceAnim) this.deferredProductionToasts.push(message);
+          else this.showToast(message);
         }
       });
       this.lastProcessedLogCount = logs.length;

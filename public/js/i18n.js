@@ -242,6 +242,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_MOVED: "{playerName} moved a knight.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} chased the robber.",
     YOU_RECEIVED_RESOURCE: "You received +{amount} {resource}!",
+    ROBBER_ROLLED: "Rolled a 7 — the robber is coming.",
     DISCARD_MUST_LABEL: "Must discard:",
     DISCARD_SELECTED_LABEL: "Selected:",
 
@@ -549,6 +550,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_MOVED: "{playerName} a mutat un cavaler.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} a alungat hoțul.",
     YOU_RECEIVED_RESOURCE: "Ai primit +{amount} {resource}!",
+    ROBBER_ROLLED: "A căzut 7 — vine hoțul.",
     DISCARD_MUST_LABEL: "Trebuie să decartezi:",
     DISCARD_SELECTED_LABEL: "Selectate:",
 
