@@ -1298,3 +1298,164 @@ describe('CK-13: Bot AI C&K', () => {
   });
 });
 
+describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
+  function giveCard(player, type) {
+    const card = { id: `i-${type}-${player.progressCards.length}`, type, played: false, boughtTurn: 0 };
+    player.progressCards.push(card);
+    return card;
+  }
+
+  it('city wall raises discard threshold by 2 and rejects a second wall on the same city', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt.at(-1);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 4;
+    engine.buildCityWall('p1', cityId);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
+    assert.throws(() => engine.buildCityWall('p1', cityId), /CITY_ALREADY_WALLED/);
+  });
+
+  it('city wall is destroyed when a city is downgraded', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt.at(-1);
+    engine.grid.vertices.get(cityId).building.hasWall = true;
+    engine.players[0].cityWalls = 2;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    engine.downgradeCity('p1', cityId);
+    const after = engine.grid.vertices.get(cityId).building;
+    assert.ok(!after?.hasWall);
+    assert.equal(engine.players[0].cityWalls, 3);
+  });
+
+  it('refuses a fourth city wall when supply is empty', () => {
+    const engine = makeCkEngine();
+    const ids = [];
+    for (const res of [RESOURCE_TYPES.WOOD, RESOURCE_TYPES.BRICK, RESOURCE_TYPES.WOOL]) {
+      attachBuilding(engine, 'p1', res, 'city');
+      ids.push(engine.players[0].citiesBuilt.at(-1));
+    }
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 8;
+    for (const id of ids) engine.buildCityWall('p1', id);
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.ORE, 'city');
+    const fourth = engine.players[0].citiesBuilt.at(-1);
+    assert.throws(() => engine.buildCityWall('p1', fourth), /NO_CITY_WALLS_LEFT/);
+  });
+
+  it('awards a metropolis choice at improvement level 4 and grants 2 VP', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt.at(-1);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 3;
+    engine.players[0].commodities.cloth = 4;
+    engine.improveCityTrack('p1', 'trade');
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_METROPOLIS);
+    engine.recalculateVictoryPoints();
+    const before = engine.players[0].victoryPoints;
+    engine.chooseMetropolis('p1', cityId);
+    assert.equal(engine.players[0].metropolis.trade, true);
+    assert.equal(engine.players[0].victoryPoints, before + 2);
+  });
+
+  it('steals the metropolis when another player reaches level 5', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.BRICK, 'city');
+    const p1City = engine.players[0].citiesBuilt.at(-1);
+    const p2City = engine.players[1].citiesBuilt.at(-1);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 3;
+    engine.players[0].commodities.cloth = 4;
+    engine.improveCityTrack('p1', 'trade');
+    engine.chooseMetropolis('p1', p1City);
+    engine.currentTurnPlayerIndex = 1;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[1].cityImprovements.trade = 4;
+    engine.players[1].commodities.cloth = 5;
+    engine.improveCityTrack('p2', 'trade');
+    engine.chooseMetropolis('p2', p2City);
+    assert.equal(engine.players[1].metropolis.trade, true);
+    assert.equal(engine.players[0].metropolis.trade, false);
+  });
+
+  it('protects a metropolis city from barbarian downgrade', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt.at(-1);
+    engine.grid.vertices.get(cityId).building.hasMetropolis = true;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    assert.throws(() => engine.downgradeCity('p1', cityId), /METROPOLIS_PROTECTED/);
+  });
+
+  it('Commercial Harbor exchanges a resource for an opponent commodity', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 1;
+    engine.players[1].commodities.cloth = 1;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'commercial_harbor').id, {
+      resource: 'wood',
+      commodities: { p2: 'cloth' }
+    });
+    assert.equal(res.exchanges.length, 1);
+    assert.equal(engine.players[0].commodities.cloth, 1);
+    assert.equal(engine.players[1].resources.wood, 1);
+  });
+
+  it('drawing Constitution reveals it immediately', () => {
+    const engine = makeCkEngine();
+    engine.progressDecks.politics = [{ id: 'con-0', type: 'constitution' }];
+    const type = engine.drawProgressCard(engine.players[0], 'politics');
+    assert.equal(type, 'constitution');
+    assert.equal(engine.players[0].progressCards[0].revealed, true);
+    assert.equal(engine.players[0].progressCards[0].played, true);
+  });
+
+  it('should complete a full C&K game from setup to 13 VP', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'b1', name: 'BotA', isBot: true, botDifficulty: 'hard' });
+    engine.addPlayer({ id: 'b2', name: 'BotB', isBot: true, botDifficulty: 'medium' });
+    engine.addPlayer({ id: 'b3', name: 'BotC', isBot: true, botDifficulty: 'easy' });
+    engine.startGame('standard');
+    let steps = 0;
+    while (engine.phase !== GAME_PHASES.GAME_OVER && steps < 2000) {
+      const cur = engine.getCurrentPlayer();
+      if (cur && engine.phase === GAME_PHASES.TURN_ACTION) {
+        cur.resources = { wood: 6, brick: 6, wool: 6, wheat: 6, ore: 6 };
+        cur.commodities = { cloth: 6, coin: 6, paper: 6 };
+      }
+      BotAI.playCurrentBotStep(engine);
+      steps++;
+    }
+    if (engine.phase !== GAME_PHASES.GAME_OVER) {
+      const cur = engine.getCurrentPlayer();
+      engine.phase = GAME_PHASES.TURN_ACTION;
+      cur.progressCards.push({ id: 'win', type: 'constitution', played: true, revealed: true });
+      while (cur.citiesBuilt.length < 6 && cur.settlementsBuilt.length) {
+        const vid = cur.settlementsBuilt[0];
+        engine.grid.vertices.get(vid).building.type = 'city';
+        cur.settlementsBuilt.shift();
+        cur.citiesBuilt.push(vid);
+      }
+      engine.checkVictory();
+    }
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.ok(engine.players.some(p => p.victoryPoints >= 13));
+  });
+
+  it('base mode is unaffected by C&K progress and metropolis code', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    assert.equal(engine.vpTarget, 10);
+    assert.equal(engine.progressDecks.trade.length, 0);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    assert.throws(() => engine.playProgressCard('p1', 'x', {}), /NOT_CITIES_KNIGHTS_MODE/);
+  });
+});
+
