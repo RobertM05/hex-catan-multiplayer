@@ -326,11 +326,18 @@ body::before {
 
 .view-screen {
   display: none;
-  min-height: calc(100vh - 56px);
+  min-height: calc(100dvh - 56px);
 }
 
 .view-screen.active {
   display: flex;
+}
+
+#view-game.view-screen.active {
+  flex-direction: column;
+  height: calc(100dvh - 56px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 #toast-container {
