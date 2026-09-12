@@ -709,3 +709,46 @@ describe('CK-10: UI State Rendering', () => {
     assert.throws(() => engine.tradeWithBank('p1', 'cloth', 'wood', 4), /INVALID_RESOURCE/);
   });
 });
+
+describe('PR #22 review follow-up', () => {
+  it('raises the 7-discard threshold by 2 per city wall', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.grid.vertices.get(cityId).building.hasWall = true;
+    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
+    assert.equal(engine.getStateForPlayer('p1').players[0].discardThreshold, 9);
+
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    forceRoll(engine, 'p1', 3, 4, 3);
+    assert.equal(engine.pendingDiscards.has('p1'), false);
+  });
+
+  it('still queues discard when cards exceed the walled limit', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.grid.vertices.get(cityId).building.hasWall = true;
+    engine.players[0].resources = { wood: 10, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    forceRoll(engine, 'p1', 3, 4, 3);
+    assert.equal(engine.pendingDiscards.has('p1'), true);
+  });
+
+  it('does not drive settlementsRemaining negative when supply is empty', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.players[0].settlementsRemaining = 0;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+
+    engine.downgradeCity('p1', cityId);
+
+    assert.equal(engine.players[0].settlementsRemaining, 0);
+    assert.equal(engine.players[0].citiesBuilt.length, 0);
+    assert.equal(engine.grid.vertices.get(cityId).building, null);
+    assert.equal(engine.players[0].settlementsBuilt.includes(cityId), false);
+  });
+});

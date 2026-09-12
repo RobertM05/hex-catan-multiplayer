@@ -464,6 +464,24 @@ export class GameEngine {
     return this.countResources(player) + this.countCommodities(player);
   }
 
+  getBuiltCityWallCount(player) {
+    let walls = 0;
+    for (const vid of player.citiesBuilt || []) {
+      const vertex = this.grid?.vertices.get(vid);
+      if (vertex?.building?.hasWall) walls++;
+    }
+    return walls;
+  }
+
+  getDiscardThreshold(player) {
+    return 7 + this.getBuiltCityWallCount(player) * 2;
+  }
+
+  playerBuildingTouchesHex(player, hexId) {
+    const ids = (player.settlementsBuilt || []).concat(player.citiesBuilt || []);
+    return ids.some((vid) => this.grid.vertices.get(vid)?.hexes?.includes(hexId));
+  }
+
   isTradableType(type) {
     if (RESOURCE_VALUES.includes(type)) return true;
     return this.isCitiesKnights() && COMMODITY_VALUES.includes(type);
@@ -679,7 +697,7 @@ export class GameEngine {
   queueDiscardsForSeven() {
     this.pendingDiscards.clear();
     for (const p of this.players) {
-      if (this.countTotalCards(p) > 7) {
+      if (this.countTotalCards(p) > this.getDiscardThreshold(p)) {
         this.pendingDiscards.add(p.id);
       }
     }
@@ -859,11 +877,7 @@ export class GameEngine {
     if (targetPlayerId && targetPlayerId !== playerId) {
       const target = this.players.find(p => p.id === targetPlayerId);
       if (target) {
-        // Check adjacency
-        const isAdjacent = Array.from(this.grid.vertices.values()).some(v =>
-          v.hexes.includes(hexId) && v.building && v.building.playerId === targetPlayerId
-        );
-
+        const isAdjacent = this.playerBuildingTouchesHex(target, hexId);
         if (isAdjacent && this.countTotalCards(target) > 0) {
           stolenResource = this.stealRandomCard(player, target);
         }
@@ -1209,9 +1223,7 @@ export class GameEngine {
     let stolenResource = null;
     if (targetPlayerId && targetPlayerId !== playerId) {
       const target = this.players.find(p => p.id === targetPlayerId);
-      const isAdjacent = target && Array.from(this.grid.vertices.values()).some(v =>
-        v.hexes.includes(hexId) && v.building && v.building.playerId === targetPlayerId
-      );
+      const isAdjacent = target && this.playerBuildingTouchesHex(target, hexId);
       if (isAdjacent && this.countTotalCards(target) > 0) {
         stolenResource = this.stealRandomCard(player, target);
       }
@@ -1317,12 +1329,17 @@ export class GameEngine {
       vertex.building.hasWall = false;
       player.cityWalls = (player.cityWalls || 0) + 1;
     }
-    vertex.building.type = 'settlement';
     const cityIndex = player.citiesBuilt.indexOf(vertexId);
     if (cityIndex !== -1) player.citiesBuilt.splice(cityIndex, 1);
-    player.settlementsBuilt.push(vertexId);
     player.citiesRemaining++;
-    player.settlementsRemaining--;
+
+    if (player.settlementsRemaining > 0) {
+      vertex.building.type = 'settlement';
+      player.settlementsBuilt.push(vertexId);
+      player.settlementsRemaining--;
+    } else {
+      vertex.building = null;
+    }
 
     this.pendingBarbarianDowngrades.delete(playerId);
     this.recalculateVictoryPoints();
@@ -1959,6 +1976,7 @@ export class GameEngine {
           knightsAvailable: isSelf ? p.knightsAvailable : undefined,
           knightsPlaced: p.knightsPlaced,
           cityWalls: p.cityWalls,
+          discardThreshold: this.getDiscardThreshold(p),
           metropolis: p.metropolis,
           progressCards: isSelf ? p.progressCards : { count: (p.progressCards || []).length },
           devCards: isSelf ? p.devCards : { count: p.devCards.filter(c => !c.played).length },
