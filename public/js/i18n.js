@@ -267,6 +267,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} chased the robber.",
     LOG_CITY_WALL_BUILT: "{playerName} built a city wall.",
     YOU_RECEIVED_RESOURCE: "You received +{amount} {resource}!",
+    ROBBER_ROLLED: "Rolled a 7 — the robber is coming.",
     DISCARD_MUST_LABEL: "Must discard:",
     DISCARD_SELECTED_LABEL: "Selected:",
 
@@ -605,6 +606,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} a alungat hoțul.",
     LOG_CITY_WALL_BUILT: "{playerName} a construit un zid de oraș.",
     YOU_RECEIVED_RESOURCE: "Ai primit +{amount} {resource}!",
+    ROBBER_ROLLED: "A căzut 7 — vine hoțul.",
     DISCARD_MUST_LABEL: "Trebuie să decartezi:",
     DISCARD_SELECTED_LABEL: "Selectate:",
 
