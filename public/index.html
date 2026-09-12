@@ -36,7 +36,7 @@
       </div>
 
       <!-- Sound Toggle -->
-      <button id="btn-sound-toggle" class="btn-glass" data-i18n-title="SOUND_TOGGLE" title="Sound">
+      <button id="btn-sound-toggle" class="btn-glass" data-i18n-title="SOUND_TOGGLE" title="Sound" aria-label="Sound">
         <span class="btn-icon ico" data-icon="speakerHigh"></span>
         <span class="sound-label" data-i18n="SOUND_TOGGLE">Sunet</span>
       </button>
@@ -381,16 +381,16 @@
 
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
-          <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
+          <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-label="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
             <span class="ico" data-icon="chat"></span>
           </button>
-          <button id="btn-zoom-in" class="board-control-btn" data-i18n-title="ZOOM_IN" title="Zoom In">
+          <button id="btn-zoom-in" class="board-control-btn" data-i18n-title="ZOOM_IN" title="Zoom In" aria-label="Zoom In">
             <span class="ico" data-icon="plus"></span>
           </button>
-          <button id="btn-zoom-out" class="board-control-btn" data-i18n-title="ZOOM_OUT" title="Zoom Out">
+          <button id="btn-zoom-out" class="board-control-btn" data-i18n-title="ZOOM_OUT" title="Zoom Out" aria-label="Zoom Out">
             <span class="ico" data-icon="minus"></span>
           </button>
-          <button id="btn-zoom-reset" class="board-control-btn" data-i18n-title="ZOOM_RESET" title="Reset View">
+          <button id="btn-zoom-reset" class="board-control-btn" data-i18n-title="ZOOM_RESET" title="Reset View" aria-label="Reset View">
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
@@ -528,7 +528,7 @@
   <div id="active-trade-banner"></div>
 
   <!-- Trade Modal -->
-  <div id="trade-modal" class="modal-overlay">
+  <div id="trade-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box trade-modal-box">
       <div class="modal-header-row">
         <h3 class="modal-title" data-i18n="TRADE_TITLE">Comerț cu resurse</h3>
@@ -825,7 +825,7 @@
   </div>
 
   <!-- Discard Cards Modal (Rolled 7) -->
-  <div id="discard-modal" class="modal-overlay">
+  <div id="discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-xl">
       <div class="modal-header-row tight">
         <h3 class="modal-title danger" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
@@ -948,7 +948,7 @@
   </div>
 
   <!-- Robber Target Modal -->
-  <div id="robber-target-modal" class="modal-overlay">
+  <div id="robber-target-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-sm">
       <div class="modal-header-row tight">
         <h3 class="modal-title" data-i18n="ROBBER_STEAL_TITLE">Alege jucătorul pentru furt</h3>
@@ -958,7 +958,7 @@
     </div>
   </div>
 
-  <div id="barbarian-modal" class="modal-overlay">
+  <div id="barbarian-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
       <h3 class="modal-title" id="barbarian-modal-title" data-i18n="BARBARIAN_ATTACK_TITLE">Invazia barbarilor</h3>
       <p id="barbarian-modal-body" class="barbarian-modal-body"></p>
@@ -970,7 +970,7 @@
   </div>
 
   <!-- Dev Cards In Hand Modal -->
-  <div id="dev-cards-modal" class="modal-overlay">
+  <div id="dev-cards-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-lg">
       <div class="modal-header-row loose">
         <h3 class="modal-title" data-i18n="MY_DEV_CARDS_TITLE">Cărți de dezvoltare</h3>
@@ -981,7 +981,7 @@
     </div>
   </div>
 
-  <div id="progress-card-modal" class="modal-overlay">
+  <div id="progress-card-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
       <div class="modal-header-row mid">
         <h3 class="modal-title" id="progress-card-modal-title">Card</h3>
@@ -996,7 +996,7 @@
     </div>
   </div>
 
-  <div id="progress-discard-modal" class="modal-overlay">
+  <div id="progress-discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
       <h3 class="modal-title" data-i18n="PROGRESS_DISCARD_TITLE">Discard a progress card</h3>
       <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress cards. Discard one to continue.</p>
@@ -1005,7 +1005,7 @@
   </div>
 
   <!-- Monopoly Resource Selector Modal -->
-  <div id="monopoly-modal" class="modal-overlay">
+  <div id="monopoly-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-sm">
       <div class="modal-header-row mid">
         <h3 class="modal-title" data-i18n="MONOPOLY_SELECT_TITLE">Monopol: Alege resursa</h3>
@@ -1025,7 +1025,7 @@
   </div>
 
   <!-- Year of Plenty Resource Selector Modal -->
-  <div id="year-of-plenty-modal" class="modal-overlay">
+  <div id="year-of-plenty-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
       <div class="modal-header-row mid">
         <h3 class="modal-title" data-i18n="YEAR_OF_PLENTY_SELECT_TITLE">Anul Abundenței: Alege 2 resurse</h3>
@@ -1061,7 +1061,7 @@
   </div>
 
   <!-- Rules Cheat Sheet Modal -->
-  <div id="rules-modal" class="modal-overlay">
+  <div id="rules-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-rules">
       <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
       <div class="rules-copy">
@@ -1092,7 +1092,7 @@
   </div>
 
   <!-- Victory Celebration Modal -->
-  <div id="victory-modal" class="modal-overlay">
+  <div id="victory-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box victory-box">
       <div class="victory-icon-badge">
         <span class="ico" data-icon="trophy"></span>

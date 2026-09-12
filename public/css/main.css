@@ -24,7 +24,7 @@
 
   --text-primary: oklch(0.97 0.005 264);
   --text-secondary: oklch(0.72 0.02 264);
-  --text-muted: oklch(0.58 0.02 264);
+  --text-muted: oklch(0.70 0.02 264);
 
   --res-wood: #2d6a4f;
   --res-brick: #b91c1c;
@@ -187,9 +187,24 @@ body::before {
 .btn-primary:focus-visible,
 .btn-danger:focus-visible,
 .lang-btn:focus-visible,
-.lobby-tab-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
+.lobby-tab-btn:focus-visible,
+.btn-build-action:focus-visible,
+.modal-close-btn:focus-visible,
+.segmented-tab:focus-visible,
+.sidebar-tab-btn:focus-visible,
+.board-control-btn:focus-visible {
+  outline: 2px solid var(--gold-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (pointer: coarse) {
+  .btn-build-action,
+  #btn-roll-dice,
+  #btn-end-turn,
+  .btn-glass.btn-primary {
+    min-height: 44px;
+  }
 }
 
 .btn-glass:disabled {
