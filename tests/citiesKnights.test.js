@@ -105,6 +105,21 @@ describe('CK-01 commodities', () => {
     assert.equal(engine.players[0].commodities.cloth, 0);
   });
 
+  it('refuses to spend commodities on a road', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[0].commodities = { cloth: 8, coin: 0, paper: 0 };
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    const nextEdgeId = engine.grid.vertices.get(otherVertexId).adjacentEdges.find(
+      eid => !engine.grid.edges.get(eid).road
+    );
+    const check = engine.canBuildRoad('p1', nextEdgeId);
+    assert.equal(check.ok, false);
+    assert.equal(check.reason, 'NOT_ENOUGH_RESOURCES');
+  });
+
   it('counts commodities toward the 7-discard threshold', () => {
     const engine = makeCkEngine();
     engine.players[0].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 0 };
@@ -132,6 +147,29 @@ describe('CK-01 commodities', () => {
     assert.equal(engine.players[0].resources.wood, 2);
     assert.equal(engine.players[0].commodities.cloth, 2);
     assert.equal(engine.pendingDiscards.has('p1'), false);
+  });
+
+  it('places a city in setup round 2 and awards city production including commodities', () => {
+    const engine = makeCkEngine();
+    const v1 = Array.from(engine.grid.vertices.keys()).find(id => engine.canBuildSettlement('p1', id, true).ok);
+    engine.placeSetupSettlement('p1', v1);
+    engine.placeSetupRoad('p1', engine.grid.vertices.get(v1).adjacentEdges[0]);
+    const v2 = Array.from(engine.grid.vertices.keys()).find(id => engine.canBuildSettlement('p2', id, true).ok);
+    engine.placeSetupSettlement('p2', v2);
+    engine.placeSetupRoad('p2', engine.grid.vertices.get(v2).adjacentEdges[0]);
+    assert.equal(engine.phase, GAME_PHASES.SETUP_ROUND_2);
+
+    const cityV = Array.from(engine.grid.vertices.keys()).find(id => {
+      const v = engine.grid.vertices.get(id);
+      return !v.building && !v.knight && engine.canBuildSettlement('p2', id, true).ok;
+    });
+    engine.placeSetupSettlement('p2', cityV);
+    const building = engine.grid.vertices.get(cityV).building;
+    assert.equal(building.type, 'city');
+    assert.ok(engine.players[1].citiesBuilt.includes(cityV));
+    assert.equal(engine.players[1].citiesRemaining, 3);
+    const cards = engine.countTotalCards(engine.players[1]);
+    assert.ok(cards >= 1);
   });
 
   it('lets the robber steal a commodity from the combined pool', () => {
@@ -193,9 +231,60 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].cityImprovements.trade, 2);
     assert.equal(engine.players[0].commodities.cloth, 7);
 
-    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].cityImprovements.trade = 6;
     assert.throws(() => engine.improveCityTrack('p1', 'trade'), /IMPROVEMENT_MAX_LEVEL/);
     assert.throws(() => engine.improveCityTrack('p1', 'science'), /NOT_ENOUGH_COMMODITIES/);
+  });
+  it('draws a progress card at track levels 3 and 6', () => {
+    const engine = makeCkEngine();
+    engine.players[0].citiesBuilt.push('v1');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 2;
+    engine.players[0].commodities.cloth = 20;
+    const before = engine.players[0].progressCards.length;
+    engine.improveCityTrack('p1', 'trade');
+    assert.equal(engine.players[0].cityImprovements.trade, 3);
+    assert.equal(engine.players[0].progressCards.length, before + 1);
+
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 5;
+    engine.improveCityTrack('p1', 'trade');
+    assert.equal(engine.players[0].cityImprovements.trade, 6);
+    assert.equal(engine.players[0].progressCards.length, before + 2);
+  });
+
+  it('gives 2:1 bank trades on basic resources at Trade level 1, not commodities', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 1;
+    engine.players[0].resources.wood = 2;
+    engine.players[0].commodities.cloth = 4;
+    engine.tradeWithBank('p1', 'wood', 'brick', 2);
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[0].resources.brick, 1);
+    assert.throws(() => engine.tradeWithBank('p1', 'cloth', 'ore', 2), /INVALID_TRADE_RATIO|NOT_ENOUGH/);
+  });
+
+  it('allows 2:1 commodity bank trades at Trade level 5', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].commodities.cloth = 2;
+    engine.tradeWithBank('p1', 'cloth', 'ore', 2);
+    assert.equal(engine.players[0].commodities.cloth, 0);
+    assert.equal(engine.players[0].resources.ore, 1);
+  });
+
+  it('grants two extra city pieces when Science reaches level 5', () => {
+    const engine = makeCkEngine();
+    engine.players[0].citiesBuilt.push('v1');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.science = 4;
+    engine.players[0].commodities.paper = 5;
+    const before = engine.players[0].citiesRemaining;
+    engine.improveCityTrack('p1', 'science');
+    assert.equal(engine.players[0].cityImprovements.science, 5);
+    assert.equal(engine.players[0].citiesRemaining, before + 2);
   });
 });
 
@@ -1008,15 +1097,16 @@ describe('CK-06: Politics Progress Cards', () => {
     return card;
   }
 
-  it('should initialize politics deck with 9 cards', () => {
+  it('should initialize politics deck with 10 cards', () => {
     const engine = makeCkEngine();
-    assert.equal(engine.progressDecks.politics.length, 9);
+    assert.equal(engine.progressDecks.politics.length, 10);
     const types = engine.progressDecks.politics.map(c => c.type);
     assert.equal(types.filter(t => t === 'bishop').length, 2);
     assert.equal(types.filter(t => t === 'constitution').length, 1);
     assert.equal(types.filter(t => t === 'deserter').length, 2);
     assert.equal(types.filter(t => t === 'diplomat').length, 2);
     assert.equal(types.filter(t => t === 'intrigue').length, 1);
+    assert.equal(types.filter(t => t === 'saboteur').length, 1);
     assert.equal(types.filter(t => t === 'warlord').length, 1);
   });
 
@@ -1060,16 +1150,47 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.players[0].victoryPoints, before + 1);
   });
 
-  it('Deserter: should remove opponent knight and return to their supply', () => {
+  it('Deserter: should remove opponent knight and place own equal-or-lower knight', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p2', vertex.id);
+    const placeAt = emptyVertex(engine, v => {
+      if (v.id === vertex.id) return false;
+      if ((v.adjacentVertices || []).includes(vertex.id)) return false;
+      return (v.adjacentVertices || []).every(aid => {
+        const n = engine.grid.vertices.get(aid);
+        return n && !n.building && !n.knight;
+      });
+    });
+    assert.ok(placeAt, 'expected a legal placement vertex');
+    giveRoad(engine, 'p1', placeAt.id);
     assert.equal(engine.players[1].knightsAvailable.basic, 1);
-    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id });
+    const beforeP1 = engine.players[0].knightsAvailable.basic;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, {
+      vertexId: vertex.id,
+      placeVertexId: placeAt.id
+    });
     assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
     assert.equal(engine.players[1].knightsPlaced.length, 0);
     assert.equal(engine.players[1].knightsAvailable.basic, 2);
+    const placed = engine.grid.vertices.get(placeAt.id).knight;
+    assert.equal(placed.playerId, 'p1');
+    assert.equal(placed.rank, 'basic');
+    assert.equal(placed.active, false);
+    assert.equal(engine.players[0].knightsAvailable.basic, beforeP1 - 1);
+    assert.equal(engine.players[0].knightsPlaced.some(k => k.vertexId === placeAt.id), true);
+  });
+
+  it('Deserter: should still remove foe if player has no legal placement', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id });
+    assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.equal(engine.players[1].knightsAvailable.basic, 2);
+    assert.equal(engine.players[0].knightsPlaced.length, 0);
   });
 
   it('Deserter: should reject removing own knight', () => {
@@ -1083,31 +1204,32 @@ describe('CK-06: Politics Progress Cards', () => {
     );
   });
 
-  it('Diplomat: should remove an open road segment', () => {
+  it('Diplomat: should remove an open opponent road next to an active knight', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     const { edge } = giveRoad(engine, 'p2', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { active: true });
     engine.playProgressCard('p1', giveCard(engine.players[0], 'diplomat').id, { edgeId: edge.id });
     assert.equal(engine.grid.edges.get(edge.id).road, null);
     assert.equal(engine.players[1].roadsBuilt.includes(edge.id), false);
   });
 
-  it('Intrigue: should displace opponent knight adjacent to own vertex', () => {
+  it('Intrigue: should deactivate an adjacent active opponent knight', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const own = emptyVertex(engine);
-    own.building = { type: 'settlement', playerId: 'p1', color: '#e63946' };
-    engine.players[0].settlementsBuilt.push(own.id);
+    plantKnight(engine, 'p1', own.id, { active: true });
     const adjId = own.adjacentVertices.find(id => {
       const v = engine.grid.vertices.get(id);
       return v && !v.building && !v.knight;
     });
-    plantKnight(engine, 'p2', adjId);
+    plantKnight(engine, 'p2', adjId, { active: true });
     engine.playProgressCard('p1', giveCard(engine.players[0], 'intrigue').id, { vertexId: adjId });
-    assert.equal(engine.grid.vertices.get(adjId).knight, null);
-    assert.equal(engine.players[1].knightsPlaced.length, 0);
-    assert.equal(engine.players[1].knightsAvailable.basic, 2);
+    const foe = engine.grid.vertices.get(adjId).knight;
+    assert.ok(foe);
+    assert.equal(foe.active, false);
+    assert.equal(engine.players[1].knightsPlaced.length, 1);
   });
 
   it('Warlord: should activate all own knights for free', () => {
@@ -1121,6 +1243,33 @@ describe('CK-06: Politics Progress Cards', () => {
     engine.playProgressCard('p1', giveCard(engine.players[0], 'warlord').id, {});
     assert.equal(engine.players[0].knightsPlaced.every(k => k.active), true);
     assert.equal(engine.players[0].resources.wheat, 0);
+  });
+
+  it('Saboteur: leaders ahead in VP discard half their cards', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOL, 'city');
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.ORE, 'city');
+    engine.players[1].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[1].commodities = { cloth: 2, coin: 0, paper: 0 };
+    engine.recalculateVictoryPoints();
+    assert.ok((engine.players[1].victoryPoints || 0) > (engine.players[0].victoryPoints || 0));
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'saboteur').id, {});
+    assert.equal(engine.countTotalCards(engine.players[1]), 3);
+    assert.equal(res.victims.length, 1);
+    assert.equal(res.victims[0].playerId, 'p2');
+  });
+
+  it('Saboteur: unique VP leader cannot play the card', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOL, 'city');
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.ORE, 'city');
+    engine.recalculateVictoryPoints();
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'saboteur').id, {}),
+      /SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER/
+    );
   });
 });
 

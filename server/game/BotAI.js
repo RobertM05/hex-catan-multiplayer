@@ -67,7 +67,9 @@ export class BotAI {
       }
     } else if (engine.setupStep === 'road') {
       // Find valid edge connecting to the settlement just placed
-      const settlementVId = engine.lastSetupSettlementVertex || (botPlayer.settlementsBuilt.length > 0 ? botPlayer.settlementsBuilt[botPlayer.settlementsBuilt.length - 1] : null);
+      const settlementVId = engine.lastSetupSettlementVertex
+        || (botPlayer.citiesBuilt?.length ? botPlayer.citiesBuilt[botPlayer.citiesBuilt.length - 1] : null)
+        || (botPlayer.settlementsBuilt.length > 0 ? botPlayer.settlementsBuilt[botPlayer.settlementsBuilt.length - 1] : null);
       if (settlementVId) {
         const vertex = grid.vertices.get(settlementVId);
         let bestEdgeId = null;
@@ -376,7 +378,7 @@ export class BotAI {
     const order = {
       constitution: 100, printer: 100, alchemist: 80, warlord: 70, smith: 65,
       merchant: 60, merchant_fleet: 55, crane: 50, medicine: 45, master_merchant: 40,
-      bishop: 35, engineer: 30, inventor: 25, intrigue: 20, deserter: 18,
+      bishop: 35, engineer: 30, inventor: 25, saboteur: 22, intrigue: 20, deserter: 18,
       diplomat: 15, irrigation: 12, mining: 12, commercial_harbor: 10, resource_monopoly: 8
     };
     return order[type] || 5;
