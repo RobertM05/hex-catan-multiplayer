@@ -262,6 +262,10 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.moveKnight(currentPlayerId, data.fromVertexId, data.toVertexId), cb);
   });
 
+  socket.on('relocate_displaced_knight', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data.vertexId), cb);
+  });
+
   socket.on('chase_robber', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb);
   });
