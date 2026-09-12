@@ -431,6 +431,14 @@ class CatanApp {
       }
     });
 
+    document.getElementById('btn-build-city-wall')?.addEventListener('click', () => {
+      if (this.selectedAction && this.selectedAction.type === 'wall') {
+        this.clearActiveAction();
+      } else {
+        this.activateBuildCityWall();
+      }
+    });
+
     // Buy Dev Card
     document.getElementById('btn-buy-dev-card').addEventListener('click', async () => {
       try {
@@ -504,6 +512,10 @@ class CatanApp {
           this.clearActiveAction();
         } else if (this.selectedAction && this.selectedAction.type === 'city') {
           await network.sendAction('build_city', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
+        } else if (this.selectedAction && this.selectedAction.type === 'wall') {
+          await network.sendAction('build_city_wall', { vertexId });
           audio.playBuild();
           this.clearActiveAction();
         }
@@ -634,6 +646,20 @@ class CatanApp {
     this.updateBoardHint();
   }
 
+  activateBuildCityWall() {
+    if (!this.gameState || !this.gameState.grid) return;
+    const validIds = new Set();
+    Object.values(this.gameState.grid.vertices).forEach(v => {
+      if (v.building && v.building.type === 'city' && v.building.playerId === this.myPlayerId && !v.building.hasWall) {
+        validIds.add(v.id);
+      }
+    });
+    this.selectedAction = { type: 'wall', validIds };
+    document.getElementById('btn-build-city-wall')?.classList.add('btn-primary');
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction);
+    this.updateBoardHint();
+  }
+
   setupCkUi() {
     const panel = document.getElementById('city-improvements-panel');
     panel?.addEventListener('click', async (e) => {
@@ -662,6 +688,8 @@ class CatanApp {
     this.renderBarbarianTrack(s);
     this.renderImprovementPanel(me, isActionPhase);
     this.renderBarbarianOverlay(s, me);
+    const wallCount = document.getElementById('wall-supply-count');
+    if (wallCount) wallCount.textContent = String(me?.cityWalls ?? 0);
   }
 
   renderEventDie(s) {
@@ -1827,6 +1855,9 @@ class CatanApp {
         } else if (this.selectedAction && this.selectedAction.type === 'city') {
           isActionable = true;
           hintText = i18n.t('ACTION_HINT_BUILD_CITY');
+        } else if (this.selectedAction && this.selectedAction.type === 'wall') {
+          isActionable = true;
+          hintText = i18n.t('ACTION_HINT_BUILD_WALL');
         }
       }
     }

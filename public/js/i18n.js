@@ -87,6 +87,7 @@ export const TRANSLATIONS = {
     BUILD_ROAD: "Road",
     BUILD_SETTLEMENT: "Settlement",
     BUILD_CITY: "City",
+    BUILD_CITY_WALL: "Wall",
     BUY_DEV_CARD: "Dev Card",
     COST_ROAD: "1 Wood, 1 Brick",
     COST_SETTLEMENT: "1 Wood, 1 Brick, 1 Wool, 1 Wheat",
@@ -241,6 +242,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_PROMOTED: "{playerName} promoted a knight to {rank}.",
     LOG_KNIGHT_MOVED: "{playerName} moved a knight.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} chased the robber.",
+    LOG_CITY_WALL_BUILT: "{playerName} built a city wall.",
     YOU_RECEIVED_RESOURCE: "You received +{amount} {resource}!",
     DISCARD_MUST_LABEL: "Must discard:",
     DISCARD_SELECTED_LABEL: "Selected:",
@@ -286,6 +288,7 @@ export const TRANSLATIONS = {
     ACTION_HINT_BUILD_ROAD: "Click a valid edge to build a road",
     ACTION_HINT_BUILD_SETTLEMENT: "Click an available intersection to build a settlement",
     ACTION_HINT_BUILD_CITY: "Click one of your settlements to upgrade to a city",
+    ACTION_HINT_BUILD_WALL: "Click one of your cities to build a wall (2 brick)",
     IMPROVEMENTS_TITLE: "City Improvements",
     TRACK_TRADE: "Trade",
     TRACK_POLITICS: "Politics",
@@ -309,7 +312,12 @@ export const TRANSLATIONS = {
     ERROR_MUST_DOWNGRADE_OWN_CITY: "Choose one of your cities to downgrade.",
     ERROR_NO_DOWNGRADE_NEEDED: "You do not need to downgrade a city.",
     ERROR_NOT_IN_BARBARIAN_DOWNGRADE: "City downgrade is only allowed after a barbarian defeat.",
-    ERROR_DEV_CARDS_DISABLED_IN_CK: "Development cards are replaced by progress cards in Cities & Knights."
+    ERROR_DEV_CARDS_DISABLED_IN_CK: "Development cards are replaced by progress cards in Cities & Knights.",
+    ERROR_NO_BUILDING_ON_VERTEX: "There is no building on that intersection.",
+    ERROR_WALLS_ONLY_ON_CITIES: "City walls can only be built on cities.",
+    ERROR_NOT_YOUR_CITY: "That city is not yours.",
+    ERROR_CITY_ALREADY_HAS_WALL: "That city already has a wall.",
+    ERROR_NO_WALLS_REMAINING: "You have no city walls left in supply."
   },
 
   ro: {
@@ -394,6 +402,7 @@ export const TRANSLATIONS = {
     BUILD_ROAD: "Drum",
     BUILD_SETTLEMENT: "Așezare",
     BUILD_CITY: "Oraș",
+    BUILD_CITY_WALL: "Zid",
     BUY_DEV_CARD: "Carte dezv.",
     COST_ROAD: "1 Lemn, 1 Cărămidă",
     COST_SETTLEMENT: "1 Lemn, 1 Cărămidă, 1 Lână, 1 Grâu",
@@ -548,6 +557,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_PROMOTED: "{playerName} a promovat un cavaler la {rank}.",
     LOG_KNIGHT_MOVED: "{playerName} a mutat un cavaler.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} a alungat hoțul.",
+    LOG_CITY_WALL_BUILT: "{playerName} a construit un zid de oraș.",
     YOU_RECEIVED_RESOURCE: "Ai primit +{amount} {resource}!",
     DISCARD_MUST_LABEL: "Trebuie să decartezi:",
     DISCARD_SELECTED_LABEL: "Selectate:",
@@ -593,6 +603,7 @@ export const TRANSLATIONS = {
     ACTION_HINT_BUILD_ROAD: "Apasă pe un traseu valid pentru a construi drumul",
     ACTION_HINT_BUILD_SETTLEMENT: "Apasă pe o intersecție liberă pentru a construi așezarea",
     ACTION_HINT_BUILD_CITY: "Apasă pe o așezare proprie pentru a o moderniza în oraș",
+    ACTION_HINT_BUILD_WALL: "Apasă pe un oraș propriu pentru a construi un zid (2 cărămidă)",
     IMPROVEMENTS_TITLE: "Îmbunătățiri oraș",
     TRACK_TRADE: "Comerț",
     TRACK_POLITICS: "Politică",
@@ -616,7 +627,12 @@ export const TRANSLATIONS = {
     ERROR_MUST_DOWNGRADE_OWN_CITY: "Alege unul dintre orașele tale de retrogradat.",
     ERROR_NO_DOWNGRADE_NEEDED: "Nu trebuie să retrogradezi un oraș.",
     ERROR_NOT_IN_BARBARIAN_DOWNGRADE: "Retrogradarea e permisă doar după o înfrângere a barbarilor.",
-    ERROR_DEV_CARDS_DISABLED_IN_CK: "Cărțile de dezvoltare sunt înlocuite de cărți de progres în Orașe & Cavaleri."
+    ERROR_DEV_CARDS_DISABLED_IN_CK: "Cărțile de dezvoltare sunt înlocuite de cărți de progres în Orașe & Cavaleri.",
+    ERROR_NO_BUILDING_ON_VERTEX: "Nu există clădire pe acea intersecție.",
+    ERROR_WALLS_ONLY_ON_CITIES: "Zidurile se construiesc doar pe orașe.",
+    ERROR_NOT_YOUR_CITY: "Orașul nu îți aparține.",
+    ERROR_CITY_ALREADY_HAS_WALL: "Orașul are deja un zid.",
+    ERROR_NO_WALLS_REMAINING: "Nu mai ai ziduri în rezervă."
   }
 };
 

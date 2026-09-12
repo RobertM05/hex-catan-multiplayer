@@ -643,6 +643,8 @@ body.mode-cities-knights .ck-hud-widget { display: flex !important; }
 body.mode-cities-knights .ck-improvements-panel.ck-hud-widget { display: flex !important; }
 body.mode-cities-knights #die-event.ck-hud-widget { display: flex !important; }
 body.mode-cities-knights #btn-buy-dev-card { display: none; }
+.ck-build-only { display: none !important; }
+body.mode-cities-knights .ck-build-only { display: flex !important; }
 body.mode-cities-knights #discard-form .trade-steppers-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
