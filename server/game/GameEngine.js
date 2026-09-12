@@ -888,6 +888,9 @@ export class GameEngine {
       this.queueDiscardsForSeven();
     } else {
       production = this.produceForRoll(rollSum);
+      if (this.isCitiesKnights()) {
+        this.applyAqueductBenefit(production);
+      }
       this.logProductionEvents(production, rollSum);
     }
 
@@ -998,6 +1001,48 @@ export class GameEngine {
         args: { sum: rollSum }
       });
     }
+  }
+
+  applyAqueductBenefit(production, choices = {}) {
+    const resPriority = ['ore', 'wheat', 'wood', 'brick', 'wool'];
+    const results = {};
+    for (const player of this.players) {
+      if ((player.cityImprovements?.science || 0) >= 5) {
+        const pProd = production[player.id] || {};
+        const producedCount = Object.values(pProd).reduce((sum, n) => sum + n, 0);
+        if (producedCount === 0) {
+          let chosenRes = choices[player.id];
+          if (!chosenRes || !resPriority.includes(chosenRes)) {
+            chosenRes = resPriority.slice().sort((a, b) => (player.resources[a] || 0) - (player.resources[b] || 0))[0];
+          }
+          player.resources[chosenRes] = (player.resources[chosenRes] || 0) + 1;
+          if (!production[player.id]) production[player.id] = {};
+          production[player.id][chosenRes] = (production[player.id][chosenRes] || 0) + 1;
+          results[player.id] = chosenRes;
+          this.logEvent({
+            type: 'AQUEDUCT_RESOURCE',
+            messageKey: 'LOG_AQUEDUCT_RESOURCE',
+            args: { playerName: player.name, resource: chosenRes }
+          });
+        }
+      }
+    }
+    return results;
+  }
+
+  claimAqueductResource(playerId, resource) {
+    const validResources = ['ore', 'wheat', 'wood', 'brick', 'wool'];
+    if (!validResources.includes(resource)) throw new Error('INVALID_RESOURCE');
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+    if ((player.cityImprovements?.science || 0) < 5) throw new Error('AQUEDUCT_NOT_UNLOCKED');
+    player.resources[resource] = (player.resources[resource] || 0) + 1;
+    this.logEvent({
+      type: 'AQUEDUCT_RESOURCE',
+      messageKey: 'LOG_AQUEDUCT_RESOURCE',
+      args: { playerName: player.name, resource }
+    });
+    return { resource };
   }
 
   distributeProgressCardDraws(track, redDie) {
@@ -1360,11 +1405,6 @@ export class GameEngine {
       this.drawProgressCard(player, track);
     }
 
-    if (track === 'science' && newLevel === 5 && !player.scienceExtraCitiesGranted) {
-      player.citiesRemaining = (player.citiesRemaining || 0) + 2;
-      player.scienceExtraCitiesGranted = true;
-    }
-
     this.checkMetropolisAward(playerId, track, newLevel);
 
     return { track, level: newLevel, cost };
@@ -1503,7 +1543,9 @@ export class GameEngine {
       vertexId,
       rank: 'basic',
       active: false,
-      strength: KNIGHT_RANKS.basic.strength
+      strength: KNIGHT_RANKS.basic.strength,
+      hiredTurn: this.turnNumber,
+      lastActionTurn: this.turnNumber
     };
     vertex.knight = knight;
     player.knightsPlaced.push(knight);
@@ -1520,11 +1562,14 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
+    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
     if (knight.active) throw new Error('KNIGHT_ALREADY_ACTIVE');
     if (!this.hasResources(player, COSTS.ACTIVATE_KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
 
     this.deductResources(player, COSTS.ACTIVATE_KNIGHT);
     knight.active = true;
+    knight.lastActionTurn = this.turnNumber;
 
     this.logEvent({
       type: 'KNIGHT_ACTIVATED',
@@ -1538,6 +1583,10 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (!options.free) {
+      if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
+      if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
+    }
     const current = KNIGHT_RANKS[knight.rank];
     if (!current?.next) throw new Error('KNIGHT_MAX_RANK');
     const nextRank = current.next;
@@ -1553,6 +1602,7 @@ export class GameEngine {
     player.knightsAvailable[nextRank]--;
     knight.rank = nextRank;
     knight.strength = next.strength;
+    knight.lastActionTurn = this.turnNumber;
 
     this.logEvent({
       type: 'KNIGHT_PROMOTED',
@@ -1566,6 +1616,8 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, fromVertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
+    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
     if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
     if (fromVertexId === toVertexId) throw new Error('INVALID_KNIGHT_MOVE');
     if (!this.verticesSharePlayerRoad(fromVertexId, toVertexId, playerId)) {
@@ -1587,6 +1639,7 @@ export class GameEngine {
     if (from) from.knight = null;
     knight.vertexId = toVertexId;
     knight.active = false;
+    knight.lastActionTurn = this.turnNumber;
     dest.knight = knight;
 
     this.logEvent({
@@ -1673,6 +1726,8 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
+    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
     if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex || !vertex.hexes.includes(this.grid.robberHexId)) {
@@ -1691,6 +1746,7 @@ export class GameEngine {
       }
     }
     knight.active = false;
+    knight.lastActionTurn = this.turnNumber;
 
     this.logEvent({
       type: 'KNIGHT_CHASED_ROBBER',
@@ -2112,7 +2168,9 @@ export class GameEngine {
             vertexId: placeId,
             rank: placeRank,
             active: false,
-            strength: KNIGHT_RANKS[placeRank].strength
+            strength: KNIGHT_RANKS[placeRank].strength,
+            hiredTurn: this.turnNumber,
+            lastActionTurn: this.turnNumber
           };
           dest.knight = knight;
           player.knightsPlaced.push(knight);
