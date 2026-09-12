@@ -298,9 +298,11 @@ export class BotAI {
   static chooseCityToDowngrade(engine, playerId) {
     const player = engine.players.find(p => p.id === playerId);
     if (!player?.citiesBuilt?.length) return null;
-    let worst = player.citiesBuilt[0];
+    let worst = null;
     let worstScore = Infinity;
     for (const vid of player.citiesBuilt) {
+      const vertex = engine.grid.vertices.get(vid);
+      if (vertex?.building?.hasMetropolis || vertex?.building?.type === 'metropolis') continue;
       const score = this.cityResourceScore(engine, vid);
       if (score < worstScore) {
         worstScore = score;
