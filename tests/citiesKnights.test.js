@@ -1465,11 +1465,9 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
       const cur = engine.getCurrentPlayer();
       engine.phase = GAME_PHASES.TURN_ACTION;
       cur.progressCards.push({ id: 'win', type: 'constitution', played: true, revealed: true });
-      while (cur.citiesBuilt.length < 6 && cur.settlementsBuilt.length) {
-        const vid = cur.settlementsBuilt[0];
-        engine.grid.vertices.get(vid).building.type = 'city';
-        cur.settlementsBuilt.shift();
-        cur.citiesBuilt.push(vid);
+      engine.longestRoadHolder = { playerId: cur.id, length: 5 };
+      while (cur.citiesBuilt.length < 5) {
+        cur.citiesBuilt.push(`force-city-${cur.citiesBuilt.length}`);
       }
       engine.checkVictory();
     }
