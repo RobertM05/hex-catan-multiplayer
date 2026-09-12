@@ -53,7 +53,17 @@ export const PROGRESS_CARD_DECKS = {
     { type: 'intrigue', count: 1 },
     { type: 'warlord', count: 1 }
   ],
-  science: []
+  science: [
+    { type: 'alchemist', count: 2 },
+    { type: 'crane', count: 2 },
+    { type: 'engineer', count: 1 },
+    { type: 'inventor', count: 1 },
+    { type: 'irrigation', count: 1 },
+    { type: 'medicine', count: 2 },
+    { type: 'mining', count: 1 },
+    { type: 'printer', count: 1 },
+    { type: 'smith', count: 1 }
+  ]
 };
 
 export const PROGRESS_CARD_HAND_LIMIT = 4;
@@ -96,7 +106,8 @@ export const COSTS = {
   KNIGHT: { ore: 1, wool: 1 },
   ACTIVATE_KNIGHT: { wheat: 1 },
   PROMOTE_KNIGHT: { wheat: 1, ore: 1 },
-  CITY_WALL: { brick: 2 }
+  CITY_WALL: { brick: 2 },
+  MEDICINE_CITY: { ore: 2, wheat: 1 }
 };
 
 export const DEV_CARD_TYPES = {
@@ -140,6 +151,7 @@ export class GameEngine {
     this.merchantHolder = null;
     this.merchantHexId = null;
     this.pendingProgressDiscard = new Set();
+    this.alchemistDice = null;
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -413,7 +425,7 @@ export class GameEngine {
       return { ok: false, reason: 'MUST_UPGRADE_OWN_SETTLEMENT' };
     }
 
-    if (!this.hasResources(player, COSTS.CITY)) {
+    if (!this.hasResources(player, player.medicineActive ? COSTS.MEDICINE_CITY : COSTS.CITY)) {
       return { ok: false, reason: 'NOT_ENOUGH_RESOURCES' };
     }
 
@@ -747,8 +759,9 @@ export class GameEngine {
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ROLL) throw new Error('NOT_IN_ROLL_PHASE');
 
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    const d1 = this.alchemistDice ? this.alchemistDice[0] : Math.floor(Math.random() * 6) + 1;
+    const d2 = this.alchemistDice ? this.alchemistDice[1] : Math.floor(Math.random() * 6) + 1;
+    this.alchemistDice = null;
     this.dice = [d1, d2];
     const rollSum = d1 + d2;
     this.hasRolledDice = true;
@@ -1173,7 +1186,9 @@ export class GameEngine {
     const check = this.canBuildCity(playerId, vertexId);
     if (!check.ok) throw new Error(check.reason);
 
-    this.deductResources(player, COSTS.CITY);
+    const cityCost = player.medicineActive ? COSTS.MEDICINE_CITY : COSTS.CITY;
+    this.deductResources(player, cityCost);
+    player.medicineActive = false;
 
     const vertex = this.grid.vertices.get(vertexId);
     vertex.building = { type: 'city', playerId, color: player.color, hasWall: false };
@@ -1234,7 +1249,11 @@ export class GameEngine {
     const currentLevel = player.cityImprovements[track] || 0;
     if (currentLevel >= 5) throw new Error('IMPROVEMENT_MAX_LEVEL');
 
-    const cost = currentLevel + 1;
+    let cost = currentLevel + 1;
+    if (player.craneDiscount) {
+      cost = Math.max(0, cost - 1);
+      player.craneDiscount = false;
+    }
     const commodity = IMPROVEMENT_TRACKS[track];
     if ((player.commodities[commodity] || 0) < cost) throw new Error('NOT_ENOUGH_COMMODITIES');
 
@@ -1331,7 +1350,7 @@ export class GameEngine {
     return { vertexId, knight };
   }
 
-  promoteKnight(playerId, vertexId) {
+  promoteKnight(playerId, vertexId, options = {}) {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -1343,9 +1362,9 @@ export class GameEngine {
       throw new Error('POLITICS_LEVEL_TOO_LOW');
     }
     if ((player.knightsAvailable[nextRank] || 0) <= 0) throw new Error('NO_KNIGHTS_AVAILABLE');
-    if (!this.hasResources(player, COSTS.PROMOTE_KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
+    if (!this.hasResources(player, COSTS.PROMOTE_KNIGHT) && !options.free) throw new Error('NOT_ENOUGH_RESOURCES');
 
-    this.deductResources(player, COSTS.PROMOTE_KNIGHT);
+    if (!options.free) this.deductResources(player, COSTS.PROMOTE_KNIGHT);
     player.knightsAvailable[knight.rank] = (player.knightsAvailable[knight.rank] || 0) + 1;
     player.knightsAvailable[nextRank]--;
     knight.rank = nextRank;
@@ -1561,6 +1580,28 @@ export class GameEngine {
     return { vertexId, remaining: Array.from(this.pendingBarbarianDowngrades) };
   }
 
+  buildCityWall(playerId, vertexId, options = {}) {
+    const player = this.assertCkAction(playerId);
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex?.building) throw new Error('NO_BUILDING_ON_VERTEX');
+    if (vertex.building.type !== 'city') throw new Error('WALLS_ONLY_ON_CITIES');
+    if (vertex.building.playerId !== playerId) throw new Error('NOT_YOUR_CITY');
+    if (vertex.building.hasWall) throw new Error('CITY_ALREADY_HAS_WALL');
+    if ((player.cityWalls || 0) <= 0) throw new Error('NO_WALLS_REMAINING');
+    if (!options.free) {
+      if (!this.hasResources(player, COSTS.CITY_WALL)) throw new Error('NOT_ENOUGH_RESOURCES');
+      this.deductResources(player, COSTS.CITY_WALL);
+    }
+    vertex.building.hasWall = true;
+    player.cityWalls--;
+    this.logEvent({
+      type: 'CITY_WALL_BUILT',
+      messageKey: 'LOG_CITY_WALL_BUILT',
+      args: { playerName: player.name }
+    });
+    return { vertexId, wallsRemaining: player.cityWalls };
+  }
+
   buyDevCard(playerId) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
@@ -1673,10 +1714,16 @@ export class GameEngine {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
     const card = player.progressCards.find(c => c.id === cardId && !c.played);
     if (!card) throw new Error('CARD_NOT_FOUND');
+    if (card.type === 'alchemist') {
+      if (this.phase !== GAME_PHASES.TURN_ROLL || this.hasRolledDice) {
+        throw new Error('ALCHEMIST_MUST_BE_PLAYED_BEFORE_ROLL');
+      }
+    } else if (this.phase !== GAME_PHASES.TURN_ACTION) {
+      throw new Error('NOT_IN_ACTION_PHASE');
+    }
 
     let result = { cardType: card.type };
     switch (card.type) {
@@ -1830,6 +1877,72 @@ export class GameEngine {
           knight.active = true;
         }
         break;
+      case 'alchemist': {
+        const d1 = Number(options.d1);
+        const d2 = Number(options.d2);
+        if (!Number.isInteger(d1) || !Number.isInteger(d2) || d1 < 1 || d1 > 6 || d2 < 1 || d2 > 6) {
+          throw new Error('INVALID_DICE_VALUES');
+        }
+        this.alchemistDice = [d1, d2];
+        result.dice = [d1, d2];
+        break;
+      }
+      case 'crane':
+        player.craneDiscount = true;
+        break;
+      case 'engineer':
+        this.buildCityWall(playerId, options.vertexId, { free: true });
+        result.vertexId = options.vertexId;
+        break;
+      case 'inventor': {
+        const hex1 = this.grid.hexes.get(options.hexId1);
+        const hex2 = this.grid.hexes.get(options.hexId2);
+        if (!hex1 || !hex2 || hex1.id === hex2.id) throw new Error('INVALID_HEX');
+        const forbidden = [2, 6, 8, 12];
+        if (forbidden.includes(hex1.token) || forbidden.includes(hex2.token)) {
+          throw new Error('CANNOT_SWAP_RESTRICTED_TOKENS');
+        }
+        const tmp = hex1.token;
+        hex1.token = hex2.token;
+        hex2.token = tmp;
+        result.hexId1 = hex1.id;
+        result.hexId2 = hex2.id;
+        break;
+      }
+      case 'irrigation':
+      case 'mining': {
+        const resource = card.type === 'irrigation' ? 'wheat' : 'ore';
+        const seen = new Set();
+        for (const v of this.grid.vertices.values()) {
+          if (v.building?.playerId !== playerId) continue;
+          for (const hexId of v.hexes || []) {
+            if (seen.has(hexId)) continue;
+            if (this.grid.hexes.get(hexId)?.resource === resource) seen.add(hexId);
+          }
+        }
+        const gained = seen.size * 2;
+        player.resources[resource] = (player.resources[resource] || 0) + gained;
+        result.gained = gained;
+        break;
+      }
+      case 'medicine':
+        player.medicineActive = true;
+        break;
+      case 'printer':
+        card.played = true;
+        card.revealed = true;
+        this.recalculateVictoryPoints();
+        this.checkVictory();
+        break;
+      case 'smith': {
+        const verts = Array.isArray(options.knightVertices) ? options.knightVertices : [];
+        if (verts.length !== 2 || verts[0] === verts[1]) throw new Error('SMITH_NEEDS_TWO_KNIGHTS');
+        for (const vertexId of verts) {
+          this.promoteKnight(playerId, vertexId, { free: true });
+        }
+        result.knightVertices = verts;
+        break;
+      }
       default:
         throw new Error('UNKNOWN_PROGRESS_CARD');
     }
@@ -2026,6 +2139,9 @@ export class GameEngine {
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
     player.merchantFleetActive = false;
+    player.craneDiscount = false;
+    player.medicineActive = false;
+    this.alchemistDice = null;
 
     // Check victory
     if (this.checkVictory()) {

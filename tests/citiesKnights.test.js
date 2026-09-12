@@ -1123,3 +1123,165 @@ describe('CK-06: Politics Progress Cards', () => {
   });
 });
 
+describe('CK-07: Science Progress Cards', () => {
+  function giveCard(player, type) {
+    const card = { id: `s-${type}-${player.progressCards.length}`, type, played: false, boughtTurn: 0 };
+    player.progressCards.push(card);
+    return card;
+  }
+
+  it('should initialize science deck with 9 cards', () => {
+    const engine = makeCkEngine();
+    const types = engine.progressDecks.science.map(c => c.type);
+    assert.equal(types.filter(t => t === 'alchemist').length, 2);
+    assert.equal(types.filter(t => t === 'crane').length, 2);
+    assert.equal(types.filter(t => t === 'engineer').length, 1);
+    assert.equal(types.filter(t => t === 'inventor').length, 1);
+    assert.equal(types.filter(t => t === 'irrigation').length, 1);
+    assert.equal(types.filter(t => t === 'medicine').length, 2);
+    assert.equal(types.filter(t => t === 'mining').length, 1);
+    assert.equal(types.filter(t => t === 'printer').length, 1);
+    assert.equal(types.filter(t => t === 'smith').length, 1);
+    assert.equal(engine.progressDecks.science.length, 12);
+  });
+
+  it('Alchemist: should let player choose dice values before roll', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'alchemist').id, { d1: 5, d2: 6 });
+    const result = engine.rollDice('p1');
+    assert.deepEqual(result.dice, [5, 6]);
+    assert.equal(result.sum, 11);
+    assert.equal(engine.alchemistDice, null);
+  });
+
+  it('Alchemist: should reject play outside TURN_ROLL phase', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'alchemist').id, { d1: 3, d2: 4 }),
+      /ALCHEMIST_MUST_BE_PLAYED_BEFORE_ROLL/
+    );
+  });
+
+  it('Crane: should reduce next improvement cost by 1', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].citiesBuilt.push('v1');
+    engine.players[0].commodities.paper = 0;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'crane').id, {});
+    const res = engine.improveCityTrack('p1', 'science');
+    assert.equal(res.cost, 0);
+    assert.equal(engine.players[0].cityImprovements.science, 1);
+    assert.equal(engine.players[0].commodities.paper, 0);
+    assert.equal(engine.players[0].craneDiscount, false);
+  });
+
+  it('Engineer: should build city wall for free', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[engine.players[0].citiesBuilt.length - 1];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 0;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'engineer').id, { vertexId: cityId });
+    assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+    assert.equal(engine.players[0].cityWalls, 2);
+    assert.equal(engine.players[0].resources.brick, 0);
+    assert.ok(hex);
+  });
+
+  it('Inventor: should swap two hex number tokens', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const hexes = Array.from(engine.grid.hexes.values()).filter(h => h.token && ![2, 6, 8, 12].includes(h.token));
+    const a = hexes[0];
+    const b = hexes.find(h => h.id !== a.id && h.token !== a.token) || hexes[1];
+    const t1 = a.token;
+    const t2 = b.token;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'inventor').id, { hexId1: a.id, hexId2: b.id });
+    assert.equal(a.token, t2);
+    assert.equal(b.token, t1);
+  });
+
+  it('Inventor: should reject swapping tokens 2, 6, 8, or 12', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const restricted = Array.from(engine.grid.hexes.values()).find(h => [2, 6, 8, 12].includes(h.token));
+    const other = Array.from(engine.grid.hexes.values()).find(h => h.id !== restricted.id && h.token);
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'inventor').id, {
+        hexId1: restricted.id,
+        hexId2: other.id
+      }),
+      /CANNOT_SWAP_RESTRICTED_TOKENS/
+    );
+  });
+
+  it('Irrigation: should grant 2 wheat per adjacent wheat hex', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WHEAT, 'settlement');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wheat = 0;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'irrigation').id, {});
+    assert.equal(res.gained, 2);
+    assert.equal(engine.players[0].resources.wheat, 2);
+  });
+
+  it('Medicine: should allow city upgrade for 2 ore + 1 wheat', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'settlement');
+    const vid = engine.players[0].settlementsBuilt[engine.players[0].settlementsBuilt.length - 1];
+    giveRoad(engine, 'p1', vid);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 2;
+    engine.players[0].resources.wheat = 1;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'medicine').id, {});
+    engine.buildCity('p1', vid);
+    assert.equal(engine.grid.vertices.get(vid).building.type, 'city');
+    assert.equal(engine.players[0].resources.ore, 0);
+    assert.equal(engine.players[0].resources.wheat, 0);
+    assert.equal(engine.players[0].medicineActive, false);
+    assert.ok(hex);
+  });
+
+  it('Mining: should grant 2 ore per adjacent ore hex', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.ORE, 'city');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 0;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'mining').id, {});
+    assert.equal(res.gained, 2);
+    assert.equal(engine.players[0].resources.ore, 2);
+  });
+
+  it('Printer: should immediately grant 1 VP', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.recalculateVictoryPoints();
+    const before = engine.players[0].victoryPoints;
+    const card = giveCard(engine.players[0], 'printer');
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(card.revealed, true);
+    assert.equal(engine.players[0].victoryPoints, before + 1);
+  });
+
+  it('Smith: should promote 2 knights for free', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.politics = 1;
+    const v1 = emptyVertex(engine);
+    const v2 = emptyVertex(engine, v => v.id !== v1.id && !v.adjacentVertices.includes(v1.id));
+    plantKnight(engine, 'p1', v1.id);
+    plantKnight(engine, 'p1', v2.id);
+    engine.players[0].resources.ore = 0;
+    engine.players[0].resources.wheat = 0;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'smith').id, {
+      knightVertices: [v1.id, v2.id]
+    });
+    assert.equal(engine.grid.vertices.get(v1.id).knight.rank, 'strong');
+    assert.equal(engine.grid.vertices.get(v2.id).knight.rank, 'strong');
+    assert.equal(engine.players[0].resources.ore, 0);
+    assert.equal(engine.players[0].resources.wheat, 0);
+  });
+});
+
