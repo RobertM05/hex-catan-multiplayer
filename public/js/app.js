@@ -127,6 +127,7 @@ class CatanApp {
       const current = i18n.getLang();
       btnEn.classList.toggle('active', current === 'en');
       btnRo.classList.toggle('active', current === 'ro');
+      document.documentElement.lang = current;
     };
 
     btnEn.addEventListener('click', () => {
@@ -1299,7 +1300,7 @@ class CatanApp {
       const giveName = this.cardLabel(this.bankTrade.give);
       const recName = this.cardLabel(this.bankTrade.receive);
 
-      if (ratioTextEl) ratioTextEl.textContent = `Rată: ${ratio}:1`;
+      if (ratioTextEl) ratioTextEl.textContent = i18n.t('BANK_RATE_VALUE', { ratio });
       if (ratioDescEl) {
         if (ratio === 2) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
         else if (ratio === 3) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_3');
