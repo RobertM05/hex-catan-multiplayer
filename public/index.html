@@ -188,6 +188,7 @@
 
       <!-- Left HUD (Turn Status, Dice, Building Desk) -->
       <aside class="hud-left">
+        <div class="hud-left-status">
         <div class="turn-banner">
           <div class="turn-title"><span data-i18n="ROUND_LABEL">Runda</span> <span id="round-number-display">1</span></div>
           <div id="turn-commander-name" class="turn-commander">---</div>
@@ -254,8 +255,10 @@
             </button>
           </div>
         </div>
+        </div>
 
         <!-- Building Actions List -->
+        <div class="hud-left-actions">
         <div class="build-actions-list">
           <!-- Road -->
           <button id="btn-build-road" class="btn-build-action">
@@ -358,13 +361,13 @@
         </div>
 
         <div id="knight-supply" class="ck-hud-widget knight-supply" aria-live="polite"></div>
-
-        <button id="btn-end-turn" class="btn-glass" style="margin-top: auto; padding: 12px; font-weight: 700;" data-i18n="ACTION_END_TURN">Încheie tura</button>
+        <button id="btn-end-turn" class="btn-glass btn-end-turn" data-i18n="ACTION_END_TURN">Încheie tura</button>
+        </div>
       </aside>
 
       <!-- Center Board Viewport -->
       <div class="board-viewport">
-        <div id="board-container" style="width: 100%; height: 100%;"></div>
+        <div id="board-container" class="board-container-fill"></div>
 
         <!-- Floating Pan & Zoom / Dynamic Action Hint -->
         <div class="board-hint" id="board-hint">
@@ -374,6 +377,9 @@
 
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
+          <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
+            <span class="ico" data-icon="chat"></span>
+          </button>
           <button id="btn-zoom-in" class="board-control-btn" title="Zoom In">
             <span class="ico" data-icon="plus"></span>
           </button>
@@ -480,7 +486,7 @@
       </footer>
 
       <!-- Right HUD (Opponents, Chronicles Log, Tavern Chat) -->
-      <aside class="hud-right">
+      <aside id="hud-right-panel" class="hud-right">
         <div id="opponents-list" class="opponents-section"></div>
 
         <div class="sidebar-tabs">
@@ -505,6 +511,7 @@
           </form>
         </div>
       </aside>
+      <div id="hud-sidebar-backdrop" class="hud-sidebar-backdrop" hidden></div>
 
     </div>
   </section>

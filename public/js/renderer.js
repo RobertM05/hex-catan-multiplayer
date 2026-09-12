@@ -39,6 +39,8 @@ export class BoardRenderer {
     this.viewBox = { x: -400, y: -350, width: 800, height: 700 };
     this.isPanning = false;
     this.startPoint = { x: 0, y: 0 };
+    this.pointers = new Map();
+    this.pinchStart = null;
 
     this.initSVG();
   }
@@ -130,46 +132,94 @@ export class BoardRenderer {
   }
 
   attachPanZoomEvents() {
-    // Mouse drag pan
-    this.svg.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      // If clicking interactive vertex/edge or robber-target hex, don't initiate pan
-      if (e.target.classList.contains('interactive-node') || e.target.classList.contains('interactive-edge')) return;
-      if (e.target.closest('.hex-robber-target')) return;
-      this.isPanning = true;
-      this.startPoint = { x: e.clientX, y: e.clientY };
+    const isInteractiveTarget = (target) => {
+      if (!target || !target.classList) return false;
+      return target.classList.contains('interactive-node')
+        || target.classList.contains('interactive-edge')
+        || (typeof target.closest === 'function' && target.closest('.hex-robber-target'));
+    };
+
+    this.svg.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { this.svg.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+
+      if (this.pointers.size === 2) {
+        this.isPanning = false;
+        const pts = [...this.pointers.values()];
+        this.pinchStart = {
+          dist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+          width: this.viewBox.width,
+          height: this.viewBox.height,
+          cx: (pts[0].x + pts[1].x) / 2,
+          cy: (pts[0].y + pts[1].y) / 2
+        };
+        return;
+      }
+
+      if (this.pointers.size === 1 && !isInteractiveTarget(e.target)) {
+        this.isPanning = true;
+        this.startPoint = { x: e.clientX, y: e.clientY };
+      }
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (!this.isPanning) return;
-      const dx = (e.clientX - this.startPoint.x) * (this.viewBox.width / this.svg.clientWidth);
-      const dy = (e.clientY - this.startPoint.y) * (this.viewBox.height / this.svg.clientHeight);
-      this.viewBox.x -= dx;
-      this.viewBox.y -= dy;
-      this.startPoint = { x: e.clientX, y: e.clientY };
-      this.updateViewBox();
-    });
+    this.svg.addEventListener('pointermove', (e) => {
+      if (!this.pointers.has(e.pointerId)) return;
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    window.addEventListener('mouseup', () => {
-      this.isPanning = false;
-    });
+      if (this.pointers.size >= 2 && this.pinchStart && this.pinchStart.dist >= 8) {
+        e.preventDefault();
+        const pts = [...this.pointers.values()];
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const factor = this.pinchStart.dist / dist;
+        const newWidth = Math.max(300, Math.min(1800, this.pinchStart.width * factor));
+        const newHeight = Math.max(260, Math.min(1500, this.pinchStart.height * factor));
+        this.applyZoomAtClient(this.pinchStart.cx, this.pinchStart.cy, newWidth, newHeight);
+        return;
+      }
 
-    // Wheel zoom
+      if (this.isPanning && this.pointers.size === 1) {
+        const dx = (e.clientX - this.startPoint.x) * (this.viewBox.width / this.svg.clientWidth);
+        const dy = (e.clientY - this.startPoint.y) * (this.viewBox.height / this.svg.clientHeight);
+        this.viewBox.x -= dx;
+        this.viewBox.y -= dy;
+        this.startPoint = { x: e.clientX, y: e.clientY };
+        this.updateViewBox();
+      }
+    }, { passive: false });
+
+    const endPointer = (e) => {
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size < 2) this.pinchStart = null;
+      if (this.pointers.size === 0) this.isPanning = false;
+    };
+    this.svg.addEventListener('pointerup', endPointer);
+    this.svg.addEventListener('pointercancel', endPointer);
+    this.svg.addEventListener('lostpointercapture', endPointer);
+
     this.svg.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-      const mouseSvgX = this.viewBox.x + (e.offsetX / this.svg.clientWidth) * this.viewBox.width;
-      const mouseSvgY = this.viewBox.y + (e.offsetY / this.svg.clientHeight) * this.viewBox.height;
-
       const newWidth = Math.max(300, Math.min(1800, this.viewBox.width * zoomFactor));
       const newHeight = Math.max(260, Math.min(1500, this.viewBox.height * zoomFactor));
-
-      this.viewBox.x = mouseSvgX - (e.offsetX / this.svg.clientWidth) * newWidth;
-      this.viewBox.y = mouseSvgY - (e.offsetY / this.svg.clientHeight) * newHeight;
-      this.viewBox.width = newWidth;
-      this.viewBox.height = newHeight;
-      this.updateViewBox();
+      const rect = this.svg.getBoundingClientRect();
+      this.applyZoomAtClient(rect.left + e.offsetX, rect.top + e.offsetY, newWidth, newHeight);
     }, { passive: false });
+  }
+
+  applyZoomAtClient(clientX, clientY, newWidth, newHeight) {
+    const rect = this.svg.getBoundingClientRect();
+    const offsetX = clientX - rect.left;
+    const offsetY = clientY - rect.top;
+    const w = Math.max(1, this.svg.clientWidth);
+    const h = Math.max(1, this.svg.clientHeight);
+    const svgX = this.viewBox.x + (offsetX / w) * this.viewBox.width;
+    const svgY = this.viewBox.y + (offsetY / h) * this.viewBox.height;
+    this.viewBox.x = svgX - (offsetX / w) * newWidth;
+    this.viewBox.y = svgY - (offsetY / h) * newHeight;
+    this.viewBox.width = newWidth;
+    this.viewBox.height = newHeight;
+    this.updateViewBox();
   }
 
   updateViewBox() {

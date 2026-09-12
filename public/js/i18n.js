@@ -13,6 +13,7 @@ export const TRANSLATIONS = {
     SOUND_TOGGLE: "Sound",
     RULES_BUTTON: "Game Rules",
     LEAVE_ROOM: "Leave Room",
+    TOGGLE_SIDEBAR: "Players & chat",
 
     // Lobby
     LOBBY_TITLE: "Multiplayer Lobby",
@@ -409,6 +410,7 @@ export const TRANSLATIONS = {
     SOUND_TOGGLE: "Sunet",
     RULES_BUTTON: "Reguli joc",
     LEAVE_ROOM: "Părăsește camera",
+    TOGGLE_SIDEBAR: "Jucători și chat",
 
     // Lobby
     LOBBY_TITLE: "Lobby Multiplayer",
