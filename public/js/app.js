@@ -1307,6 +1307,14 @@ class CatanApp {
     document.getElementById('btn-open-trade').addEventListener('click', () => {
       resetTradeSteppers();
       this.renderBankTradeUI();
+      const isMyTurn = this.gameState && this.gameState.currentPlayerId === this.myPlayerId;
+      const isActionPhase = this.gameState && this.gameState.phase === 'TURN_ACTION';
+      const canTrade = isMyTurn && isActionPhase;
+      const proposeBtn = document.getElementById('btn-submit-propose-trade');
+      if (proposeBtn) {
+        proposeBtn.disabled = !canTrade;
+        proposeBtn.textContent = canTrade ? i18n.t('PROPOSE_TRADE_BTN') : i18n.t('TRADE_ONLY_ON_YOUR_TURN');
+      }
       if (tabPlayer && tabBank && sectionPlayer && sectionBank) {
         tabPlayer.classList.add('active');
         tabBank.classList.remove('active');
@@ -1375,6 +1383,12 @@ class CatanApp {
     // Propose Trade
     document.getElementById('form-propose-trade').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const isMyTurn = this.gameState && this.gameState.currentPlayerId === this.myPlayerId;
+      const isActionPhase = this.gameState && this.gameState.phase === 'TURN_ACTION';
+      if (!isMyTurn || !isActionPhase) {
+        this.showToast(i18n.t('ERROR_NOT_YOUR_TURN'), true);
+        return;
+      }
       const give = {};
       const want = {};
       for (const res of this.getHandCardTypes()) {
@@ -1733,9 +1747,17 @@ class CatanApp {
     // Active Domestic Trade Banner
     this.renderActiveTradeBanner(s.activeTrade);
 
-    // Refresh Bank Trade UI if modal is active
+    // Refresh Trade Modal state if modal is active
     const tradeModal = document.getElementById('trade-modal');
     if (tradeModal && tradeModal.classList.contains('active')) {
+      const isMyTurn = s.currentPlayerId === this.myPlayerId;
+      const isActionPhase = s.phase === 'TURN_ACTION';
+      const canTrade = isMyTurn && isActionPhase;
+      const proposeBtn = document.getElementById('btn-submit-propose-trade');
+      if (proposeBtn) {
+        proposeBtn.disabled = !canTrade;
+        proposeBtn.textContent = canTrade ? i18n.t('PROPOSE_TRADE_BTN') : i18n.t('TRADE_ONLY_ON_YOUR_TURN');
+      }
       const tabBank = document.getElementById('tab-trade-bank');
       if (tabBank && tabBank.classList.contains('active')) {
         this.renderBankTradeUI();
@@ -1880,49 +1902,128 @@ class CatanApp {
     const isMine = activeTrade.fromPlayerId === this.myPlayerId;
     banner.style.display = 'flex';
 
-    // Notify receivers once per new incoming offer
+    const from = this.gameState ? this.gameState.players.find(p => p.id === activeTrade.fromPlayerId) : null;
+    const fromName = from ? from.name : '?';
+
+    // Notify receivers with chime & toast once per new incoming offer
     if (!isMine) {
       const key = `${activeTrade.fromPlayerId}:${JSON.stringify(activeTrade.give)}:${JSON.stringify(activeTrade.want)}`;
       if (key !== this.lastTradeKey) {
-        const from = this.gameState.players.find(p => p.id === activeTrade.fromPlayerId);
-        this.showToast(i18n.t('TRADE_OFFER_FROM', { name: from ? from.name : '?' }));
+        audio.playTrade();
+        this.showToast(i18n.t('TRADE_OFFER_FROM', { name: fromName }));
         this.lastTradeKey = key;
       }
     } else {
       this.lastTradeKey = null;
     }
 
-    const giveStr = Object.entries(activeTrade.give).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');
-    const wantStr = Object.entries(activeTrade.want).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');
+    // Helper to render resource/commodity chips
+    const renderChips = (cardObj) => {
+      const entries = Object.entries(cardObj || {}).filter(([_, c]) => c > 0);
+      if (entries.length === 0) return `<span style="font-size: 11px; color: var(--text-muted);">-</span>`;
+      return entries.map(([r, c]) => `
+        <span class="trade-chip res-${r}">
+          ${ico(r)}
+          <span>${c} ${this.cardLabel(r)}</span>
+        </span>
+      `).join('');
+    };
 
-    // Build accepted-by confirm buttons for the trade initiator
+    const giveChips = renderChips(activeTrade.give);
+    const wantChips = renderChips(activeTrade.want);
+
+    // Build accepted-by confirm buttons for trade initiator
     const acceptedPlayers = (activeTrade.acceptedBy || []).map(pid =>
-      this.gameState.players.find(p => p.id === pid)
+      this.gameState ? this.gameState.players.find(p => p.id === pid) : null
     ).filter(Boolean);
 
-    let confirmButtonsHTML = '';
-    if (isMine && acceptedPlayers.length > 0) {
-      confirmButtonsHTML = acceptedPlayers.map(p =>
-        `<button class="btn-glass btn-primary btn-confirm-trade" data-pid="${p.id}" style="background: linear-gradient(135deg, #2d6a4f, #40916c);">✅ ${i18n.t('CONFIRM_WITH')||'Confirm with'} ${p.name}</button>`
-      ).join('');
+    let contentHTML = '';
+
+    if (isMine) {
+      // Initiator perspective
+      let confirmButtonsHTML = '';
+      if (acceptedPlayers.length > 0) {
+        confirmButtonsHTML = acceptedPlayers.map(p =>
+          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${p.name}</button>`
+        ).join('');
+      }
+
+      contentHTML = `
+        <div class="trade-banner-body">
+          <div class="trade-banner-header">
+            <span>🤝</span>
+            <span>${i18n.t('TRADE_YOUR_OFFER')}</span>
+          </div>
+          <div class="trade-banner-exchange">
+            <div class="trade-exchange-side">
+              <span class="trade-side-label" style="color: #f87171;">${i18n.t('TRADE_GIVE_LABEL')}:</span>
+              <div class="trade-chips-list">${giveChips}</div>
+            </div>
+            <span class="trade-arrow">&rarr;</span>
+            <div class="trade-exchange-side">
+              <span class="trade-side-label" style="color: #34d399;">${i18n.t('TRADE_RECEIVE_LABEL')}:</span>
+              <div class="trade-chips-list">${wantChips}</div>
+            </div>
+          </div>
+          ${acceptedPlayers.length > 0
+            ? `<div class="trade-status-badge">✔ ${acceptedPlayers.map(p => p.name).join(', ')} a acceptat!</div>`
+            : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
+          }
+        </div>
+        <div class="trade-banner-actions">
+          ${confirmButtonsHTML}
+          <button class="btn-glass btn-secondary btn-cancel-trade">${i18n.t('CANCEL_ACTION')}</button>
+        </div>
+      `;
+    } else {
+      // Receiver perspective
+      const hasAccepted = (activeTrade.acceptedBy || []).includes(this.myPlayerId);
+      const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
+      const canAfford = me ? Object.entries(activeTrade.want).every(([res, amt]) => this.getCardCount(me, res) >= amt) : true;
+
+      let actionButtonsHTML = '';
+      if (hasAccepted) {
+        actionButtonsHTML = `
+          <span class="trade-status-badge">✔ ${i18n.t('TRADE_YOU_ACCEPTED')}</span>
+          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('TRADE_RETRACT')}</button>
+        `;
+      } else if (canAfford) {
+        actionButtonsHTML = `
+          <button class="btn-glass btn-trade-accept btn-accept-trade">${i18n.t('ACCEPT_TRADE_BTN')}</button>
+          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
+        `;
+      } else {
+        actionButtonsHTML = `
+          <button class="btn-glass btn-trade-disabled" disabled title="${i18n.t('TRADE_NOT_ENOUGH_CARDS')}">${i18n.t('TRADE_NOT_ENOUGH_CARDS')}</button>
+          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
+        `;
+      }
+
+      contentHTML = `
+        <div class="trade-banner-body">
+          <div class="trade-banner-header">
+            <span>🤝</span>
+            <span>${i18n.t('TRADE_OFFER_FROM', { name: fromName })}</span>
+          </div>
+          <div class="trade-banner-exchange">
+            <div class="trade-exchange-side">
+              <span class="trade-side-label" style="color: #34d399;">${i18n.t('TRADE_RECEIVE_LABEL')}:</span>
+              <div class="trade-chips-list">${giveChips}</div>
+            </div>
+            <span class="trade-arrow">&larr;</span>
+            <div class="trade-exchange-side">
+              <span class="trade-side-label" style="color: #f87171;">${i18n.t('TRADE_GIVE_LABEL')}:</span>
+              <div class="trade-chips-list">${wantChips}</div>
+            </div>
+          </div>
+        </div>
+        <div class="trade-banner-actions">
+          ${actionButtonsHTML}
+        </div>
+      `;
     }
 
-    banner.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 2px;">
-        <span style="font-weight: 700; color: var(--gold-primary);">${i18n.t('ACTIVE_OFFER')}</span>
-        <span style="font-size: 13px;">${giveStr} &rarr; ${wantStr}</span>
-        ${isMine && acceptedPlayers.length > 0 ? `<span style="font-size: 12px; color: #52b788;">✔ ${acceptedPlayers.map(p => p.name).join(', ')} accepted</span>` : ''}
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        ${!isMine ? `
-          <button class="btn-glass btn-primary btn-accept-trade">${i18n.t('ACCEPT_TRADE_BTN')}</button>
-          <button class="btn-glass btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
-        ` : `
-          ${confirmButtonsHTML}
-          <button class="btn-glass btn-cancel-trade">${i18n.t('CANCEL_ACTION')}</button>
-        `}
-      </div>
-    `;
+    banner.innerHTML = contentHTML;
 
     // Confirm trade buttons (initiator picks which accepted player to trade with)
     banner.querySelectorAll('.btn-confirm-trade').forEach(btn => {

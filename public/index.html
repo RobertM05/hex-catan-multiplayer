@@ -475,7 +475,7 @@
    * ========================================================= -->
 
   <!-- Active Domestic Trade Banner (viewport level, above the board) -->
-  <div id="active-trade-banner" style="display: none; position: fixed; top: 72px; left: 50%; transform: translateX(-50%); background: var(--bg-surface-elevated); border: 1px solid var(--border-focus); border-radius: 10px; padding: 10px 18px; box-shadow: var(--shadow-lg); z-index: 950; align-items: center; gap: 16px; max-width: 94%;"></div>
+  <div id="active-trade-banner" style="display: none;"></div>
 
   <!-- Trade Modal -->
   <div id="trade-modal" class="modal-overlay">
@@ -724,7 +724,7 @@
 
           <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
             <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Anulează</button>
-            <button type="submit" class="btn-glass btn-primary" data-i18n="PROPOSE_TRADE_BTN">Propune schimb</button>
+            <button type="submit" id="btn-submit-propose-trade" class="btn-glass btn-primary" data-i18n="PROPOSE_TRADE_BTN">Propune schimb</button>
           </div>
         </form>
       </div>
