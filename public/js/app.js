@@ -489,6 +489,14 @@ class CatanApp {
       }
     });
 
+    document.getElementById('btn-place-knight')?.addEventListener('click', () => {
+      if (this.selectedAction && this.selectedAction.type === 'knight') {
+        this.clearActiveAction();
+      } else {
+        this.activatePlaceKnight();
+      }
+    });
+
     // Buy Dev Card
     document.getElementById('btn-buy-dev-card').addEventListener('click', async () => {
       try {
@@ -667,6 +675,16 @@ class CatanApp {
           await network.sendAction('choose_metropolis', { vertexId });
           audio.playBuild();
           this.clearActiveAction();
+        } else if (this.selectedAction && this.selectedAction.type === 'knight') {
+          await network.sendAction('place_knight', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
+        } else if (this.selectedAction && this.selectedAction.type === 'move_knight') {
+          await this.confirmAndMoveKnight(this.selectedAction.fromVertexId, vertexId);
+        } else if (this.gameState.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' || (this.selectedAction && this.selectedAction.type === 'relocate_knight')) {
+          await network.sendAction('relocate_displaced_knight', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -703,17 +721,36 @@ class CatanApp {
         this.onProgressHexPicked(hexId);
         return;
       }
+      if (this.selectedAction && this.selectedAction.type === 'chase_robber') {
+        this.openRobberTargetModal(hexId, { chaseFrom: this.selectedAction.fromVertexId });
+        return;
+      }
       if (this.gameState && this.gameState.phase === 'TURN_ROBBER') {
         this.openRobberTargetModal(hexId);
       }
     };
+
+    this.boardRenderer.onKnightClick = (vertexId, knight, evt) => {
+      if (!this.gameState || this.gameState.phase !== 'TURN_ACTION') return;
+      const cur = this.gameState.players[this.gameState.currentTurnPlayerIndex];
+      if (!cur || cur.id !== this.myPlayerId) return;
+      evt?.stopPropagation();
+      setTimeout(() => this.openKnightActionMenu(vertexId, knight, evt), 0);
+    };
+
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('knight-action-menu');
+      if (!menu || menu.hidden) return;
+      if (menu.contains(e.target)) return;
+      this.closeKnightActionMenu();
+    });
   }
 
   clearActiveAction() {
     this.selectedAction = null;
     document.querySelectorAll('.btn-build-action').forEach(b => b.classList.remove('btn-primary'));
     if (this.gameState && this.gameState.grid) {
-      this.boardRenderer.render(this.gameState.grid, null);
+      this.boardRenderer.render(this.gameState.grid, null, null, this.gameState.players);
     }
     this.updateBoardHint();
   }
@@ -796,7 +833,7 @@ class CatanApp {
 
     this.selectedAction = { type: 'city', validIds };
     document.getElementById('btn-build-city').classList.add('btn-primary');
-    this.boardRenderer.render(this.gameState.grid, this.selectedAction);
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction, null, this.gameState.players);
     this.updateBoardHint();
   }
 
@@ -812,6 +849,202 @@ class CatanApp {
     document.getElementById('btn-build-city-wall')?.classList.add('btn-primary');
     this.boardRenderer.render(this.gameState.grid, this.selectedAction);
     this.updateBoardHint();
+  }
+
+  vertexHasOwnRoad(vertex) {
+    return (vertex.adjacentEdges || []).some(eId => {
+      const edge = this.gameState.grid.edges[eId];
+      return edge && edge.road && edge.road.playerId === this.myPlayerId;
+    });
+  }
+
+  verticesShareOwnRoad(fromId, toId) {
+    const from = this.gameState.grid.vertices[fromId];
+    if (!from) return false;
+    return (from.adjacentEdges || []).some(eId => {
+      const edge = this.gameState.grid.edges[eId];
+      if (!edge?.road || edge.road.playerId !== this.myPlayerId) return false;
+      return edge.v1 === toId || edge.v2 === toId;
+    });
+  }
+
+  distanceClear(vertexId, ignore = []) {
+    const v = this.gameState.grid.vertices[vertexId];
+    if (!v) return false;
+    return (v.adjacentVertices || []).every(adjId => {
+      if (ignore.includes(adjId)) return true;
+      const adj = this.gameState.grid.vertices[adjId];
+      return !adj?.building;
+    });
+  }
+
+  collectKnightPlaceTargets() {
+    const validIds = new Set();
+    Object.values(this.gameState.grid.vertices).forEach(v => {
+      if (v.building || v.knight) return;
+      if (!this.distanceClear(v.id)) return;
+      if (!this.vertexHasOwnRoad(v)) return;
+      validIds.add(v.id);
+    });
+    return validIds;
+  }
+
+  collectKnightMoveTargets(fromVertexId, strength) {
+    const validIds = new Set();
+    const visited = new Set([fromVertexId]);
+    const queue = [fromVertexId];
+    while (queue.length) {
+      const cur = queue.shift();
+      const vertex = this.gameState.grid.vertices[cur];
+      if (!vertex) continue;
+      for (const adjId of vertex.adjacentVertices || []) {
+        if (!this.verticesShareOwnRoad(cur, adjId)) continue;
+        if (visited.has(adjId)) continue;
+        visited.add(adjId);
+        const dest = this.gameState.grid.vertices[adjId];
+        if (!dest || dest.building) continue;
+        if (dest.knight) {
+          if (dest.knight.playerId !== this.myPlayerId && dest.knight.strength < strength) {
+            validIds.add(adjId);
+          }
+          continue;
+        }
+        if (this.distanceClear(adjId, [fromVertexId])) validIds.add(adjId);
+        queue.push(adjId);
+      }
+    }
+    return validIds;
+  }
+
+  activatePlaceKnight() {
+    if (!this.isCitiesKnights() || !this.gameState?.grid) return;
+    const me = this.gameState.players.find(p => p.id === this.myPlayerId);
+    if ((me?.knightsAvailable?.basic || 0) <= 0) {
+      this.showToast(i18n.t('ERROR_NO_KNIGHTS_AVAILABLE'), true);
+      return;
+    }
+    const validIds = this.collectKnightPlaceTargets();
+    this.selectedAction = { type: 'knight', validIds };
+    document.getElementById('btn-place-knight')?.classList.add('btn-primary');
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction, null, this.gameState.players);
+    this.updateBoardHint();
+  }
+
+  activateMoveKnight(fromVertexId, knight) {
+    const validIds = this.collectKnightMoveTargets(fromVertexId, knight.strength || 1);
+    this.selectedAction = { type: 'move_knight', fromVertexId, validIds };
+    this.closeKnightActionMenu();
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction, null, this.gameState.players);
+    this.updateBoardHint();
+  }
+
+  activateChaseRobber(fromVertexId) {
+    this.selectedAction = { type: 'chase_robber', fromVertexId };
+    this.closeKnightActionMenu();
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction, null, this.gameState.players);
+    this.updateBoardHint();
+  }
+
+  closeKnightActionMenu() {
+    const menu = document.getElementById('knight-action-menu');
+    if (menu) menu.hidden = true;
+  }
+
+  openKnightActionMenu(vertexId, knight, evt) {
+    const me = this.gameState.players.find(p => p.id === this.myPlayerId);
+    if (!me || knight.playerId !== this.myPlayerId) return;
+    const isMyTurn = this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId;
+    if (!isMyTurn || this.gameState.phase !== 'TURN_ACTION') return;
+
+    const wheat = me.resources?.wheat || 0;
+    const ore = me.resources?.ore || 0;
+    const politics = me.cityImprovements?.politics || 0;
+    const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
+    const politicsNeeded = knight.rank === 'basic' ? 1 : 2;
+    const vertex = this.gameState.grid.vertices[vertexId];
+    const canChase = knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
+
+    const actions = [];
+    if (!knight.active) {
+      actions.push({
+        label: i18n.t('KNIGHT_ACTIVATE'),
+        disabled: wheat < 1,
+        run: async () => {
+          await network.sendAction('activate_knight', { vertexId });
+          audio.playBuild();
+        }
+      });
+    }
+    if (nextRank) {
+      actions.push({
+        label: i18n.t('KNIGHT_PROMOTE'),
+        disabled: wheat < 1 || ore < 1 || politics < politicsNeeded || (me.knightsAvailable?.[nextRank] || 0) <= 0,
+        run: async () => {
+          await network.sendAction('promote_knight', { vertexId });
+          audio.playBuild();
+        }
+      });
+    }
+    if (knight.active) {
+      actions.push({
+        label: i18n.t('KNIGHT_MOVE'),
+        disabled: false,
+        run: () => this.activateMoveKnight(vertexId, knight)
+      });
+      actions.push({
+        label: i18n.t('KNIGHT_CHASE_ROBBER'),
+        disabled: !canChase,
+        run: () => this.activateChaseRobber(vertexId)
+      });
+    }
+
+    const menu = document.getElementById('knight-action-menu');
+    if (!menu) return;
+    menu.innerHTML = actions.map((a, i) =>
+      `<button type="button" class="btn-glass knight-action-btn" data-i="${i}" ${a.disabled ? 'disabled' : ''}>${a.label}</button>`
+    ).join('');
+    menu.hidden = false;
+    const viewport = document.querySelector('.board-viewport');
+    const rect = viewport.getBoundingClientRect();
+    const x = evt?.clientX ? evt.clientX - rect.left : 24;
+    const y = evt?.clientY ? evt.clientY - rect.top : 24;
+    menu.style.left = `${Math.min(x, rect.width - 240)}px`;
+    menu.style.top = `${Math.min(y, rect.height - 180)}px`;
+    menu.querySelectorAll('.knight-action-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const action = actions[Number(btn.dataset.i)];
+        this.closeKnightActionMenu();
+        if (!action || action.disabled) return;
+        try {
+          await action.run();
+        } catch (err) {
+          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+        }
+      });
+    });
+  }
+
+  async confirmAndMoveKnight(fromVertexId, toVertexId) {
+    const dest = this.gameState.grid.vertices[toVertexId];
+    if (dest?.knight && dest.knight.playerId !== this.myPlayerId) {
+      const ok = window.confirm(i18n.t('KNIGHT_DISPLACE_CONFIRM'));
+      if (!ok) return;
+    }
+    try {
+      const res = await network.sendAction('move_knight', { fromVertexId, toVertexId });
+      audio.playBuild();
+      if (res?.displaced?.pending) {
+        this.showToast(i18n.t('KNIGHT_DISPLACE_WAIT'));
+      } else if (res?.displaced?.removed) {
+        this.showToast(i18n.t('KNIGHT_DISPLACED_REMOVED'));
+      } else if (res?.displaced?.vertexId) {
+        this.showToast(i18n.t('KNIGHT_DISPLACED_MOVED'));
+      }
+      this.clearActiveAction();
+    } catch (err) {
+      this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+    }
   }
 
   setupCkUi() {
@@ -847,6 +1080,28 @@ class CatanApp {
     this.renderProgressCardHand();
     this.notifyProgressDraws(s);
     this.checkProgressDiscardState();
+    this.renderKnightSupply(me, isActionPhase);
+  }
+
+  renderKnightSupply(me, isActionPhase) {
+    const el = document.getElementById('knight-supply');
+    const btn = document.getElementById('btn-place-knight');
+    if (!el) return;
+    if (!this.isCitiesKnights() || !me) {
+      el.textContent = '';
+      return;
+    }
+    const a = me.knightsAvailable || { basic: 0, strong: 0, mighty: 0 };
+    el.textContent = i18n.t('KNIGHT_SUPPLY', {
+      basic: a.basic ?? 0,
+      strong: a.strong ?? 0,
+      mighty: a.mighty ?? 0
+    });
+    if (btn) {
+      const canPlace = isActionPhase && (a.basic || 0) > 0 && (me.resources?.ore || 0) >= 1 && (me.resources?.wool || 0) >= 1;
+      btn.disabled = !canPlace;
+      btn.title = i18n.t('PLACE_KNIGHT_COST');
+    }
   }
 
   renderEventDie(s) {
@@ -1180,7 +1435,11 @@ class CatanApp {
     }
   }
 
-  openRobberTargetModal(hexId) {
+  openRobberTargetModal(hexId, options = {}) {
+    const chaseFrom = options.chaseFrom || null;
+    const sendMove = (targetPlayerId) => chaseFrom
+      ? network.sendAction('chase_robber', { vertexId: chaseFrom, hexId, targetPlayerId })
+      : network.sendAction('move_robber', { hexId, targetPlayerId });
     const modal = document.getElementById('robber-target-modal');
     const container = document.getElementById('robber-targets-list');
     container.innerHTML = '';
@@ -1201,10 +1460,10 @@ class CatanApp {
     }
 
     if (adjacentOpponentIds.size === 0) {
-      // No one adjacent to steal from, move robber immediately
-      network.sendAction('move_robber', { hexId, targetPlayerId: null });
+      sendMove(null);
       this.showToast(i18n.t('ROBBER_MOVED_NO_TARGETS') || 'Hoțul a fost mutat. Niciun adversar adiacent.');
       audio.playRobber();
+      if (chaseFrom) this.clearActiveAction();
       return;
     }
 
@@ -1219,10 +1478,10 @@ class CatanApp {
     const eligible = opponentsList.filter(item => item.cardCount > 0);
 
     if (eligible.length === 0) {
-      // Adjacent opponents all have 0 cards
-      network.sendAction('move_robber', { hexId, targetPlayerId: null });
+      sendMove(null);
       this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL') || 'Hoțul a fost mutat. Adversarii adiacenți nu au cărți în mână.');
       audio.playRobber();
+      if (chaseFrom) this.clearActiveAction();
       return;
     }
 
@@ -1246,8 +1505,9 @@ class CatanApp {
       item.querySelector('.btn-steal-card').addEventListener('click', async () => {
         modal.classList.remove('active');
         try {
-          const res = await network.sendAction('move_robber', { hexId, targetPlayerId: opponent.id });
+          const res = await sendMove(opponent.id);
           audio.playRobber();
+          if (chaseFrom) this.clearActiveAction();
           if (res && res.stolenResource) {
             const resName = i18n.t(`RES_${res.stolenResource.toUpperCase()}`);
             this.showToast(i18n.t('STOLE_RESOURCE_FROM', { resource: resName, player: opponent.name }), false);
@@ -2139,6 +2399,9 @@ class CatanApp {
     const s = this.gameState;
     if (!s) return;
 
+    this.boardRenderer.currentPlayerId = this.myPlayerId;
+    this.boardRenderer.gameStatePlayers = s.players;
+
     // Render SVG Board
     if (s.phase === 'SETUP_ROUND_1' || s.phase === 'SETUP_ROUND_2') {
       const curPlayer = s.players[s.currentTurnPlayerIndex];
@@ -2182,12 +2445,21 @@ class CatanApp {
       } else {
         this.boardRenderer.render(s.grid, null);
       }
+    } else if (s.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE') {
+      const pending = s.pendingKnightRelocation;
+      if (pending && pending.playerId === this.myPlayerId) {
+        const validIds = new Set(pending.options || []);
+        this.selectedAction = { type: 'relocate_knight', validIds };
+        this.boardRenderer.render(s.grid, { type: 'relocate_knight', validIds }, null, s.players);
+      } else {
+        this.boardRenderer.render(s.grid, null, null, s.players);
+      }
     } else if (s.phase === 'TURN_ROBBER' && s.players[s.currentTurnPlayerIndex].id === this.myPlayerId) {
       // Robber target highlight
       this.boardRenderer.render(s.grid, { type: 'robber' });
     } else {
       const rollSum = (s.dice && s.dice.length === 2 && s.hasRolledDice) ? s.dice[0] + s.dice[1] : null;
-      this.boardRenderer.render(s.grid, this.selectedAction, rollSum);
+      this.boardRenderer.render(s.grid, this.selectedAction, rollSum, s.players);
     }
 
     // Check discard modal
@@ -2384,6 +2656,15 @@ class CatanApp {
       } else if (chooser) {
         hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
       }
+    } else if (s.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE') {
+      const pending = s.pendingKnightRelocation;
+      const chooser = pending && s.players.find(p => p.id === pending.playerId);
+      if (pending && pending.playerId === this.myPlayerId) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_KNIGHT_RELOCATE');
+      } else if (chooser) {
+        hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
+      }
     } else if (s.phase === 'TURN_ROLL') {
       isActionable = isMyTurn;
       hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
@@ -2403,6 +2684,15 @@ class CatanApp {
         } else if (this.selectedAction && this.selectedAction.type === 'wall') {
           isActionable = true;
           hintText = i18n.t('ACTION_HINT_BUILD_WALL');
+        } else if (this.selectedAction && this.selectedAction.type === 'knight') {
+          isActionable = true;
+          hintText = i18n.t('ACTION_HINT_PLACE_KNIGHT');
+        } else if (this.selectedAction && this.selectedAction.type === 'move_knight') {
+          isActionable = true;
+          hintText = i18n.t('ACTION_HINT_MOVE_KNIGHT');
+        } else if (this.selectedAction && this.selectedAction.type === 'chase_robber') {
+          isActionable = true;
+          hintText = i18n.t('ACTION_HINT_CHASE_ROBBER');
         } else {
           hintText = i18n.t('STATUS_YOUR_ACTION');
         }

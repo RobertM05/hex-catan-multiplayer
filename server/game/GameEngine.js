@@ -86,6 +86,7 @@ export const GAME_PHASES = {
   TURN_BARBARIAN_RESOLVE: 'TURN_BARBARIAN_RESOLVE',
   TURN_BARBARIAN_DOWNGRADE: 'TURN_BARBARIAN_DOWNGRADE',
   TURN_CHOOSE_METROPOLIS: 'TURN_CHOOSE_METROPOLIS',
+  TURN_CHOOSE_KNIGHT_RELOCATE: 'TURN_CHOOSE_KNIGHT_RELOCATE',
   GAME_OVER: 'GAME_OVER'
 };
 
@@ -155,6 +156,7 @@ export class GameEngine {
     this.alchemistDice = null;
     this.metropolises = { trade: null, politics: null, science: null };
     this.pendingMetropolisChoice = null;
+    this.pendingKnightRelocation = null;
     this.previousPhase = null;
 
     // Discard tracking for 7-roll
@@ -1376,17 +1378,22 @@ export class GameEngine {
     if (vertex && vertex.knight === knight) vertex.knight = null;
   }
 
-  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
+  listKnightRelocations(playerId, fromVertexId, extraIgnore = []) {
     const from = this.grid.vertices.get(fromVertexId);
-    if (!from) return null;
+    if (!from) return [];
+    const options = [];
     for (const adjId of from.adjacentVertices) {
       const dest = this.grid.vertices.get(adjId);
       if (!dest || dest.building || dest.knight) continue;
       if (!this.verticesSharePlayerRoad(fromVertexId, adjId, playerId)) continue;
       if (this.violatesDistanceRule(adjId, [fromVertexId, ...extraIgnore])) continue;
-      return adjId;
+      options.push(adjId);
     }
-    return null;
+    return options;
+  }
+
+  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
+    return this.listKnightRelocations(playerId, fromVertexId, extraIgnore)[0] || null;
   }
 
   placeKnight(playerId, vertexId) {
@@ -1505,18 +1512,74 @@ export class GameEngine {
 
   displaceKnight(victimKnight, fromVertexId, attackerFromId) {
     const owner = this.players.find(p => p.id === victimKnight.playerId);
-    const relocateTo = owner
-      ? this.findKnightRelocation(owner.id, fromVertexId, [attackerFromId])
-      : null;
-    if (relocateTo) {
-      const dest = this.grid.vertices.get(relocateTo);
-      victimKnight.vertexId = relocateTo;
-      victimKnight.active = false;
-      dest.knight = victimKnight;
-      return { playerId: victimKnight.playerId, vertexId: relocateTo, removed: false };
+    const vacated = this.grid.vertices.get(fromVertexId);
+    if (vacated && vacated.knight === victimKnight) vacated.knight = null;
+
+    victimKnight.active = false;
+    victimKnight.vertexId = null;
+
+    const options = owner
+      ? this.listKnightRelocations(owner.id, fromVertexId, [attackerFromId])
+      : [];
+
+    if (!owner || options.length === 0) {
+      if (owner) this.returnKnightToSupply(owner, victimKnight);
+      return { playerId: victimKnight.playerId, vertexId: null, removed: true, pending: false, options: [] };
     }
-    if (owner) this.returnKnightToSupply(owner, victimKnight);
-    return { playerId: victimKnight.playerId, vertexId: null, removed: true };
+
+    this.pendingKnightRelocation = {
+      playerId: owner.id,
+      options,
+      fromVertexId,
+      attackerFromId
+    };
+    this.previousPhase = this.phase;
+    this.phase = GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE;
+    return { playerId: owner.id, vertexId: null, removed: false, pending: true, options };
+  }
+
+  relocateDisplacedKnight(playerId, vertexId) {
+    if (this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) throw new Error('NOT_IN_KNIGHT_RELOCATE_PHASE');
+    const pending = this.pendingKnightRelocation;
+    if (!pending || pending.playerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
+    if (!pending.options.includes(vertexId)) throw new Error('INVALID_RELOCATION');
+
+    const owner = this.players.find(p => p.id === playerId);
+    const knight = owner?.knightsPlaced.find(k => k.vertexId == null);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+
+    const dest = this.grid.vertices.get(vertexId);
+    if (!dest || dest.building || dest.knight) throw new Error('VERTEX_OCCUPIED');
+
+    knight.vertexId = vertexId;
+    knight.active = false;
+    dest.knight = knight;
+
+    this.pendingKnightRelocation = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+
+    this.logEvent({
+      type: 'KNIGHT_RELOCATED',
+      messageKey: 'LOG_KNIGHT_RELOCATED',
+      args: { playerName: owner.name }
+    });
+    return { vertexId };
+  }
+
+  autoResolveKnightRelocation() {
+    const pending = this.pendingKnightRelocation;
+    if (!pending || this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) return;
+    if (pending.options[0]) {
+      this.relocateDisplacedKnight(pending.playerId, pending.options[0]);
+      return;
+    }
+    const owner = this.players.find(p => p.id === pending.playerId);
+    const knight = owner?.knightsPlaced.find(k => k.vertexId == null);
+    if (owner && knight) this.returnKnightToSupply(owner, knight);
+    this.pendingKnightRelocation = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
@@ -2563,6 +2626,7 @@ export class GameEngine {
       pendingProgressDiscard: Array.from(this.pendingProgressDiscard),
       metropolises: this.metropolises,
       pendingMetropolisChoice: this.pendingMetropolisChoice,
+      pendingKnightRelocation: this.pendingKnightRelocation,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
