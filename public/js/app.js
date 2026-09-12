@@ -231,6 +231,7 @@ class CatanApp {
   setupRulesModal() {
     const modal = document.getElementById('rules-modal');
     document.getElementById('btn-rules')?.addEventListener('click', () => {
+      this.syncRulesModal(this.resolveRulesMode());
       modal?.classList.add('active');
     });
     document.getElementById('btn-close-rules')?.addEventListener('click', () => {
@@ -246,6 +247,39 @@ class CatanApp {
         window.location.reload();
       });
     }
+
+    document.getElementById('create-game-mode')?.addEventListener('change', (e) => {
+      this.syncRulesModal(e.target.value);
+    });
+    this.syncRulesModal(this.resolveRulesMode());
+  }
+
+  resolveRulesMode() {
+    if (this.gameState?.mode) return this.gameState.mode;
+    if (this.currentRoom?.mode) return this.currentRoom.mode;
+    return document.getElementById('create-game-mode')?.value || 'base';
+  }
+
+  syncRulesModal(mode) {
+    const ck = mode === 'cities_knights' || mode === 'advanced';
+    document.getElementById('rules-copy-base')?.classList.toggle('is-hidden', ck);
+    document.getElementById('rules-copy-ck')?.classList.toggle('is-hidden', !ck);
+  }
+
+  playerTitleStatsHtml(s, p) {
+    const roadLen = p.roadLength || p.longestRoadLength || 0;
+    const holdsRoad = s.longestRoadHolder?.playerId === p.id;
+    const holdsArmy = !this.isCitiesKnights() && s.largestArmyHolder?.playerId === p.id;
+    const defenderCount = p.defenderCards || 0;
+    const holdsDefender = this.isCitiesKnights() && (defenderCount > 0 || s.defenderOfCatan === p.id);
+    let html = `<span class="opponent-stat opponent-road${holdsRoad ? ' is-title' : ''}" title="${holdsRoad ? i18n.t('LONGEST_ROAD_TITLE') : i18n.t('ROAD_LENGTH_ABBR')}">${ico('path', 'ico-opp')} ${roadLen}</span>`;
+    if (!this.isCitiesKnights()) {
+      html += `<span class="opponent-stat opponent-army${holdsArmy ? ' is-title' : ''}" title="${holdsArmy ? i18n.t('LARGEST_ARMY_TITLE') : i18n.t('ARMY_SIZE_ABBR')}">${ico('cards', 'ico-opp')} ${p.playedKnights || 0}</span>`;
+    } else if (holdsDefender) {
+      const defenderLabel = defenderCount > 0 ? `${defenderCount}` : i18n.t('DEFENDER_ABBR');
+      html += `<span class="opponent-stat opponent-defender is-title" title="${i18n.t('DEFENDER_TITLE')}">${ico('trophy', 'ico-opp')} ${defenderLabel}</span>`;
+    }
+    return html;
   }
 
   setupModalAccessibility() {
@@ -453,6 +487,7 @@ class CatanApp {
 
   renderWaitingRoom(lobbyData) {
     this.currentRoom = lobbyData;
+    this.syncRulesModal(lobbyData.mode);
     const slotsContainer = document.getElementById('waiting-slots-grid');
     slotsContainer.innerHTML = '';
 
@@ -2556,6 +2591,7 @@ class CatanApp {
     network.onStateUpdate = (payload) => {
       this.gameState = payload.state;
       this.currentRoom = payload.room;
+      this.syncRulesModal(payload.state?.mode);
       this.renderGameState();
     };
 
@@ -2778,6 +2814,7 @@ class CatanApp {
               ${cardCount}
             </span>
             <span class="opponent-vp-badge">${p.victoryPoints} ${i18n.t('VICTORY_POINTS_ABBR')}</span>
+            ${this.playerTitleStatsHtml(s, p)}
           </div>
         </div>
         ${this.opponentRevealedProgressHtml(p)}
