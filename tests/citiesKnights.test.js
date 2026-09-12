@@ -752,3 +752,126 @@ describe('PR #22 review follow-up', () => {
     assert.equal(engine.players[0].settlementsBuilt.includes(cityId), false);
   });
 });
+
+describe('CK-08: City Walls', () => {
+  function cityReady(engine) {
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    engine.players[0].resources.brick = 6;
+    return cityId;
+  }
+
+  it('should build a city wall for 2 brick', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.buildCityWall('p1', cityId);
+    assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+    assert.equal(engine.players[0].resources.brick, 4);
+    assert.equal(engine.players[0].cityWalls, 2);
+  });
+
+  it('should reject building wall on settlement (not city)', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'settlement');
+    const vid = engine.players[0].settlementsBuilt[0];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 2;
+    assert.throws(() => engine.buildCityWall('p1', vid), /WALLS_ONLY_ON_CITIES/);
+  });
+
+  it('should reject building wall on opponent city', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[1].citiesBuilt[0];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 2;
+    assert.throws(() => engine.buildCityWall('p1', cityId), /NOT_YOUR_CITY/);
+  });
+
+  it('should reject building second wall on same city', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.buildCityWall('p1', cityId);
+    assert.throws(() => engine.buildCityWall('p1', cityId), /CITY_ALREADY_HAS_WALL/);
+  });
+
+  it('should reject building when no walls remaining (max 3)', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.players[0].cityWalls = 0;
+    assert.throws(() => engine.buildCityWall('p1', cityId), /NO_WALLS_REMAINING/);
+  });
+
+  it('should reject building without enough brick', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.players[0].resources.brick = 1;
+    assert.throws(() => engine.buildCityWall('p1', cityId), /NOT_ENOUGH_RESOURCES/);
+  });
+
+  it('should increase discard threshold by 2 per wall', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 7);
+    engine.buildCityWall('p1', cityId);
+    assert.equal(engine.getPlayerWallCount(engine.players[0]), 1);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
+  });
+
+  it('1 wall: discard at 10+ total cards', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.buildCityWall('p1', cityId);
+    engine.players[0].resources = { wood: 9, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[0].commodities = { cloth: 0, coin: 0, paper: 0 };
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), false);
+    engine.players[0].resources.wood = 10;
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), true);
+  });
+
+  it('2 walls: discard at 12+ total cards', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.BRICK, 'city');
+    const [c1, c2] = engine.players[0].citiesBuilt;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 4;
+    engine.buildCityWall('p1', c1);
+    engine.buildCityWall('p1', c2);
+    engine.players[0].resources = { wood: 11, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[0].commodities = { cloth: 0, coin: 0, paper: 0 };
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), false);
+    engine.players[0].resources.wood = 12;
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), true);
+  });
+
+  it('should reject in base game mode', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.brick = 2;
+    assert.throws(() => engine.buildCityWall('p1', cityId), /NOT_CITIES_KNIGHTS_MODE/);
+  });
+
+  it('wall should be destroyed when city is downgraded', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.buildCityWall('p1', cityId);
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    engine.downgradeCity('p1', cityId);
+    const building = engine.grid.vertices.get(cityId).building;
+    assert.equal(building?.hasWall, false);
+    assert.equal(engine.players[0].cityWalls, 3);
+  });
+});

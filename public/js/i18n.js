@@ -241,6 +241,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_PROMOTED: "{playerName} promoted a knight to {rank}.",
     LOG_KNIGHT_MOVED: "{playerName} moved a knight.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} chased the robber.",
+    LOG_CITY_WALL_BUILT: "{playerName} built a city wall.",
     YOU_RECEIVED_RESOURCE: "You received +{amount} {resource}!",
     DISCARD_MUST_LABEL: "Must discard:",
     DISCARD_SELECTED_LABEL: "Selected:",
@@ -309,7 +310,12 @@ export const TRANSLATIONS = {
     ERROR_MUST_DOWNGRADE_OWN_CITY: "Choose one of your cities to downgrade.",
     ERROR_NO_DOWNGRADE_NEEDED: "You do not need to downgrade a city.",
     ERROR_NOT_IN_BARBARIAN_DOWNGRADE: "City downgrade is only allowed after a barbarian defeat.",
-    ERROR_DEV_CARDS_DISABLED_IN_CK: "Development cards are replaced by progress cards in Cities & Knights."
+    ERROR_DEV_CARDS_DISABLED_IN_CK: "Development cards are replaced by progress cards in Cities & Knights.",
+    ERROR_NO_BUILDING_ON_VERTEX: "There is no building on that intersection.",
+    ERROR_WALLS_ONLY_ON_CITIES: "City walls can only be built on cities.",
+    ERROR_NOT_YOUR_CITY: "That city is not yours.",
+    ERROR_CITY_ALREADY_HAS_WALL: "That city already has a wall.",
+    ERROR_NO_WALLS_REMAINING: "You have no city walls left in supply."
   },
 
   ro: {
@@ -548,6 +554,7 @@ export const TRANSLATIONS = {
     LOG_KNIGHT_PROMOTED: "{playerName} a promovat un cavaler la {rank}.",
     LOG_KNIGHT_MOVED: "{playerName} a mutat un cavaler.",
     LOG_KNIGHT_CHASED_ROBBER: "{playerName} a alungat hoțul.",
+    LOG_CITY_WALL_BUILT: "{playerName} a construit un zid de oraș.",
     YOU_RECEIVED_RESOURCE: "Ai primit +{amount} {resource}!",
     DISCARD_MUST_LABEL: "Trebuie să decartezi:",
     DISCARD_SELECTED_LABEL: "Selectate:",
@@ -616,7 +623,12 @@ export const TRANSLATIONS = {
     ERROR_MUST_DOWNGRADE_OWN_CITY: "Alege unul dintre orașele tale de retrogradat.",
     ERROR_NO_DOWNGRADE_NEEDED: "Nu trebuie să retrogradezi un oraș.",
     ERROR_NOT_IN_BARBARIAN_DOWNGRADE: "Retrogradarea e permisă doar după o înfrângere a barbarilor.",
-    ERROR_DEV_CARDS_DISABLED_IN_CK: "Cărțile de dezvoltare sunt înlocuite de cărți de progres în Orașe & Cavaleri."
+    ERROR_DEV_CARDS_DISABLED_IN_CK: "Cărțile de dezvoltare sunt înlocuite de cărți de progres în Orașe & Cavaleri.",
+    ERROR_NO_BUILDING_ON_VERTEX: "Nu există clădire pe acea intersecție.",
+    ERROR_WALLS_ONLY_ON_CITIES: "Zidurile se construiesc doar pe orașe.",
+    ERROR_NOT_YOUR_CITY: "Orașul nu îți aparține.",
+    ERROR_CITY_ALREADY_HAS_WALL: "Orașul are deja un zid.",
+    ERROR_NO_WALLS_REMAINING: "Nu mai ai ziduri în rezervă."
   }
 };
 

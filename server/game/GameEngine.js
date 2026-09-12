@@ -74,7 +74,8 @@ export const COSTS = {
   DEV_CARD: { ore: 1, wool: 1, wheat: 1 },
   KNIGHT: { ore: 1, wool: 1 },
   ACTIVATE_KNIGHT: { wheat: 1 },
-  PROMOTE_KNIGHT: { wheat: 1, ore: 1 }
+  PROMOTE_KNIGHT: { wheat: 1, ore: 1 },
+  CITY_WALL: { brick: 2 }
 };
 
 export const DEV_CARD_TYPES = {
@@ -1040,7 +1041,7 @@ export class GameEngine {
     this.deductResources(player, COSTS.CITY);
 
     const vertex = this.grid.vertices.get(vertexId);
-    vertex.building = { type: 'city', playerId, color: player.color };
+    vertex.building = { type: 'city', playerId, color: player.color, hasWall: false };
     player.settlementsRemaining++;
     player.citiesRemaining--;
 
@@ -1059,6 +1060,32 @@ export class GameEngine {
     });
 
     return { vertexId };
+  }
+
+  getPlayerWallCount(player) {
+    return this.getBuiltCityWallCount(player);
+  }
+
+  buildCityWall(playerId, vertexId) {
+    const player = this.assertCkAction(playerId);
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex?.building) throw new Error('NO_BUILDING_ON_VERTEX');
+    if (vertex.building.type !== 'city') throw new Error('WALLS_ONLY_ON_CITIES');
+    if (vertex.building.playerId !== playerId) throw new Error('NOT_YOUR_CITY');
+    if (vertex.building.hasWall) throw new Error('CITY_ALREADY_HAS_WALL');
+    if ((player.cityWalls || 0) <= 0) throw new Error('NO_WALLS_REMAINING');
+    if (!this.hasResources(player, COSTS.CITY_WALL)) throw new Error('NOT_ENOUGH_RESOURCES');
+
+    this.deductResources(player, COSTS.CITY_WALL);
+    vertex.building.hasWall = true;
+    player.cityWalls--;
+
+    this.logEvent({
+      type: 'CITY_WALL_BUILT',
+      messageKey: 'LOG_CITY_WALL_BUILT',
+      args: { playerName: player.name }
+    });
+    return { vertexId, wallsRemaining: player.cityWalls };
   }
 
   improveCityTrack(playerId, track) {
