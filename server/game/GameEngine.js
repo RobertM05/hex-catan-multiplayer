@@ -45,7 +45,14 @@ export const PROGRESS_CARD_DECKS = {
     { type: 'merchant_fleet', count: 2 },
     { type: 'resource_monopoly', count: 1 }
   ],
-  politics: [],
+  politics: [
+    { type: 'bishop', count: 2 },
+    { type: 'constitution', count: 1 },
+    { type: 'deserter', count: 2 },
+    { type: 'diplomat', count: 2 },
+    { type: 'intrigue', count: 1 },
+    { type: 'warlord', count: 1 }
+  ],
   science: []
 };
 
@@ -507,6 +514,81 @@ export class GameEngine {
     return ids.some((vid) => this.grid.vertices.get(vid)?.hexes?.includes(hexId));
   }
 
+  getPlayersAdjacentToHex(hexId) {
+    const seen = new Set();
+    const adjacent = [];
+    for (const vertex of this.grid.vertices.values()) {
+      if (!vertex.hexes?.includes(hexId) || !vertex.building) continue;
+      const owner = this.players.find(p => p.id === vertex.building.playerId);
+      if (!owner || seen.has(owner.id)) continue;
+      seen.add(owner.id);
+      adjacent.push(owner);
+    }
+    return adjacent;
+  }
+
+  stealRandomResource(target) {
+    const pool = [];
+    for (const [res, count] of Object.entries(target.resources || {})) {
+      for (let i = 0; i < count; i++) pool.push({ bag: 'resources', type: res });
+    }
+    if (this.isCitiesKnights()) {
+      for (const [com, count] of Object.entries(target.commodities || {})) {
+        for (let i = 0; i < count; i++) pool.push({ bag: 'commodities', type: com });
+      }
+    }
+    if (pool.length === 0) return null;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    if (picked.bag === 'commodities') {
+      target.commodities[picked.type]--;
+    } else {
+      target.resources[picked.type]--;
+    }
+    return picked.type;
+  }
+
+  isOpenRoad(edgeId) {
+    const edge = this.grid.edges.get(edgeId);
+    if (!edge?.road) return false;
+    const ownerId = edge.road.playerId;
+    const hasOtherRoadAt = (vertexId) => {
+      const vertex = this.grid.vertices.get(vertexId);
+      if (!vertex) return false;
+      for (const adjId of vertex.adjacentEdges || []) {
+        if (adjId === edgeId) continue;
+        const adj = this.grid.edges.get(adjId);
+        if (adj?.road?.playerId === ownerId) return true;
+      }
+      return false;
+    };
+    return !hasOtherRoadAt(edge.v1) || !hasOtherRoadAt(edge.v2);
+  }
+
+  removeRoadSegment(edgeId) {
+    const edge = this.grid.edges.get(edgeId);
+    if (!edge?.road) throw new Error('NO_ROAD');
+    const owner = this.players.find(p => p.id === edge.road.playerId);
+    edge.road = null;
+    if (owner) {
+      owner.roadsRemaining++;
+      owner.roadsBuilt = (owner.roadsBuilt || []).filter(id => id !== edgeId);
+    }
+    this.recalculateLongestRoad();
+    this.recalculateVictoryPoints();
+    return owner;
+  }
+
+  playerControlsAdjacentVertex(playerId, vertexId) {
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex) return false;
+    for (const adjId of vertex.adjacentVertices || []) {
+      const adj = this.grid.vertices.get(adjId);
+      if (adj?.building?.playerId === playerId) return true;
+      if (adj?.knight?.playerId === playerId) return true;
+    }
+    return this.vertexHasPlayerRoad(vertex, playerId);
+  }
+
   isTradableType(type) {
     if (RESOURCE_VALUES.includes(type)) return true;
     return this.isCitiesKnights() && COMMODITY_VALUES.includes(type);
@@ -848,6 +930,7 @@ export class GameEngine {
     if (['constitution', 'printer'].includes(type)) {
       const drawn = player.progressCards[player.progressCards.length - 1];
       drawn.played = true;
+      drawn.revealed = true;
       this.recalculateVictoryPoints();
     }
     return type;
@@ -1007,30 +1090,15 @@ export class GameEngine {
   }
 
   stealRandomCard(thief, target) {
-    const pool = [];
-    for (const [res, count] of Object.entries(target.resources || {})) {
-      for (let i = 0; i < count; i++) pool.push({ bag: 'resources', type: res });
-    }
-    if (this.isCitiesKnights()) {
-      for (const [com, count] of Object.entries(target.commodities || {})) {
-        for (let i = 0; i < count; i++) pool.push({ bag: 'commodities', type: com });
-      }
-    }
-    if (pool.length === 0) return null;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    if (picked.bag === 'commodities') {
-      target.commodities[picked.type]--;
-      thief.commodities[picked.type] = (thief.commodities[picked.type] || 0) + 1;
-    } else {
-      target.resources[picked.type]--;
-      thief.resources[picked.type] = (thief.resources[picked.type] || 0) + 1;
-    }
+    const stolen = this.stealRandomResource(target);
+    if (!stolen) return null;
+    this.adjustPlayerCard(thief, stolen, 1);
     this.logEvent({
       type: 'ROBBER_STOLE',
       messageKey: 'LOG_ROBBER_STOLE',
       args: { robberName: thief.name, victimName: target.name }
     });
-    return picked.type;
+    return stolen;
   }
 
   /* =========================================================
@@ -1682,6 +1750,86 @@ export class GameEngine {
         result.exchanges = exchanges;
         break;
       }
+      case 'bishop': {
+        const hexId = options.hexId;
+        if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
+        if (hexId === this.grid.robberHexId) throw new Error('MUST_MOVE_ROBBER_TO_NEW_HEX');
+        this.grid.robberHexId = hexId;
+        const stolenFrom = [];
+        for (const adjPlayer of this.getPlayersAdjacentToHex(hexId)) {
+          if (adjPlayer.id === playerId) continue;
+          const stolen = this.stealRandomResource(adjPlayer);
+          if (stolen) {
+            this.adjustPlayerCard(player, stolen, 1);
+            stolenFrom.push({ playerId: adjPlayer.id, type: stolen });
+          }
+        }
+        result.hexId = hexId;
+        result.stolenFrom = stolenFrom;
+        break;
+      }
+      case 'constitution':
+        card.played = true;
+        card.revealed = true;
+        this.recalculateVictoryPoints();
+        this.checkVictory();
+        break;
+      case 'deserter': {
+        const targetVertex = this.grid.vertices.get(options.vertexId);
+        if (!targetVertex?.knight || targetVertex.knight.playerId === playerId) {
+          throw new Error('INVALID_TARGET');
+        }
+        const removedKnight = targetVertex.knight;
+        const target = this.players.find(p => p.id === removedKnight.playerId);
+        if (!target) throw new Error('INVALID_TARGET');
+        this.returnKnightToSupply(target, removedKnight);
+        result.removedFrom = options.vertexId;
+        result.targetPlayerId = target.id;
+        break;
+      }
+      case 'diplomat': {
+        const edgeId = options.edgeId;
+        const edge = this.grid.edges.get(edgeId);
+        if (!edge?.road) throw new Error('INVALID_TARGET');
+        if (!this.isOpenRoad(edgeId)) throw new Error('ROAD_NOT_OPEN');
+        const wasOwn = edge.road.playerId === playerId;
+        this.removeRoadSegment(edgeId);
+        result.removedEdgeId = edgeId;
+        if (wasOwn && options.newEdgeId) {
+          this.freeRoadsRemaining++;
+          this.buildRoad(playerId, options.newEdgeId);
+          result.newEdgeId = options.newEdgeId;
+        }
+        break;
+      }
+      case 'intrigue': {
+        const targetVertex = this.grid.vertices.get(options.vertexId);
+        if (!targetVertex?.knight || targetVertex.knight.playerId === playerId) {
+          throw new Error('INVALID_TARGET');
+        }
+        if (!this.playerControlsAdjacentVertex(playerId, options.vertexId)) {
+          throw new Error('KNIGHT_NOT_ADJACENT');
+        }
+        const displaced = this.displaceKnight(targetVertex.knight, options.vertexId, options.replacementVertexId || null);
+        result.displaced = displaced;
+        if (options.replacementVertexId) {
+          const mover = this.getKnightRecord(player, options.replacementVertexId);
+          if (!mover) throw new Error('KNIGHT_NOT_FOUND');
+          const dest = this.grid.vertices.get(options.vertexId);
+          if (dest.knight) throw new Error('VERTEX_OCCUPIED');
+          const from = this.grid.vertices.get(options.replacementVertexId);
+          if (from) from.knight = null;
+          mover.vertexId = options.vertexId;
+          dest.knight = mover;
+          result.movedKnightTo = options.vertexId;
+        }
+        break;
+      }
+      case 'warlord':
+        for (const knight of player.knightsPlaced || []) {
+          knight.active = true;
+        }
+        break;
       default:
         throw new Error('UNKNOWN_PROGRESS_CARD');
     }
@@ -2158,6 +2306,12 @@ export class GameEngine {
 
       if (this.merchantHolder === player.id) {
         publicPoints += 1;
+      }
+
+      for (const card of player.progressCards || []) {
+        if (card.played && (card.type === 'constitution' || card.type === 'printer')) {
+          publicPoints += 1;
+        }
       }
 
       // Dev card victory points (1 each)

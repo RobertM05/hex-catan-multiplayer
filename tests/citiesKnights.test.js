@@ -999,3 +999,127 @@ describe('CK-05: Trade Progress Cards', () => {
     assert.throws(() => engine.playProgressCard('p1', 'x', {}), /NOT_CITIES_KNIGHTS_MODE/);
   });
 });
+
+describe('CK-06: Politics Progress Cards', () => {
+  function giveCard(player, type) {
+    const card = { id: `p-${type}-${player.progressCards.length}`, type, played: false, boughtTurn: 0 };
+    player.progressCards.push(card);
+    return card;
+  }
+
+  it('should initialize politics deck with 9 cards', () => {
+    const engine = makeCkEngine();
+    assert.equal(engine.progressDecks.politics.length, 9);
+    const types = engine.progressDecks.politics.map(c => c.type);
+    assert.equal(types.filter(t => t === 'bishop').length, 2);
+    assert.equal(types.filter(t => t === 'constitution').length, 1);
+    assert.equal(types.filter(t => t === 'deserter').length, 2);
+    assert.equal(types.filter(t => t === 'diplomat').length, 2);
+    assert.equal(types.filter(t => t === 'intrigue').length, 1);
+    assert.equal(types.filter(t => t === 'warlord').length, 1);
+  });
+
+  it('Bishop: should move robber and steal from ALL adjacent players', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Cara' });
+    engine.startGame('standard');
+    const dest = Array.from(engine.grid.hexes.values()).find(h => h.id !== engine.grid.robberHexId);
+    const destVerts = Array.from(engine.grid.vertices.values()).filter(
+      v => v.hexes.includes(dest.id) && !v.building
+    );
+    destVerts[0].building = { type: 'settlement', playerId: 'p2', color: '#457b9d' };
+    destVerts[1].building = { type: 'settlement', playerId: 'p3', color: '#2a9d8f' };
+    engine.players[1].settlementsBuilt.push(destVerts[0].id);
+    engine.players[2].settlementsBuilt.push(destVerts[1].id);
+    engine.players[1].resources.wool = 1;
+    engine.players[2].resources.brick = 1;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const fromHex = engine.grid.robberHexId;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'bishop').id, { hexId: dest.id });
+    assert.equal(engine.grid.robberHexId, dest.id);
+    assert.notEqual(fromHex, dest.id);
+    assert.equal(res.stolenFrom.length, 2);
+    assert.equal(engine.players[1].resources.wool, 0);
+    assert.equal(engine.players[2].resources.brick, 0);
+    assert.equal(engine.players[0].resources.wool, 1);
+    assert.equal(engine.players[0].resources.brick, 1);
+  });
+
+  it('Constitution: should immediately grant 1 VP and be revealed', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.recalculateVictoryPoints();
+    const before = engine.players[0].victoryPoints;
+    const card = giveCard(engine.players[0], 'constitution');
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(card.revealed, true);
+    assert.equal(card.played, true);
+    assert.equal(engine.players[0].victoryPoints, before + 1);
+  });
+
+  it('Deserter: should remove opponent knight and return to their supply', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id);
+    assert.equal(engine.players[1].knightsAvailable.basic, 1);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id });
+    assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.equal(engine.players[1].knightsPlaced.length, 0);
+    assert.equal(engine.players[1].knightsAvailable.basic, 2);
+  });
+
+  it('Deserter: should reject removing own knight', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p1', vertex.id);
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id }),
+      /INVALID_TARGET/
+    );
+  });
+
+  it('Diplomat: should remove an open road segment', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { edge } = giveRoad(engine, 'p2', vertex.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'diplomat').id, { edgeId: edge.id });
+    assert.equal(engine.grid.edges.get(edge.id).road, null);
+    assert.equal(engine.players[1].roadsBuilt.includes(edge.id), false);
+  });
+
+  it('Intrigue: should displace opponent knight adjacent to own vertex', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const own = emptyVertex(engine);
+    own.building = { type: 'settlement', playerId: 'p1', color: '#e63946' };
+    engine.players[0].settlementsBuilt.push(own.id);
+    const adjId = own.adjacentVertices.find(id => {
+      const v = engine.grid.vertices.get(id);
+      return v && !v.building && !v.knight;
+    });
+    plantKnight(engine, 'p2', adjId);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'intrigue').id, { vertexId: adjId });
+    assert.equal(engine.grid.vertices.get(adjId).knight, null);
+    assert.equal(engine.players[1].knightsPlaced.length, 0);
+    assert.equal(engine.players[1].knightsAvailable.basic, 2);
+  });
+
+  it('Warlord: should activate all own knights for free', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const v1 = emptyVertex(engine);
+    const v2 = emptyVertex(engine, v => v.id !== v1.id && !v.adjacentVertices.includes(v1.id));
+    plantKnight(engine, 'p1', v1.id, { active: false });
+    plantKnight(engine, 'p1', v2.id, { active: false });
+    engine.players[0].resources.wheat = 0;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'warlord').id, {});
+    assert.equal(engine.players[0].knightsPlaced.every(k => k.active), true);
+    assert.equal(engine.players[0].resources.wheat, 0);
+  });
+});
+
