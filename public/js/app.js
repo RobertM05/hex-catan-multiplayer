@@ -547,8 +547,7 @@ class CatanApp {
   beginDiceAnimation() {
     this.clearDiceTimers();
     const reduced = this.prefersReducedMotion();
-    const duration = reduced ? 0 : 520;
-    this.diceAnim = { until: Date.now() + duration, pending: null };
+    this.diceAnim = { minElapsed: reduced, pending: null };
     this.numberDice().forEach(d => {
       d.classList.add('rolling');
       d.classList.remove('die-seven');
@@ -558,9 +557,14 @@ class CatanApp {
         this.numberDice().forEach(d => {
           d.textContent = String(1 + Math.floor(Math.random() * 6));
         });
-      }, 360);
+      }, 90);
+      this.diceSettleTimer = setTimeout(() => {
+        if (this.diceAnim) {
+          this.diceAnim.minElapsed = true;
+          if (this.diceAnim.pending) this.settleDiceAnimation();
+        }
+      }, 520);
     }
-    this.diceSettleTimer = setTimeout(() => this.settleDiceAnimation(), duration);
   }
 
   cancelDiceAnimation() {
@@ -1815,8 +1819,11 @@ class CatanApp {
 
     // Update Dice Values
     if (s.dice) {
-      if (this.diceAnim) {
+      if (this.diceAnim && !this.diceAnim.minElapsed) {
         this.diceAnim.pending = s.dice;
+      } else if (this.diceAnim && this.diceAnim.minElapsed) {
+        this.diceAnim.pending = s.dice;
+        this.settleDiceAnimation();
       } else {
         document.getElementById('die-1').textContent = s.dice[0];
         document.getElementById('die-2').textContent = s.dice[1];
