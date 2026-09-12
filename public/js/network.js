@@ -8,6 +8,7 @@ export class NetworkClient {
     this.socket = null;
     this.currentRoomCode = null;
     this.currentPlayerId = null;
+    this.reconnectToken = typeof localStorage !== 'undefined' ? localStorage.getItem('catan_reconnect_token') : null;
     this.onStateUpdate = null;
     this.onLobbyUpdate = null;
     this.onGameStarted = null;
@@ -50,10 +51,11 @@ export class NetworkClient {
 
   createRoom(hostName, options) {
     return new Promise((resolve, reject) => {
-      this.socket.emit('create_room', { hostName, ...options, playerId: this.currentPlayerId }, (res) => {
+      this.socket.emit('create_room', { hostName, ...options }, (res) => {
         if (res && res.success) {
           this.currentRoomCode = res.roomCode;
           this.currentPlayerId = res.playerId;
+          this.storeReconnectToken(res.reconnectToken);
           resolve(res);
         } else {
           reject(new Error(res ? res.error : 'Failed to create room'));
@@ -64,16 +66,23 @@ export class NetworkClient {
 
   joinRoom(code, playerName) {
     return new Promise((resolve, reject) => {
-      this.socket.emit('join_room', { code: code.toUpperCase(), playerName, playerId: this.currentPlayerId }, (res) => {
+      this.socket.emit('join_room', { code: code.toUpperCase(), playerName, reconnectToken: this.reconnectToken }, (res) => {
         if (res && res.success) {
           this.currentRoomCode = res.roomCode;
           this.currentPlayerId = res.playerId;
+          this.storeReconnectToken(res.reconnectToken);
           resolve(res);
         } else {
           reject(new Error(res ? res.error : 'Failed to join room'));
         }
       });
     });
+  }
+
+  storeReconnectToken(token) {
+    if (!token) return;
+    this.reconnectToken = token;
+    if (typeof localStorage !== 'undefined') localStorage.setItem('catan_reconnect_token', token);
   }
 
   addBot(difficulty = 'medium') {

@@ -111,13 +111,14 @@ describe('AI-01: Autonomous AI Agent Client & Room Summoning', () => {
   });
 
   it('should support REST API /api/rooms/:code/spawn-agent', async () => {
-    const hostData = { id: 'host_api', name: 'ApiHost', socketId: 'sock_host_api' };
+    const session = roomManager.createPlayerSession();
+    const hostData = { id: session.id, name: 'ApiHost', socketId: 'sock_host_api', reconnectTokenHash: session.reconnectTokenHash };
     const room = roomManager.createRoom(hostData, { name: 'ApiRoom', mode: 'base', maxPlayers: 3 });
 
     // Call REST API
     const response = await fetch(`${serverUrl}/api/rooms/${room.code}/spawn-agent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.reconnectToken}` },
       body: JSON.stringify({ name: 'RestAgent' })
     });
 

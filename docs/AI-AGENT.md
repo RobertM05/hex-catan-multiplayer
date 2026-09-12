@@ -36,15 +36,15 @@ This document specifies the autonomous AI agent architecture, WebSocket protocol
 To launch an agent from the command line into any local or remote room:
 
 ```bash
-# Connect to local room ABCD
-node scripts/aiAgentClient.js --room ABCD --name "AlphaSettler"
+# Connect to local room ABCD2
+node scripts/aiAgentClient.js --room ABCD2 --name "AlphaSettler"
 
 # Connect to remote instance with custom color
-node scripts/aiAgentClient.js --server https://catan.example.com --room EFGH --name "GeminiKnight" --color "#3b82f6"
+node scripts/aiAgentClient.js --server https://catan.example.com --room EFGH3 --name "GeminiKnight" --color "#3b82f6"
 ```
 
 ### CLI Arguments:
-- `--room <CODE>`: *(Required)* 4-letter room code.
+- `--room <CODE>`: *(Required)* 5-character room code.
 - `--server <URL>`: Server address (default: `http://localhost:3000`).
 - `--name <NAME>`: Player display name (default: `Agent-XXXX`).
 - `--color <HEX>`: Desired hex player color (e.g. `#e63946`).
@@ -57,6 +57,7 @@ node scripts/aiAgentClient.js --server https://catan.example.com --room EFGH --n
 ```http
 POST /api/rooms/:code/spawn-agent
 Content-Type: application/json
+Authorization: Bearer <host-reconnect-token>
 
 {
   "name": "Gemini-Bot"
@@ -67,7 +68,7 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "roomCode": "ABCD",
+  "roomCode": "ABCD2",
   "name": "Gemini-Bot",
   "pid": 48291
 }
@@ -75,7 +76,8 @@ Content-Type: application/json
 
 ### 3.2 Socket.IO Summon Event
 ```javascript
-socket.emit('spawn_ai_agent', { roomCode: 'ABCD', name: 'ClaudeSettler' }, (response) => {
+// Only the room host may invoke this event.
+socket.emit('spawn_ai_agent', { roomCode: 'ABCD2', name: 'ClaudeSettler' }, (response) => {
   console.log(response); // { success: true, name: 'ClaudeSettler', pid: 48292 }
 });
 ```
@@ -124,14 +126,14 @@ The server broadcasts the authoritative state to each connected player:
 
 ### Outbound Actions
 The agent responds by emitting action events:
-- **Setup Settlement / City**: `place_setup_settlement`, `place_setup_city` `{ code, vertexId }`
+- **Setup Settlement**: `place_setup_settlement` `{ code, vertexId }`
 - **Setup Road**: `place_setup_road` `{ code, edgeId }`
 - **Roll Dice**: `roll_dice` `{ code }`
 - **Discard Cards (7-roll)**: `discard_cards` `{ code, resources, commodities }`
 - **Move Robber**: `move_robber` `{ code, hexId, targetPlayerId }`
 - **Build Road**: `build_road` `{ code, edgeId }`
 - **Build Settlement**: `build_settlement` `{ code, vertexId }`
-- **Upgrade City**: `upgrade_city` `{ code, vertexId }`
+- **Build City**: `build_city` `{ code, vertexId }`
 - **Improve City Track (C&K)**: `improve_city` `{ code, track }`
 - **End Turn**: `end_turn` `{ code }`
 

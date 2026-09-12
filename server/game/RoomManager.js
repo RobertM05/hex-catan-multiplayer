@@ -5,11 +5,56 @@
 
 import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+
+const DISPLAY_NAME_MAX_LENGTH = 32;
+const ROOM_NAME_MAX_LENGTH = 48;
+const CHAT_MESSAGE_MAX_LENGTH = 200;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+export function validateDisplayName(value, fallback) {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (!name) return fallback;
+  if (name.length > DISPLAY_NAME_MAX_LENGTH || /[<>]/.test(name)) throw new Error('INVALID_PLAYER_NAME');
+  return name;
+}
+
+export function validateRoomName(value, fallback) {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (!name) return fallback;
+  if (name.length > ROOM_NAME_MAX_LENGTH || /[<>]/.test(name)) throw new Error('INVALID_ROOM_NAME');
+  return name;
+}
+
+export function validateChatMessage(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > CHAT_MESSAGE_MAX_LENGTH || /[<>]/.test(text)) throw new Error('INVALID_CHAT_MESSAGE');
+  return text;
+}
+
+export function validatePlayerColor(value) {
+  if (typeof value !== 'string' || !HEX_COLOR.test(value)) throw new Error('INVALID_PLAYER_COLOR');
+  return value.toLowerCase();
+}
 
 export class RoomManager {
   constructor(io) {
     this.io = io;
     this.rooms = new Map(); // roomCode -> Room object
+  }
+
+  createPlayerSession() {
+    const reconnectToken = randomBytes(32).toString('base64url');
+    return {
+      id: `p_${randomUUID()}`,
+      reconnectToken,
+      reconnectTokenHash: createHash('sha256').update(reconnectToken).digest('hex')
+    };
+  }
+
+  matchesReconnectToken(player, reconnectToken) {
+    return Boolean(player.reconnectTokenHash && typeof reconnectToken === 'string'
+      && createHash('sha256').update(reconnectToken).digest('hex') === player.reconnectTokenHash);
   }
 
   generateRoomCode() {
@@ -33,7 +78,7 @@ export class RoomManager {
 
     const room = {
       code,
-      name: options.name || `Room ${code}`,
+      name: validateRoomName(options.name, `Room ${code}`),
       hostId: hostData.id,
       maxPlayers: Math.max(2, Math.min(8, options.maxPlayers || 4)),
       mode,
@@ -47,22 +92,25 @@ export class RoomManager {
       turnTimerInterval: null,
       discardTimer: null,
       turnTimeRemaining: options.turnDuration || 60,
-      chatMessages: []
+      chatMessages: [],
+      pendingAgentSpawns: 0,
+      agentSpawnTimestamps: []
     };
 
     // Add host as first player
     room.players.push({
       id: hostData.id,
-      name: hostData.name || 'Host Player',
+      name: validateDisplayName(hostData.name, 'Host Player'),
       color: '#e63946',
       isReady: true,
       isBot: false,
-      socketId: hostData.socketId
+      socketId: hostData.socketId,
+      reconnectTokenHash: hostData.reconnectTokenHash || null
     });
 
     engine.addPlayer({
       id: hostData.id,
-      name: hostData.name || 'Host Player',
+      name: validateDisplayName(hostData.name, 'Host Player'),
       color: '#e63946',
       isBot: false
     });
@@ -72,7 +120,7 @@ export class RoomManager {
   }
 
   getRoom(code) {
-    return this.rooms.get(code.toUpperCase());
+    return typeof code === 'string' ? this.rooms.get(code.toUpperCase()) : undefined;
   }
 
   getPublicRooms() {
@@ -98,12 +146,11 @@ export class RoomManager {
     if (!room) return { error: 'ROOM_NOT_FOUND' };
 
     // Check if player is already in the room (by ID or socketId)
-    const existing = room.players.find(p => p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId));
+    const existing = room.players.find(p => this.matchesReconnectToken(p, playerData.reconnectToken)
+      || (playerData.allowLegacyId !== false && (p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId))));
     if (existing) {
-      existing.id = playerData.id;
       existing.socketId = playerData.socketId;
-      if (playerData.name) existing.name = playerData.name;
-      return { room, reconnected: room.isStarted };
+      return { room, reconnected: playerData.allowLegacyId === false, playerId: existing.id };
     }
 
     if (room.isStarted) {
@@ -118,12 +165,13 @@ export class RoomManager {
     const assignedColor = availableColors.find(c => !usedColors.includes(c)) || '#f1faee';
 
     const playerObj = {
-      id: playerData.id,
-      name: playerData.name || `Player ${room.players.length + 1}`,
+      id: playerData.id || this.createPlayerSession().id,
+      name: validateDisplayName(playerData.name, `Player ${room.players.length + 1}`),
       color: assignedColor,
       isReady: false,
       isBot: false,
-      socketId: playerData.socketId
+      socketId: playerData.socketId,
+      reconnectTokenHash: playerData.reconnectTokenHash || null
     };
 
     room.players.push(playerObj);
@@ -134,7 +182,7 @@ export class RoomManager {
       isBot: false
     });
 
-    return { room, reconnected: false };
+    return { room, reconnected: false, playerId: playerObj.id };
   }
 
   addBot(code, difficulty = 'medium') {
@@ -225,12 +273,29 @@ export class RoomManager {
     if (!room || room.isStarted) return false;
     const player = room.players.find(p => p.id === playerId);
     if (player) {
-      player.color = color;
+      player.color = validatePlayerColor(color);
       const engineP = room.engine.players.find(p => p.id === playerId);
-      if (engineP) engineP.color = color;
+      if (engineP) engineP.color = player.color;
       return true;
     }
     return false;
+  }
+
+  reserveAgentSpawn(code) {
+    const room = this.getRoom(code);
+    if (!room || room.isStarted) throw new Error('ROOM_NOT_AVAILABLE');
+    const now = Date.now();
+    room.agentSpawnTimestamps = room.agentSpawnTimestamps.filter(timestamp => now - timestamp < 60_000);
+    if (room.agentSpawnTimestamps.length >= 3) throw new Error('AGENT_SPAWN_RATE_LIMITED');
+    if (room.players.length + room.pendingAgentSpawns >= room.maxPlayers) throw new Error('ROOM_FULL');
+    room.pendingAgentSpawns += 1;
+    room.agentSpawnTimestamps.push(now);
+    return room;
+  }
+
+  releaseAgentSpawn(code) {
+    const room = this.getRoom(code);
+    if (room) room.pendingAgentSpawns = Math.max(0, room.pendingAgentSpawns - 1);
   }
 
   startGame(code, hostPlayerId) {
