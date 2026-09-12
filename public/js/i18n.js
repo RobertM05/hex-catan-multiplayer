@@ -397,6 +397,7 @@ export const TRANSLATIONS = {
     ACTION_HINT_BUILD_SETTLEMENT: "Click an available intersection to build a settlement",
     ACTION_HINT_BUILD_CITY: "Click one of your settlements to upgrade to a city",
     ACTION_HINT_BUILD_WALL: "Click one of your cities to build a wall (2 brick)",
+    ACTION_HINT_METROPOLIS: "Click one of your cities to place the {track} metropolis",
     IMPROVEMENTS_TITLE: "City Improvements",
     TRACK_TRADE: "Trade",
     TRACK_POLITICS: "Politics",
@@ -425,7 +426,12 @@ export const TRANSLATIONS = {
     ERROR_WALLS_ONLY_ON_CITIES: "City walls can only be built on cities.",
     ERROR_NOT_YOUR_CITY: "That city is not yours.",
     ERROR_CITY_ALREADY_HAS_WALL: "That city already has a wall.",
-    ERROR_NO_WALLS_REMAINING: "You have no city walls left in supply."
+    ERROR_NO_WALLS_REMAINING: "You have no city walls left in supply.",
+    LOG_METROPOLIS: "{playerName} claimed the {track} metropolis.",
+    ERROR_NOT_IN_METROPOLIS_PHASE: "Choose a city for the metropolis first.",
+    ERROR_NOT_YOUR_CHOICE: "It is not your turn to place a metropolis.",
+    ERROR_MUST_CHOOSE_YOUR_CITY: "The metropolis must be placed on one of your cities.",
+    ERROR_CANNOT_DOWNGRADE_METROPOLIS: "A metropolis cannot be destroyed by the barbarians."
   },
 
   ro: {
@@ -820,6 +826,7 @@ export const TRANSLATIONS = {
     ACTION_HINT_BUILD_SETTLEMENT: "Apasă pe o intersecție liberă pentru a construi așezarea",
     ACTION_HINT_BUILD_CITY: "Apasă pe o așezare proprie pentru a o moderniza în oraș",
     ACTION_HINT_BUILD_WALL: "Apasă pe un oraș propriu pentru a construi un zid (2 cărămidă)",
+    ACTION_HINT_METROPOLIS: "Apasă pe unul dintre orașele tale pentru metropola de {track}",
     IMPROVEMENTS_TITLE: "Îmbunătățiri oraș",
     TRACK_TRADE: "Comerț",
     TRACK_POLITICS: "Politică",
@@ -848,7 +855,12 @@ export const TRANSLATIONS = {
     ERROR_WALLS_ONLY_ON_CITIES: "Zidurile se construiesc doar pe orașe.",
     ERROR_NOT_YOUR_CITY: "Orașul nu îți aparține.",
     ERROR_CITY_ALREADY_HAS_WALL: "Orașul are deja un zid.",
-    ERROR_NO_WALLS_REMAINING: "Nu mai ai ziduri în rezervă."
+    ERROR_NO_WALLS_REMAINING: "Nu mai ai ziduri în rezervă.",
+    LOG_METROPOLIS: "{playerName} a revendicat metropola de {track}.",
+    ERROR_NOT_IN_METROPOLIS_PHASE: "Alege mai întâi orașul pentru metropolă.",
+    ERROR_NOT_YOUR_CHOICE: "Nu e rândul tău să plasezi metropola.",
+    ERROR_MUST_CHOOSE_YOUR_CITY: "Metropola trebuie plasată pe unul dintre orașele tale.",
+    ERROR_CANNOT_DOWNGRADE_METROPOLIS: "O metropolă nu poate fi distrusă de barbari."
   }
 };
 

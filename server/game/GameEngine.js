@@ -153,6 +153,7 @@ export class GameEngine {
     this.merchantHexId = null;
     this.pendingProgressDiscard = new Set();
     this.alchemistDice = null;
+    this.metropolises = { trade: null, politics: null, science: null };
     this.pendingMetropolisChoice = null;
     this.previousPhase = null;
 
@@ -966,7 +967,7 @@ export class GameEngine {
   }
 
   applyHexProduction(player, hexResource, buildingType, production) {
-    const isCity = buildingType === 'city';
+    const isCity = buildingType === 'city' || buildingType === 'metropolis';
     const commodity = this.isCitiesKnights() ? RESOURCE_TO_COMMODITY[hexResource] : null;
 
     if (isCity && commodity) {
@@ -1270,13 +1271,89 @@ export class GameEngine {
       args: { playerName: player.name, track, level: newLevel }
     });
 
-    if (newLevel === 4 || newLevel === 5) {
-      this.pendingMetropolisChoice = { playerId, track };
-      this.previousPhase = GAME_PHASES.TURN_ACTION;
-      this.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
-    }
+    this.checkMetropolisAward(playerId, track, newLevel);
 
     return { track, level: newLevel, cost };
+  }
+
+  checkMetropolisAward(playerId, track, newLevel) {
+    if (newLevel < 4) return;
+    const currentHolder = this.metropolises[track];
+
+    if (!currentHolder) {
+      this.beginMetropolisChoice(playerId, track);
+      return;
+    }
+
+    if (currentHolder.playerId === playerId) return;
+    if (newLevel !== 5) return;
+
+    const holderPlayer = this.players.find(p => p.id === currentHolder.playerId);
+    const holderLevel = holderPlayer?.cityImprovements?.[track] || 0;
+    if (holderLevel >= 5) return;
+
+    const holderVertex = this.grid.vertices.get(currentHolder.vertexId);
+    if (holderVertex?.building?.type === 'metropolis' && holderVertex.building.metropolisTrack === track) {
+      holderVertex.building.type = 'city';
+      holderVertex.building.hasMetropolis = false;
+      holderVertex.building.metropolisTrack = null;
+    }
+    if (holderPlayer?.metropolis) holderPlayer.metropolis[track] = false;
+    this.metropolises[track] = null;
+    this.beginMetropolisChoice(playerId, track);
+  }
+
+  beginMetropolisChoice(playerId, track) {
+    this.pendingMetropolisChoice = { playerId, track };
+    this.previousPhase = this.phase;
+    this.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
+  }
+
+  chooseMetropolis(playerId, vertexId) {
+    if (this.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) throw new Error('NOT_IN_METROPOLIS_PHASE');
+    if (!this.pendingMetropolisChoice || this.pendingMetropolisChoice.playerId !== playerId) {
+      throw new Error('NOT_YOUR_CHOICE');
+    }
+
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
+      throw new Error('MUST_CHOOSE_YOUR_CITY');
+    }
+
+    const track = this.pendingMetropolisChoice.track;
+    vertex.building.type = 'metropolis';
+    vertex.building.hasMetropolis = true;
+    vertex.building.metropolisTrack = track;
+    this.metropolises[track] = { playerId, vertexId };
+
+    const player = this.players.find(p => p.id === playerId);
+    if (player?.metropolis) player.metropolis[track] = true;
+
+    this.pendingMetropolisChoice = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+
+    this.recalculateVictoryPoints();
+    this.checkVictory();
+
+    this.logEvent({
+      type: 'METROPOLIS_AWARDED',
+      messageKey: 'LOG_METROPOLIS',
+      args: { playerName: player?.name, track }
+    });
+
+    return { track, vertexId };
+  }
+
+  getFirstVulnerableCityId(player) {
+    return (player.citiesBuilt || []).find(id => {
+      const b = this.grid.vertices.get(id)?.building;
+      return b && b.type === 'city' && !b.hasMetropolis;
+    }) || null;
+  }
+
+  hasVulnerableCity(player) {
+    return Boolean(this.getFirstVulnerableCityId(player));
   }
 
   assertCkAction(playerId) {
@@ -1505,7 +1582,7 @@ export class GameEngine {
       this.pendingBarbarianDowngrades.clear();
       result = { outcome: 'victory', defenderOfCatan: this.defenderOfCatan, totalActiveKnights, totalCities };
     } else {
-      const cityOwners = strengths.filter(row => row.player.citiesBuilt.length > 0);
+      const cityOwners = strengths.filter(row => this.hasVulnerableCity(row.player));
       const minStrength = cityOwners.length
         ? Math.min(...cityOwners.map(row => row.strength))
         : 0;
@@ -1556,13 +1633,12 @@ export class GameEngine {
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
     const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || vertex.building.playerId !== playerId) {
+    if (vertex?.building?.type === 'metropolis' || vertex?.building?.hasMetropolis) {
+      throw new Error('CANNOT_DOWNGRADE_METROPOLIS: METROPOLIS_PROTECTED');
+    }
+    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
       throw new Error('MUST_DOWNGRADE_OWN_CITY');
     }
-    if (vertex.building.hasMetropolis || vertex.building.type === 'metropolis') {
-      throw new Error('METROPOLIS_PROTECTED');
-    }
-    if (vertex.building.type !== 'city') throw new Error('MUST_DOWNGRADE_OWN_CITY');
 
     if (vertex.building.hasWall) {
       vertex.building.hasWall = false;
@@ -2533,6 +2609,8 @@ export class GameEngine {
       merchantHolder: this.merchantHolder,
       merchantHexId: this.merchantHexId,
       pendingProgressDiscard: Array.from(this.pendingProgressDiscard),
+      metropolises: this.metropolises,
+      pendingMetropolisChoice: this.pendingMetropolisChoice,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,

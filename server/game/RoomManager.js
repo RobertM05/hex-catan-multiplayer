@@ -375,10 +375,14 @@ export class RoomManager {
       } else if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
         for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
           const p = engine.players.find(x => x.id === pId);
-          if (p && p.citiesBuilt[0]) {
-            engine.downgradeCity(pId, p.citiesBuilt[0]);
-          }
+          const cityId = p ? engine.getFirstVulnerableCityId(p) : null;
+          if (cityId) engine.downgradeCity(pId, cityId);
         }
+      } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+        const pending = engine.pendingMetropolisChoice;
+        const chooser = pending && engine.players.find(p => p.id === pending.playerId);
+        const cityId = chooser ? engine.getFirstVulnerableCityId(chooser) : null;
+        if (pending && cityId) engine.chooseMetropolis(pending.playerId, cityId);
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }
@@ -445,7 +449,7 @@ export class RoomManager {
           setTimeout(() => {
             if (room.isStarted && engine.pendingBarbarianDowngrades.has(pId)) {
               try {
-                const city = BotAI.chooseCityToDowngrade(engine, pId) || p.citiesBuilt[0];
+                const city = BotAI.chooseCityToDowngrade(engine, pId) || engine.getFirstVulnerableCityId?.(p) || p.citiesBuilt[0];
                 if (city) engine.downgradeCity(pId, city);
                 this.broadcastState(room);
                 this.checkAndTriggerBotTurn(room);
@@ -466,7 +470,7 @@ export class RoomManager {
         setTimeout(() => {
           if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
             try {
-              const city = BotAI.chooseCityForMetropolis(engine, chooserId);
+              const city = BotAI.chooseCityForMetropolis(engine, chooserId) || engine.getFirstVulnerableCityId?.(chooser) || chooser.citiesBuilt[0];
               if (city) engine.chooseMetropolis(chooserId, city);
               this.broadcastState(room);
               this.checkAndTriggerBotTurn(room);

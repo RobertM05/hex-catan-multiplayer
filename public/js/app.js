@@ -663,6 +663,10 @@ class CatanApp {
           this.clearActiveAction();
         } else if (this.selectedAction && this.selectedAction.type === 'progress_vertex') {
           this.onProgressVertexPicked(vertexId);
+        } else if (this.gameState.phase === 'TURN_CHOOSE_METROPOLIS' || (this.selectedAction && this.selectedAction.type === 'metropolis')) {
+          await network.sendAction('choose_metropolis', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -945,7 +949,7 @@ class CatanApp {
     list.innerHTML = '';
     if (mustDowngrade) {
       closeBtn.style.display = 'none';
-      (me.citiesBuilt || []).forEach((vid) => {
+      (me.citiesBuilt || []).filter((vid) => s.grid?.vertices?.[vid]?.building?.type === 'city').forEach((vid) => {
         const vertex = s.grid?.vertices?.[vid];
         const hexes = (vertex?.hexes || []).map((hid) => s.grid?.hexes?.[hid]?.resource).filter(Boolean);
         const btn = document.createElement('button');
@@ -2166,6 +2170,18 @@ class CatanApp {
       } else {
         this.boardRenderer.render(s.grid, null);
       }
+    } else if (s.phase === 'TURN_CHOOSE_METROPOLIS') {
+      const pending = s.pendingMetropolisChoice;
+      const me = s.players.find(p => p.id === this.myPlayerId);
+      if (pending && pending.playerId === this.myPlayerId && me) {
+        const validIds = new Set(
+          (me.citiesBuilt || []).filter(id => s.grid?.vertices?.[id]?.building?.type === 'city')
+        );
+        this.selectedAction = { type: 'metropolis', validIds };
+        this.boardRenderer.render(s.grid, this.selectedAction);
+      } else {
+        this.boardRenderer.render(s.grid, null);
+      }
     } else if (s.phase === 'TURN_ROBBER' && s.players[s.currentTurnPlayerIndex].id === this.myPlayerId) {
       // Robber target highlight
       this.boardRenderer.render(s.grid, { type: 'robber' });
@@ -2358,6 +2374,15 @@ class CatanApp {
         hintText = i18n.t('ACTION_HINT_ROBBER');
       } else if (curPlayer) {
         hintText = i18n.t('SETUP_HINT_WAITING', { playerName: curPlayer.name });
+      }
+    } else if (s.phase === 'TURN_CHOOSE_METROPOLIS') {
+      const pending = s.pendingMetropolisChoice;
+      const chooser = pending && s.players.find(p => p.id === pending.playerId);
+      if (pending && pending.playerId === this.myPlayerId) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_METROPOLIS', { track: i18n.t(`TRACK_${(pending.track || '').toUpperCase()}`) });
+      } else if (chooser) {
+        hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
       }
     } else if (s.phase === 'TURN_ROLL') {
       isActionable = isMyTurn;
