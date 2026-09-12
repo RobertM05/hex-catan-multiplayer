@@ -333,7 +333,7 @@ export class BotAI {
     const affordable = [];
     for (const track of tracks) {
       const level = me.cityImprovements?.[track] || 0;
-      if (level >= 5) continue;
+      if (level >= 6) continue;
       let cost = level + 1;
       if (me.craneDiscount) cost = Math.max(0, cost - 1);
       const commodity = IMPROVEMENT_TRACKS[track];

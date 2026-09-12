@@ -86,6 +86,7 @@ export const GAME_PHASES = {
   TURN_BARBARIAN_RESOLVE: 'TURN_BARBARIAN_RESOLVE',
   TURN_BARBARIAN_DOWNGRADE: 'TURN_BARBARIAN_DOWNGRADE',
   TURN_CHOOSE_METROPOLIS: 'TURN_CHOOSE_METROPOLIS',
+  TURN_CHOOSE_KNIGHT_RELOCATE: 'TURN_CHOOSE_KNIGHT_RELOCATE',
   GAME_OVER: 'GAME_OVER'
 };
 
@@ -154,6 +155,8 @@ export class GameEngine {
     this.pendingProgressDiscard = new Set();
     this.alchemistDice = null;
     this.pendingMetropolisChoice = null;
+    this.metropolises = { trade: null, politics: null, science: null };
+    this.pendingKnightRelocation = null;
     this.previousPhase = null;
 
     // Discard tracking for 7-roll
@@ -966,7 +969,7 @@ export class GameEngine {
   }
 
   applyHexProduction(player, hexResource, buildingType, production) {
-    const isCity = buildingType === 'city';
+    const isCity = buildingType === 'city' || buildingType === 'metropolis';
     const commodity = this.isCitiesKnights() ? RESOURCE_TO_COMMODITY[hexResource] : null;
 
     if (isCity && commodity) {
@@ -1224,7 +1227,7 @@ export class GameEngine {
     if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
 
     const currentLevel = player.cityImprovements[track] || 0;
-    if (currentLevel >= 5) throw new Error('IMPROVEMENT_MAX_LEVEL');
+    if (currentLevel >= 6) throw new Error('IMPROVEMENT_MAX_LEVEL');
 
     let cost = currentLevel + 1;
     if (player.craneDiscount) {
@@ -1244,13 +1247,64 @@ export class GameEngine {
       args: { playerName: player.name, track, level: newLevel }
     });
 
-    if (newLevel === 4 || newLevel === 5) {
-      this.pendingMetropolisChoice = { playerId, track };
-      this.previousPhase = GAME_PHASES.TURN_ACTION;
-      this.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
+    if (newLevel === 3 || newLevel === 6) {
+      this.drawProgressCard(player, track);
     }
 
+    this.checkMetropolisAward(playerId, track, newLevel);
+
     return { track, level: newLevel, cost };
+  }
+
+  clearMetropolis(track) {
+    this.metropolises = this.metropolises || { trade: null, politics: null, science: null };
+    const current = this.metropolises[track];
+    if (current) {
+      const vertex = this.grid?.vertices.get(current.vertexId);
+      if (vertex?.building) {
+        vertex.building.hasMetropolis = false;
+        vertex.building.metropolisTrack = null;
+      }
+      const holder = this.players.find(p => p.id === current.playerId);
+      if (holder?.metropolis) holder.metropolis[track] = false;
+    }
+    this.metropolises[track] = null;
+  }
+
+  checkMetropolisAward(playerId, track, newLevel) {
+    if (newLevel < 4) return;
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return;
+    const myLevel = player.cityImprovements[track] || 0;
+    const othersMax = Math.max(
+      0,
+      ...this.players.filter(p => p.id !== playerId).map(p => p.cityImprovements[track] || 0)
+    );
+    const uniqueLeader = myLevel > othersMax;
+    this.metropolises = this.metropolises || { trade: null, politics: null, science: null };
+    const current = this.metropolises[track];
+
+    if (!uniqueLeader) {
+      if (current) {
+        const holderLevel = this.players.find(p => p.id === current.playerId)?.cityImprovements[track] || 0;
+        const maxLevel = Math.max(myLevel, othersMax, holderLevel);
+        const leaders = this.players.filter(p => (p.cityImprovements[track] || 0) === maxLevel);
+        if (leaders.length !== 1) this.clearMetropolis(track);
+      }
+      this.recalculateVictoryPoints();
+      return;
+    }
+
+    if (current?.playerId === playerId) {
+      this.recalculateVictoryPoints();
+      this.checkVictory();
+      return;
+    }
+
+    if (current) this.clearMetropolis(track);
+    this.pendingMetropolisChoice = { playerId, track };
+    this.previousPhase = GAME_PHASES.TURN_ACTION;
+    this.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
   }
 
   assertCkAction(playerId) {
@@ -1273,17 +1327,22 @@ export class GameEngine {
     if (vertex && vertex.knight === knight) vertex.knight = null;
   }
 
-  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
+  listKnightRelocations(playerId, fromVertexId, extraIgnore = []) {
     const from = this.grid.vertices.get(fromVertexId);
-    if (!from) return null;
+    if (!from) return [];
+    const options = [];
     for (const adjId of from.adjacentVertices) {
       const dest = this.grid.vertices.get(adjId);
       if (!dest || dest.building || dest.knight) continue;
       if (!this.verticesSharePlayerRoad(fromVertexId, adjId, playerId)) continue;
       if (this.violatesDistanceRule(adjId, [fromVertexId, ...extraIgnore])) continue;
-      return adjId;
+      options.push(adjId);
     }
-    return null;
+    return options;
+  }
+
+  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
+    return this.listKnightRelocations(playerId, fromVertexId, extraIgnore)[0] || null;
   }
 
   placeKnight(playerId, vertexId) {
@@ -1402,18 +1461,74 @@ export class GameEngine {
 
   displaceKnight(victimKnight, fromVertexId, attackerFromId) {
     const owner = this.players.find(p => p.id === victimKnight.playerId);
-    const relocateTo = owner
-      ? this.findKnightRelocation(owner.id, fromVertexId, [attackerFromId])
-      : null;
-    if (relocateTo) {
-      const dest = this.grid.vertices.get(relocateTo);
-      victimKnight.vertexId = relocateTo;
-      victimKnight.active = false;
-      dest.knight = victimKnight;
-      return { playerId: victimKnight.playerId, vertexId: relocateTo, removed: false };
+    const vacated = this.grid.vertices.get(fromVertexId);
+    if (vacated && vacated.knight === victimKnight) vacated.knight = null;
+
+    victimKnight.active = false;
+    victimKnight.vertexId = null;
+
+    const options = owner
+      ? this.listKnightRelocations(owner.id, fromVertexId, [attackerFromId])
+      : [];
+
+    if (!owner || options.length === 0) {
+      if (owner) this.returnKnightToSupply(owner, victimKnight);
+      return { playerId: victimKnight.playerId, vertexId: null, removed: true, pending: false, options: [] };
     }
-    if (owner) this.returnKnightToSupply(owner, victimKnight);
-    return { playerId: victimKnight.playerId, vertexId: null, removed: true };
+
+    this.pendingKnightRelocation = {
+      playerId: owner.id,
+      options,
+      fromVertexId,
+      attackerFromId
+    };
+    this.previousPhase = this.phase;
+    this.phase = GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE;
+    return { playerId: owner.id, vertexId: null, removed: false, pending: true, options };
+  }
+
+  relocateDisplacedKnight(playerId, vertexId) {
+    if (this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) throw new Error('NOT_IN_KNIGHT_RELOCATE_PHASE');
+    const pending = this.pendingKnightRelocation;
+    if (!pending || pending.playerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
+    if (!pending.options.includes(vertexId)) throw new Error('INVALID_RELOCATION');
+
+    const owner = this.players.find(p => p.id === playerId);
+    const knight = owner?.knightsPlaced.find(k => k.vertexId == null);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+
+    const dest = this.grid.vertices.get(vertexId);
+    if (!dest || dest.building || dest.knight) throw new Error('VERTEX_OCCUPIED');
+
+    knight.vertexId = vertexId;
+    knight.active = false;
+    dest.knight = knight;
+
+    this.pendingKnightRelocation = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+
+    this.logEvent({
+      type: 'KNIGHT_RELOCATED',
+      messageKey: 'LOG_KNIGHT_RELOCATED',
+      args: { playerName: owner.name }
+    });
+    return { vertexId };
+  }
+
+  autoResolveKnightRelocation() {
+    const pending = this.pendingKnightRelocation;
+    if (!pending || this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) return;
+    if (pending.options[0]) {
+      this.relocateDisplacedKnight(pending.playerId, pending.options[0]);
+      return;
+    }
+    const owner = this.players.find(p => p.id === pending.playerId);
+    const knight = owner?.knightsPlaced.find(k => k.vertexId == null);
+    if (owner && knight) this.returnKnightToSupply(owner, knight);
+    this.pendingKnightRelocation = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
@@ -1607,6 +1722,9 @@ export class GameEngine {
     }
     player.metropolis[track] = true;
     vertex.building.hasMetropolis = true;
+    vertex.building.metropolisTrack = track;
+    this.metropolises = this.metropolises || { trade: null, politics: null, science: null };
+    this.metropolises[track] = { playerId, vertexId };
     this.pendingMetropolisChoice = null;
     this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
     this.recalculateVictoryPoints();
@@ -1988,6 +2106,8 @@ export class GameEngine {
     let bestRatio = 4;
     if (player.merchantFleetActive) {
       bestRatio = 2;
+    } else if ((player.cityImprovements?.trade || 0) >= 1 && RESOURCE_VALUES.includes(giveRes)) {
+      bestRatio = 2;
     } else if (this.merchantHolder === playerId && this.merchantHexId) {
       const hex = this.grid.hexes.get(this.merchantHexId);
       if (hex && hex.resource === giveRes) bestRatio = 2;
@@ -2316,6 +2436,7 @@ export class GameEngine {
   }
 
   recalculateLargestArmy() {
+    if (this.isCitiesKnights()) return;
     const minCount = 3;
     let holder = this.largestArmyHolder ? { ...this.largestArmyHolder } : null;
     if (holder && !this.players.find(p => p.id === holder.playerId)) {
@@ -2423,8 +2544,8 @@ export class GameEngine {
         publicPoints += 2;
       }
 
-      // Largest army = 2 VP
-      if (this.largestArmyHolder && this.largestArmyHolder.playerId === player.id) {
+      // Largest army = 2 VP (base game only; C&K uses Defender of Catan)
+      if (!this.isCitiesKnights() && this.largestArmyHolder && this.largestArmyHolder.playerId === player.id) {
         publicPoints += 2;
       }
 
@@ -2437,7 +2558,10 @@ export class GameEngine {
       }
 
       for (const track of ['trade', 'politics', 'science']) {
-        if (player.metropolis?.[track]) publicPoints += 2;
+        if (player.metropolis?.[track]) {
+          const level = player.cityImprovements?.[track] || 0;
+          publicPoints += level >= 6 ? 2 : 1;
+        }
       }
 
       for (const card of player.progressCards || []) {
@@ -2469,6 +2593,7 @@ export class GameEngine {
       vpTarget: this.vpTarget,
       phase: this.phase,
       currentTurnPlayerIndex: this.currentTurnPlayerIndex,
+      currentPlayerId: this.players[this.currentTurnPlayerIndex]?.id ?? null,
       turnNumber: this.turnNumber,
       dice: this.dice,
       eventDie: this.eventDie,
@@ -2483,6 +2608,9 @@ export class GameEngine {
       merchantHolder: this.merchantHolder,
       merchantHexId: this.merchantHexId,
       pendingProgressDiscard: Array.from(this.pendingProgressDiscard),
+      pendingKnightRelocation: this.pendingKnightRelocation,
+      pendingMetropolisChoice: this.pendingMetropolisChoice,
+      metropolises: this.metropolises,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,

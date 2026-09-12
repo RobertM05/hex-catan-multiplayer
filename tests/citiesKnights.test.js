@@ -193,9 +193,39 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].cityImprovements.trade, 2);
     assert.equal(engine.players[0].commodities.cloth, 7);
 
-    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].cityImprovements.trade = 6;
     assert.throws(() => engine.improveCityTrack('p1', 'trade'), /IMPROVEMENT_MAX_LEVEL/);
     assert.throws(() => engine.improveCityTrack('p1', 'science'), /NOT_ENOUGH_COMMODITIES/);
+  });
+
+  it('draws a progress card at track levels 3 and 6', () => {
+    const engine = makeCkEngine();
+    engine.players[0].citiesBuilt.push('v1');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 2;
+    engine.players[0].commodities.cloth = 20;
+    const before = engine.players[0].progressCards.length;
+    engine.improveCityTrack('p1', 'trade');
+    assert.equal(engine.players[0].cityImprovements.trade, 3);
+    assert.equal(engine.players[0].progressCards.length, before + 1);
+
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 5;
+    engine.improveCityTrack('p1', 'trade');
+    assert.equal(engine.players[0].cityImprovements.trade, 6);
+    assert.equal(engine.players[0].progressCards.length, before + 2);
+  });
+
+  it('gives 2:1 bank trades on basic resources at Trade level 1, not commodities', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 1;
+    engine.players[0].resources.wood = 2;
+    engine.players[0].commodities.cloth = 4;
+    engine.tradeWithBank('p1', 'wood', 'brick', 2);
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[0].resources.brick, 1);
+    assert.throws(() => engine.tradeWithBank('p1', 'cloth', 'ore', 2), /INVALID_TRADE_RATIO|NOT_ENOUGH/);
   });
 });
 
@@ -1345,7 +1375,7 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
     assert.throws(() => engine.buildCityWall('p1', fourth), /NO_CITY_WALLS_LEFT/);
   });
 
-  it('awards a metropolis choice at improvement level 4 and grants 2 VP', () => {
+  it('awards a metropolis choice at improvement level 4 and grants +1 VP', () => {
     const engine = makeCkEngine();
     attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
     const cityId = engine.players[0].citiesBuilt.at(-1);
@@ -1358,7 +1388,7 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
     const before = engine.players[0].victoryPoints;
     engine.chooseMetropolis('p1', cityId);
     assert.equal(engine.players[0].metropolis.trade, true);
-    assert.equal(engine.players[0].victoryPoints, before + 2);
+    assert.equal(engine.players[0].victoryPoints, before + 1);
   });
 
   it('steals the metropolis when another player reaches level 5', () => {
@@ -1459,3 +1489,52 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
   });
 });
 
+describe('CK-11: Knight State in UI', () => {
+  it('should include knight data on vertices in serialized grid state', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    giveRoad(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'basic', active: true });
+    const state = engine.getStateForPlayer('p1');
+    const serialized = state.grid.vertices[vertex.id];
+    assert.ok(serialized.knight);
+    assert.equal(serialized.knight.rank, 'basic');
+    assert.equal(serialized.knight.active, true);
+    assert.equal(serialized.knight.playerId, 'p1');
+  });
+
+  it('should include knightsAvailable in player state', () => {
+    const engine = makeCkEngine();
+    const self = engine.getStateForPlayer('p1').players.find(p => p.id === 'p1');
+    const asOpponent = engine.getStateForPlayer('p2').players.find(p => p.id === 'p1');
+    assert.deepEqual(self.knightsAvailable, { basic: 2, strong: 2, mighty: 1 });
+    assert.equal(asOpponent.knightsAvailable, undefined);
+    assert.ok(Array.isArray(self.knightsPlaced));
+  });
+
+  it('lets the displaced player choose a relocation vertex', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    const dest = engine.grid.vertices.get(otherVertexId);
+    const escapeEdgeId = dest.adjacentEdges.find((eid) => {
+      const e = engine.grid.edges.get(eid);
+      return !e.road;
+    });
+    const escapeEdge = engine.grid.edges.get(escapeEdgeId);
+    escapeEdge.road = { playerId: 'p2', color: '#457b9d' };
+    engine.players[1].roadsBuilt.push(escapeEdgeId);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'strong', active: true });
+    plantKnight(engine, 'p2', otherVertexId, { rank: 'basic', active: true });
+    const result = engine.moveKnight('p1', vertex.id, otherVertexId);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE);
+    assert.equal(result.displaced.pending, true);
+    assert.ok(result.displaced.options.length > 0);
+    const pick = result.displaced.options[0];
+    engine.relocateDisplacedKnight('p2', pick);
+    assert.equal(engine.grid.vertices.get(pick).knight.playerId, 'p2');
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.getStateForPlayer('p1').pendingKnightRelocation, null);
+  });
+});

@@ -223,7 +223,7 @@
           <div class="improvement-track" data-track="trade">
             <div class="track-head">
               <span class="track-label track-trade" data-i18n="TRACK_TRADE">Comerț</span>
-              <span class="track-level" id="improve-level-trade">0/5</span>
+              <span class="track-level" id="improve-level-trade">0/6</span>
             </div>
             <div class="track-progress"><div class="track-fill track-fill-trade" id="improve-fill-trade"></div></div>
             <button type="button" class="btn-glass btn-improve" data-improve-track="trade" id="btn-improve-trade">
@@ -234,7 +234,7 @@
           <div class="improvement-track" data-track="politics">
             <div class="track-head">
               <span class="track-label track-politics" data-i18n="TRACK_POLITICS">Politică</span>
-              <span class="track-level" id="improve-level-politics">0/5</span>
+              <span class="track-level" id="improve-level-politics">0/6</span>
             </div>
             <div class="track-progress"><div class="track-fill track-fill-politics" id="improve-fill-politics"></div></div>
             <button type="button" class="btn-glass btn-improve" data-improve-track="politics" id="btn-improve-politics">
@@ -245,7 +245,7 @@
           <div class="improvement-track" data-track="science">
             <div class="track-head">
               <span class="track-label track-science" data-i18n="TRACK_SCIENCE">Știință</span>
-              <span class="track-level" id="improve-level-science">0/5</span>
+              <span class="track-level" id="improve-level-science">0/6</span>
             </div>
             <div class="track-progress"><div class="track-fill track-fill-science" id="improve-fill-science"></div></div>
             <button type="button" class="btn-glass btn-improve" data-improve-track="science" id="btn-improve-science">
@@ -329,7 +329,35 @@
               </span>
             </div>
           </button>
+
+          <button id="btn-place-knight" class="btn-build-action ck-hud-widget">
+            <span class="build-action-label">
+              <span data-i18n="PLACE_KNIGHT">Cavaler</span>
+            </span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-ore" title="Minereu">
+                <span class="ico" data-icon="ore"></span> 1
+              </span>
+              <span class="cost-pill pill-wool" title="Lână">
+                <span class="ico" data-icon="wool"></span> 1
+              </span>
+            </div>
+          </button>
+
+          <button id="btn-build-city-wall" class="btn-build-action ck-hud-widget">
+            <span class="build-action-label">
+              <span data-i18n="BUILD_CITY_WALL">Zid</span>
+              <span id="wall-supply-count" class="wall-supply-count">3</span>
+            </span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-brick" title="Cărămidă">
+                <span class="ico" data-icon="brick"></span> 2
+              </span>
+            </div>
+          </button>
         </div>
+
+        <div id="knight-supply" class="ck-hud-widget knight-supply" aria-live="polite"></div>
 
         <button id="btn-end-turn" class="btn-glass" style="margin-top: auto; padding: 12px; font-weight: 700;" data-i18n="ACTION_END_TURN">Încheie tura</button>
       </aside>
@@ -356,6 +384,8 @@
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
+
+        <div id="knight-action-menu" class="knight-action-menu" hidden></div>
 
       </div>
 
