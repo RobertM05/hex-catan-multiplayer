@@ -811,6 +811,109 @@ describe('AI-02 & UX-09: Bot Trade Balancing & Goal-Oriented Bank Trading', () =
   });
 });
 
+describe('CK-17: Aqueduct & Knight Action Limits', () => {
+  function makeCkEngine() {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Player 1' });
+    engine.addPlayer({ id: 'p2', name: 'Player 2' });
+    engine.startGame('standard');
+    return engine;
+  }
+
+  function giveRoad(engine, playerId, vertexId) {
+    const vertex = engine.grid.vertices.get(vertexId);
+    const edgeId = vertex.adjacentEdges[0];
+    const edge = engine.grid.edges.get(edgeId);
+    edge.road = { playerId, color: '#e63946' };
+    engine.players.find(p => p.id === playerId).roadsBuilt.push(edgeId);
+    const otherVertexId = edge.v1 === vertexId ? edge.v2 : edge.v1;
+    return { edge, otherVertexId };
+  }
+
+  it('sets hiredTurn and lastActionTurn when a knight is placed', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 2;
+    engine.players[0].resources.wool = 2;
+    const vertex = Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+    giveRoad(engine, 'p1', vertex.id);
+
+    const result = engine.placeKnight('p1', vertex.id);
+    assert.equal(result.knight.hiredTurn, engine.turnNumber);
+    assert.equal(result.knight.lastActionTurn, engine.turnNumber);
+  });
+
+  it('rejects activating or promoting a knight on the turn it is hired', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 3;
+    engine.players[0].resources.wool = 2;
+    engine.players[0].resources.wheat = 2;
+    engine.players[0].cityImprovements.politics = 2;
+    const vertex = Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+    giveRoad(engine, 'p1', vertex.id);
+
+    engine.placeKnight('p1', vertex.id);
+    assert.throws(() => engine.activateKnight('p1', vertex.id), /KNIGHT_CANNOT_ACT_ON_HIRED_TURN/);
+    assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_CANNOT_ACT_ON_HIRED_TURN/);
+  });
+
+  it('rejects multiple knight actions on the same turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 3;
+    engine.players[0].resources.wool = 2;
+    engine.players[0].resources.wheat = 3;
+    engine.players[0].cityImprovements.politics = 2;
+    const vertex = Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+
+    engine.placeKnight('p1', vertex.id);
+
+    // Advance to next turn so knight is no longer on hired turn
+    engine.turnNumber++;
+    engine.activateKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.lastActionTurn, engine.turnNumber);
+
+    // Cannot promote on the same turn it was activated
+    assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_ALREADY_ACTED_THIS_TURN/);
+
+    // Cannot move on the same turn it was activated
+    assert.throws(() => engine.moveKnight('p1', vertex.id, otherVertexId), /KNIGHT_ALREADY_ACTED_THIS_TURN/);
+
+    // Advance turn again: now it can move
+    engine.turnNumber++;
+    engine.moveKnight('p1', vertex.id, otherVertexId);
+    assert.equal(engine.grid.vertices.get(otherVertexId).knight.playerId, 'p1');
+    assert.equal(engine.grid.vertices.get(otherVertexId).knight.lastActionTurn, engine.turnNumber);
+  });
+
+  it('Aqueduct perk grants 1 resource when dice roll yields zero production', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 5;
+    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+
+    const production = { p1: {}, p2: { wood: 1 } };
+    const claimed = engine.applyAqueductBenefit(production);
+
+    assert.equal(claimed.p1, 'ore'); // Ore is lowest (0)
+    assert.equal(engine.players[0].resources.ore, 1);
+    assert.equal(production.p1.ore, 1);
+  });
+
+  it('claimAqueductResource validates Science level >= 5', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 4;
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
+
+    engine.players[0].cityImprovements.science = 5;
+    const res = engine.claimAqueductResource('p1', 'wheat');
+    assert.equal(res.resource, 'wheat');
+    assert.equal(engine.players[0].resources.wheat, 1);
+  });
+});
+
 
 
 

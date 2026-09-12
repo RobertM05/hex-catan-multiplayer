@@ -328,6 +328,10 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.improveCityTrack(currentPlayerId, data.track), cb);
   });
 
+  socket.on('claim_aqueduct_resource', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.claimAqueductResource(currentPlayerId, data.resource), cb);
+  });
+
   socket.on('choose_metropolis', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.chooseMetropolis(currentPlayerId, data.vertexId), cb);
   });

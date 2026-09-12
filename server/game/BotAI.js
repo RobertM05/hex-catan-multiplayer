@@ -518,7 +518,7 @@ export class BotAI {
     if (progress) return progress;
 
     if (engine.barbarianPosition >= 5) {
-      const inactive = (me.knightsPlaced || []).filter(k => !k.active);
+      const inactive = (me.knightsPlaced || []).filter(k => !k.active && k.hiredTurn !== engine.turnNumber && k.lastActionTurn !== engine.turnNumber);
       if (inactive.length && (me.resources.wheat || 0) >= 1) {
         return { action: 'activate_knight', vertexId: inactive[0].vertexId };
       }
@@ -526,7 +526,7 @@ export class BotAI {
 
     const robberHex = engine.grid.robberHexId;
     for (const knight of me.knightsPlaced || []) {
-      if (!knight.active) continue;
+      if (!knight.active || knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
       const v = engine.grid.vertices.get(knight.vertexId);
       if (v?.hexes?.includes(robberHex)) {
         const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
@@ -541,6 +541,7 @@ export class BotAI {
 
     const politics = me.cityImprovements?.politics || 0;
     for (const knight of me.knightsPlaced || []) {
+      if (knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
       const nextReq = knight.rank === 'basic' ? 1 : knight.rank === 'strong' ? 2 : 99;
       if (politics >= nextReq && knight.rank !== 'mighty'
         && (me.resources.wheat || 0) >= 1 && (me.resources.ore || 0) >= 1) {

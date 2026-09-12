@@ -272,7 +272,7 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].resources.ore, 1);
   });
 
-  it('grants two extra city pieces when Science reaches level 5', () => {
+  it('unlocks Aqueduct perk when Science reaches level 5 (no extra city pieces)', () => {
     const engine = makeCkEngine();
     engine.players[0].citiesBuilt.push('v1');
     engine.phase = GAME_PHASES.TURN_ACTION;
@@ -281,7 +281,7 @@ describe('CK-02 city improvements', () => {
     const before = engine.players[0].citiesRemaining;
     engine.improveCityTrack('p1', 'science');
     assert.equal(engine.players[0].cityImprovements.science, 5);
-    assert.equal(engine.players[0].citiesRemaining, before + 2);
+    assert.equal(engine.players[0].citiesRemaining, before);
   });
 });
 
@@ -669,7 +669,8 @@ describe('CK-04: Knight Units', () => {
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].active, false);
 
-    // If already active, stays active
+    // If already active, stays active across turns
+    engine.turnNumber++;
     engine.players[0].knightsPlaced[0].active = true;
     engine.players[0].cityImprovements.politics = 2;
     engine.players[0].resources.wheat = 1;
