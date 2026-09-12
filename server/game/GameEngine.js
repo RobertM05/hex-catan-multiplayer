@@ -153,6 +153,8 @@ export class GameEngine {
     this.merchantHexId = null;
     this.pendingProgressDiscard = new Set();
     this.alchemistDice = null;
+    this.pendingMetropolisChoice = null;
+    this.previousPhase = null;
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -1260,14 +1262,21 @@ export class GameEngine {
 
     player.commodities[commodity] -= cost;
     player.cityImprovements[track] = currentLevel + 1;
+    const newLevel = player.cityImprovements[track];
 
     this.logEvent({
       type: 'CITY_IMPROVED',
       messageKey: 'LOG_CITY_IMPROVED',
-      args: { playerName: player.name, track, level: player.cityImprovements[track] }
+      args: { playerName: player.name, track, level: newLevel }
     });
 
-    return { track, level: player.cityImprovements[track], cost };
+    if (newLevel === 4 || newLevel === 5) {
+      this.pendingMetropolisChoice = { playerId, track };
+      this.previousPhase = GAME_PHASES.TURN_ACTION;
+      this.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
+    }
+
+    return { track, level: newLevel, cost };
   }
 
   assertCkAction(playerId) {
@@ -1547,9 +1556,13 @@ export class GameEngine {
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
     const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
+    if (!vertex?.building || vertex.building.playerId !== playerId) {
       throw new Error('MUST_DOWNGRADE_OWN_CITY');
     }
+    if (vertex.building.hasMetropolis || vertex.building.type === 'metropolis') {
+      throw new Error('METROPOLIS_PROTECTED');
+    }
+    if (vertex.building.type !== 'city') throw new Error('MUST_DOWNGRADE_OWN_CITY');
 
     if (vertex.building.hasWall) {
       vertex.building.hasWall = false;
@@ -2471,6 +2484,10 @@ export class GameEngine {
 
       if (this.merchantHolder === player.id) {
         publicPoints += 1;
+      }
+
+      for (const track of ['trade', 'politics', 'science']) {
+        if (player.metropolis?.[track]) publicPoints += 2;
       }
 
       for (const card of player.progressCards || []) {
