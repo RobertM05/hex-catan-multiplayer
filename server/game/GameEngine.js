@@ -2795,6 +2795,7 @@ export class GameEngine {
           settlementsBuilt: p.settlementsBuilt,
           citiesBuilt: p.citiesBuilt,
           roadsBuilt: p.roadsBuilt,
+          longestRoadLength: this.calculatePlayerLongestRoad(p.id),
           victoryPoints: isSelf ? p.victoryPoints : p.publicVictoryPoints,
           publicVictoryPoints: p.publicVictoryPoints
         };

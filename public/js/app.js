@@ -2504,6 +2504,7 @@ class CatanApp {
 
     this.boardRenderer.currentPlayerId = this.myPlayerId;
     this.boardRenderer.gameStatePlayers = s.players;
+    this.boardRenderer.longestRoadHolder = s.longestRoadHolder;
 
     // Render SVG Board
     if (s.phase === 'SETUP_ROUND_1' || s.phase === 'SETUP_ROUND_2') {

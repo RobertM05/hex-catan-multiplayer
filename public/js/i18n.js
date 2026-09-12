@@ -243,6 +243,14 @@ export const TRANSLATIONS = {
     LARGEST_ARMY: "Largest Army (+2 VP)",
     VICTORY_POINTS_ABBR: "VP",
 
+    // Road Inspection Tooltip
+    TOOLTIP_ROAD_OWNER: "Owner: {playerName}",
+    TOOLTIP_ROAD_CONTINUOUS: "Continuous Road: {length} segments",
+    TOOLTIP_ROAD_NETWORK: "Network: {total} segments",
+    TOOLTIP_LONGEST_ROAD_HOLDER: "🏆 Longest Road Holder ({length})",
+    TOOLTIP_LONGEST_ROAD_TIED: "Tied for Longest Road ({length})",
+    TOOLTIP_LONGEST_ROAD_NEED_MORE: "{diff} more segment(s) to claim Longest Road",
+
     // Trade Dialog
     TRADE_TITLE: "Resource Trading",
     TAB_TRADE_PLAYER: "Player Trade",
@@ -709,6 +717,14 @@ export const TRANSLATIONS = {
     LONGEST_ROAD: "Cel mai lung drum (+2 PV)",
     LARGEST_ARMY: "Cea mai mare armată (+2 PV)",
     VICTORY_POINTS_ABBR: "PV",
+
+    // Road Inspection Tooltip
+    TOOLTIP_ROAD_OWNER: "Proprietar: {playerName}",
+    TOOLTIP_ROAD_CONTINUOUS: "Drum continuu: {length} segmente",
+    TOOLTIP_ROAD_NETWORK: "Rețea: {total} segmente",
+    TOOLTIP_LONGEST_ROAD_HOLDER: "🏆 Deține Cel Mai Lung Drum ({length})",
+    TOOLTIP_LONGEST_ROAD_TIED: "La egalitate pentru Cel Mai Lung Drum ({length})",
+    TOOLTIP_LONGEST_ROAD_NEED_MORE: "Încă {diff} segment(e) pentru a prelua Cel Mai Lung Drum",
 
     // Trade Dialog
     TRADE_TITLE: "Comerț cu resurse",
