@@ -575,7 +575,7 @@ export class RoomManager {
 
         let canAfford = true;
         for (const [res, amt] of Object.entries(engine.activeTrade.want)) {
-          if ((botPlayer.resources[res] || 0) < amt) {
+          if (amt > 0 && engine.getPlayerCardCount(botPlayer, res) < amt) {
             canAfford = false;
             break;
           }
@@ -585,7 +585,9 @@ export class RoomManager {
           const giveTotal = Object.values(engine.activeTrade.give).reduce((a, b) => a + b, 0);
           const wantTotal = Object.values(engine.activeTrade.want).reduce((a, b) => a + b, 0);
           const isFavorable = giveTotal >= wantTotal;
-          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) => (botPlayer.resources[res] || 0) >= amt + 2);
+          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) =>
+            amt <= 0 || engine.getPlayerCardCount(botPlayer, res) >= amt + 2
+          );
 
           if (isFavorable || hasSurplus) {
             setTimeout(() => {

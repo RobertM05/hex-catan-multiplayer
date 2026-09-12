@@ -1528,7 +1528,6 @@ class CatanApp {
    * TRADE MODAL (Domestic & Bank / Port)
    * ========================================================= */
   getBestBankRatio(resource) {
-    if (this.isCommodity(resource)) return 4;
     if (!this.gameState || !this.gameState.grid) return 4;
     this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     let me = this.gameState.players.find(p => p.id === this.myPlayerId);
@@ -1537,6 +1536,14 @@ class CatanApp {
       if (candidate) me = candidate;
     }
     if (!me) return 4;
+    if (me.merchantFleetActive) return 2;
+    const isCommodity = this.isCommodity(resource);
+    if (!isCommodity && (me.cityImprovements?.trade || 0) >= 1) return 2;
+    if (isCommodity && (me.cityImprovements?.trade || 0) >= 5) return 2;
+    if (this.gameState.merchantHolder === this.myPlayerId && this.gameState.merchantHexId) {
+      const hex = this.gameState.grid.hexes?.[this.gameState.merchantHexId];
+      if (hex && hex.resource === resource) return 2;
+    }
     let bestRatio = 4;
     const ownedVertices = (me.settlementsBuilt || []).concat(me.citiesBuilt || []);
     for (const vId of ownedVertices) {
@@ -1873,7 +1880,7 @@ class CatanApp {
 
       const ratio = this.getBestBankRatio(give);
       const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      if (me && (me.resources[give] || 0) < ratio) {
+      if (me && this.getCardCount(me, give) < ratio) {
         this.showToast(i18n.t('ERROR_NOT_ENOUGH_RESOURCES'), true);
         return;
       }
@@ -2254,7 +2261,15 @@ class CatanApp {
     } else if (type === 'smith') {
       const ids = new Set((me.knightsPlaced || []).map(k => k.vertexId));
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
-    } else if (type === 'deserter' || type === 'intrigue') {
+    } else if (type === 'intrigue') {
+      const mineActive = new Set((me.knightsPlaced || []).filter(k => k.active).map(k => k.vertexId));
+      const ids = new Set();
+      vertices.forEach(v => {
+        if (!v.knight || v.knight.playerId === this.myPlayerId || !v.knight.active) return;
+        if ((v.adjacentVertices || []).some(id => mineActive.has(id))) ids.add(v.id);
+      });
+      this.selectedAction = { type: 'progress_vertex', validIds: ids };
+    } else if (type === 'deserter') {
       const ids = new Set();
       vertices.forEach(v => {
         if (v.knight && v.knight.playerId !== this.myPlayerId) ids.add(v.id);
@@ -2303,6 +2318,32 @@ class CatanApp {
     }
     if (type === 'engineer') {
       this.progressPlay.options.vertexId = vertexId;
+      this.confirmProgressCardPlay();
+      return;
+    }
+    if (type === 'deserter') {
+      if (!this.progressPlay.options.vertexId) {
+        this.progressPlay.options.vertexId = vertexId;
+        const me = this.gameState.players.find(p => p.id === this.myPlayerId);
+        const ids = new Set();
+        Object.values(this.gameState.grid.vertices).forEach(v => {
+          if (v.building) return;
+          if (v.knight && v.id !== vertexId) return;
+          const hasRoad = (v.adjacentEdges || []).some(eid => this.gameState.grid.edges[eid]?.road?.playerId === me.id);
+          if (!hasRoad) return;
+          const blocked = (v.adjacentVertices || []).some(adj => {
+            const n = this.gameState.grid.vertices[adj];
+            return n && (n.building || (n.knight && n.id !== vertexId));
+          });
+          if (!blocked) ids.add(v.id);
+        });
+        this.selectedAction = { type: 'progress_vertex', validIds: ids };
+        this.boardRenderer.render(this.gameState.grid, this.selectedAction);
+        const hint = document.getElementById('progress-card-target-ui');
+        if (hint) hint.innerHTML = `<p>${i18n.t('PROGRESS_SELECT_KNIGHT_PLACE')}</p>`;
+        return;
+      }
+      this.progressPlay.options.placeVertexId = vertexId;
       this.confirmProgressCardPlay();
       return;
     }
@@ -2411,18 +2452,21 @@ class CatanApp {
       if (isMySetup) {
         if (!s.grid) return;
         const validIds = new Set();
-        if (curPlayer.settlementsBuilt.length === curPlayer.roadsBuilt.length) {
-          // Settlement step
+        const isBuildingStep = s.setupStep
+          ? s.setupStep === 'settlement'
+          : ((curPlayer.settlementsBuilt?.length || 0) + (curPlayer.citiesBuilt?.length || 0)) === (curPlayer.roadsBuilt?.length || 0);
+        if (isBuildingStep) {
           for (const [vId, v] of Object.entries(s.grid.vertices)) {
-            if (!v.building) {
-              const noAdj = v.adjacentVertices.every(adjId => !s.grid.vertices[adjId].building);
+            if (!v.building && !v.knight) {
+              const noAdj = v.adjacentVertices.every(adjId => !s.grid.vertices[adjId].building && !s.grid.vertices[adjId].knight);
               if (noAdj) validIds.add(vId);
             }
           }
           this.boardRenderer.render(s.grid, { type: 'settlement', validIds });
         } else {
-          // Road step: connect to the last settlement
-          const lastVId = curPlayer.settlementsBuilt[curPlayer.settlementsBuilt.length - 1];
+          const lastVId = s.lastSetupSettlementVertex
+            || curPlayer.citiesBuilt?.[curPlayer.citiesBuilt.length - 1]
+            || curPlayer.settlementsBuilt[curPlayer.settlementsBuilt.length - 1];
           if (lastVId && s.grid.vertices[lastVId]) {
             for (const eId of s.grid.vertices[lastVId].adjacentEdges) {
               if (!s.grid.edges[eId].road) validIds.add(eId);
@@ -2475,7 +2519,10 @@ class CatanApp {
 
     const statusEl = document.getElementById('turn-phase-status');
     if (statusEl) {
-      const statusKey = mapPhaseToStatusKey(s.phase, isMyTurn);
+      let statusKey = mapPhaseToStatusKey(s.phase, isMyTurn);
+      if (this.isCitiesKnights() && s.phase === 'SETUP_ROUND_2') {
+        statusKey = isMyTurn ? 'STATUS_YOUR_SETUP_CK' : 'STATUS_WAIT_SETUP_CK';
+      }
       statusEl.textContent = i18n.t(statusKey, { name: curPlayer.name });
     }
 
@@ -2631,11 +2678,15 @@ class CatanApp {
     if (s.phase === 'SETUP_ROUND_1' || s.phase === 'SETUP_ROUND_2') {
       if (isMyTurn && curPlayer) {
         isActionable = true;
-        const isSettlementStep = curPlayer.settlementsBuilt.length === curPlayer.roadsBuilt.length;
+        const isBuildingStep = s.setupStep
+          ? s.setupStep === 'settlement'
+          : ((curPlayer.settlementsBuilt?.length || 0) + (curPlayer.citiesBuilt?.length || 0)) === (curPlayer.roadsBuilt?.length || 0);
         if (s.phase === 'SETUP_ROUND_1') {
-          hintText = isSettlementStep ? i18n.t('SETUP_HINT_SETTLEMENT_1') : i18n.t('SETUP_HINT_ROAD_1');
+          hintText = isBuildingStep ? i18n.t('SETUP_HINT_SETTLEMENT_1') : i18n.t('SETUP_HINT_ROAD_1');
+        } else if (this.isCitiesKnights()) {
+          hintText = isBuildingStep ? i18n.t('SETUP_HINT_CITY_2') : i18n.t('SETUP_HINT_ROAD_2');
         } else {
-          hintText = isSettlementStep ? i18n.t('SETUP_HINT_SETTLEMENT_2') : i18n.t('SETUP_HINT_ROAD_2');
+          hintText = isBuildingStep ? i18n.t('SETUP_HINT_SETTLEMENT_2') : i18n.t('SETUP_HINT_ROAD_2');
         }
       } else if (curPlayer) {
         hintText = i18n.t('SETUP_HINT_WAITING', { playerName: curPlayer.name });
@@ -2738,14 +2789,23 @@ class CatanApp {
       const el = document.createElement('div');
       el.className = 'log-entry';
       const argsCopy = entry.args ? { ...entry.args } : {};
-      if (argsCopy.resource) {
-        argsCopy.resource = i18n.t(`RES_${argsCopy.resource.toUpperCase()}`);
+      const localizeResToken = (val) => {
+        if (typeof val !== 'string') return val;
+        return i18n.t(`RES_${val.toUpperCase()}`);
+      };
+      if (typeof argsCopy.resource === 'string') {
+        argsCopy.resource = localizeResToken(argsCopy.resource);
       }
-      if (argsCopy.give) {
-        argsCopy.give = i18n.t(`RES_${argsCopy.give.toUpperCase()}`);
+      if (typeof argsCopy.give === 'string') {
+        argsCopy.give = localizeResToken(argsCopy.give);
+      } else if (argsCopy.give && typeof argsCopy.give === 'object') {
+        argsCopy.give = Object.entries(argsCopy.give)
+          .filter(([, count]) => count > 0)
+          .map(([res, count]) => `${count} ${this.cardLabel(res)}`)
+          .join(', ');
       }
-      if (argsCopy.receive) {
-        argsCopy.receive = i18n.t(`RES_${argsCopy.receive.toUpperCase()}`);
+      if (typeof argsCopy.receive === 'string') {
+        argsCopy.receive = localizeResToken(argsCopy.receive);
       }
       el.textContent = i18n.t(entry.messageKey, argsCopy);
       logScroll.appendChild(el);
@@ -2769,6 +2829,7 @@ class CatanApp {
     if (!banner) return;
     if (!activeTrade) {
       banner.classList.remove('is-visible');
+      banner.innerHTML = '';
       this.lastTradeKey = null;
       return;
     }
