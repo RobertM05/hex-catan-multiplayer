@@ -583,7 +583,7 @@ export class BoardRenderer {
           win.setAttribute('height', '6');
           win.setAttribute('fill', '#ffeaa7');
           g.appendChild(win);
-        } else if (v.building.type === 'city') {
+        } else if (v.building.type === 'city' || v.building.type === 'metropolis') {
           // Fortified City / Cathedral with two towers
           const hx = v.x, hy = v.y;
           const d = `
@@ -612,6 +612,17 @@ export class BoardRenderer {
           cross.setAttribute('r', '3');
           cross.setAttribute('fill', '#ffd166');
           g.appendChild(cross);
+
+          if (v.building.type === 'metropolis') {
+            const metroRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            metroRing.setAttribute('cx', hx);
+            metroRing.setAttribute('cy', hy);
+            metroRing.setAttribute('r', '18');
+            metroRing.setAttribute('fill', 'none');
+            metroRing.setAttribute('stroke', '#fbbf24');
+            metroRing.setAttribute('stroke-width', '2.5');
+            g.appendChild(metroRing);
+          }
         }
 
         // If City upgrade action is active on own settlement
@@ -650,6 +661,24 @@ export class BoardRenderer {
             if (this.onVertexClick) this.onVertexClick(v.id);
           });
           g.appendChild(wallPick);
+        }
+
+        if (this.selectedAction && this.selectedAction.type === 'metropolis' && this.selectedAction.validIds && this.selectedAction.validIds.has(v.id)) {
+          const metroPick = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          metroPick.setAttribute('cx', v.x);
+          metroPick.setAttribute('cy', v.y);
+          metroPick.setAttribute('r', '20');
+          metroPick.setAttribute('class', 'interactive-node valid-city-target');
+          metroPick.setAttribute('fill', 'rgba(251, 191, 36, 0.18)');
+          metroPick.setAttribute('stroke', '#fbbf24');
+          metroPick.setAttribute('stroke-width', '3');
+          metroPick.setAttribute('stroke-dasharray', '5,3');
+          metroPick.style.cursor = 'pointer';
+          metroPick.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.onVertexClick) this.onVertexClick(v.id);
+          });
+          g.appendChild(metroPick);
         }
       } else {
         // Empty vertex: check if building settlement is valid here

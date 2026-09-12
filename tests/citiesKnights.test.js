@@ -1585,3 +1585,144 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
   });
 });
 
+describe('CK-09: Metropolis', () => {
+  function giveCity(engine, playerId, resource) {
+    attachBuilding(engine, playerId, resource, 'city');
+    const player = engine.players.find(p => p.id === playerId);
+    return player.citiesBuilt[player.citiesBuilt.length - 1];
+  }
+
+  function setTurn(engine, playerId) {
+    engine.currentTurnPlayerIndex = engine.players.findIndex(p => p.id === playerId);
+    if (engine.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+      engine.phase = GAME_PHASES.TURN_ACTION;
+    }
+  }
+
+  function buyLevels(engine, playerId, track, toLevel) {
+    const player = engine.players.find(p => p.id === playerId);
+    const commodity = { trade: 'cloth', politics: 'coin', science: 'paper' }[track];
+    player.commodities[commodity] = 30;
+    setTurn(engine, playerId);
+    while ((player.cityImprovements[track] || 0) < toLevel) {
+      if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) break;
+      engine.improveCityTrack(playerId, track);
+    }
+  }
+
+  it('should award metropolis when reaching improvement level 4', () => {
+    const engine = makeCkEngine();
+    giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    buyLevels(engine, 'p1', 'trade', 4);
+    assert.equal(engine.players[0].cityImprovements.trade, 4);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_METROPOLIS);
+    assert.deepEqual(engine.pendingMetropolisChoice, { playerId: 'p1', track: 'trade' });
+  });
+
+  it('should let player choose which city to make metropolis', () => {
+    const engine = makeCkEngine();
+    const a = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    const b = giveCity(engine, 'p1', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'science', 4);
+    engine.chooseMetropolis('p1', b);
+    assert.equal(engine.grid.vertices.get(b).building.type, 'metropolis');
+    assert.equal(engine.grid.vertices.get(a).building.type, 'city');
+    assert.equal(engine.metropolises.science.vertexId, b);
+    assert.equal(engine.players[0].metropolis.science, true);
+  });
+
+  it('should reject choosing a settlement (must be city)', () => {
+    const engine = makeCkEngine();
+    giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOL, 'settlement');
+    const settlementId = engine.players[0].settlementsBuilt[0];
+    buyLevels(engine, 'p1', 'politics', 4);
+    assert.throws(() => engine.chooseMetropolis('p1', settlementId), /MUST_CHOOSE_YOUR_CITY/);
+  });
+
+  it('should grant 2 VP for holding metropolis', () => {
+    const engine = makeCkEngine();
+    const cityId = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.recalculateVictoryPoints();
+    const before = engine.players[0].victoryPoints;
+    engine.chooseMetropolis('p1', cityId);
+    assert.equal(engine.players[0].victoryPoints, before + 2);
+    assert.equal(engine.players[0].publicVictoryPoints, engine.players[0].victoryPoints);
+  });
+
+  it('should NOT award second metropolis on same track to another player at level 4', () => {
+    const engine = makeCkEngine();
+    const c1 = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    giveCity(engine, 'p2', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.chooseMetropolis('p1', c1);
+    buyLevels(engine, 'p2', 'trade', 4);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.pendingMetropolisChoice, null);
+    assert.equal(engine.metropolises.trade.playerId, 'p1');
+  });
+
+  it('should STEAL metropolis when another player reaches level 5', () => {
+    const engine = makeCkEngine();
+    const c1 = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    giveCity(engine, 'p2', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.chooseMetropolis('p1', c1);
+    buyLevels(engine, 'p2', 'trade', 5);
+    assert.equal(engine.players[1].cityImprovements.trade, 5);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_METROPOLIS);
+    assert.equal(engine.pendingMetropolisChoice.playerId, 'p2');
+  });
+
+  it('should revert stolen metropolis city to normal city', () => {
+    const engine = makeCkEngine();
+    const c1 = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    const c2 = giveCity(engine, 'p2', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'politics', 4);
+    engine.chooseMetropolis('p1', c1);
+    buyLevels(engine, 'p2', 'politics', 5);
+    assert.equal(engine.grid.vertices.get(c1).building.type, 'city');
+    assert.equal(engine.players[0].metropolis.politics, false);
+    engine.chooseMetropolis('p2', c2);
+    assert.equal(engine.grid.vertices.get(c2).building.type, 'metropolis');
+    assert.equal(engine.metropolises.politics.playerId, 'p2');
+  });
+
+  it('should protect metropolis from barbarian downgrade', () => {
+    const engine = makeCkEngine();
+    const cityId = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    buyLevels(engine, 'p1', 'science', 4);
+    engine.chooseMetropolis('p1', cityId);
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    assert.throws(() => engine.downgradeCity('p1', cityId), /CANNOT_DOWNGRADE_METROPOLIS/);
+    assert.equal(engine.grid.vertices.get(cityId).building.type, 'metropolis');
+    assert.equal(engine.hasVulnerableCity(engine.players[0]), false);
+  });
+
+  it('should track metropolises in game state (1 per track max)', () => {
+    const engine = makeCkEngine();
+    const tradeCity = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    const politicsCity = giveCity(engine, 'p1', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.chooseMetropolis('p1', tradeCity);
+    buyLevels(engine, 'p1', 'politics', 4);
+    engine.chooseMetropolis('p1', politicsCity);
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.metropolises.trade.playerId, 'p1');
+    assert.equal(state.metropolises.politics.playerId, 'p1');
+    assert.equal(state.metropolises.science, null);
+    assert.equal(state.pendingMetropolisChoice, null);
+  });
+
+  it('should return to previous phase after metropolis choice', () => {
+    const engine = makeCkEngine();
+    const cityId = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    buyLevels(engine, 'p1', 'trade', 4);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_METROPOLIS);
+    engine.chooseMetropolis('p1', cityId);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+});
