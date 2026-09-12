@@ -560,6 +560,24 @@ export class BoardRenderer {
           });
           g.appendChild(upgradeRing);
         }
+
+        if (this.selectedAction && this.selectedAction.type === 'wall' && this.selectedAction.validIds && this.selectedAction.validIds.has(v.id)) {
+          const wallPick = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          wallPick.setAttribute('cx', v.x);
+          wallPick.setAttribute('cy', v.y);
+          wallPick.setAttribute('r', '19');
+          wallPick.setAttribute('class', 'interactive-node valid-city-target');
+          wallPick.setAttribute('fill', 'rgba(180, 83, 9, 0.18)');
+          wallPick.setAttribute('stroke', '#d97706');
+          wallPick.setAttribute('stroke-width', '2.5');
+          wallPick.setAttribute('stroke-dasharray', '3,3');
+          wallPick.style.cursor = 'pointer';
+          wallPick.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.onVertexClick) this.onVertexClick(v.id);
+          });
+          g.appendChild(wallPick);
+        }
       } else {
         // Empty vertex: check if building settlement is valid here
         const isInteractive = this.selectedAction &&
