@@ -36,7 +36,7 @@
       </div>
 
       <!-- Sound Toggle -->
-      <button id="btn-sound-toggle" class="btn-glass" title="Sound">
+      <button id="btn-sound-toggle" class="btn-glass" data-i18n-title="SOUND_TOGGLE" title="Sound">
         <span class="btn-icon ico" data-icon="speakerHigh"></span>
         <span class="sound-label" data-i18n="SOUND_TOGGLE">Sunet</span>
       </button>
@@ -81,12 +81,12 @@
           <div class="form-group">
             <label data-i18n="MAX_PLAYERS_LABEL">Număr maxim jucători</label>
             <select id="create-max-players" class="form-select">
-              <option value="3">3 Jucători</option>
-              <option value="4" selected>4 Jucători (Standard)</option>
-              <option value="5">5 Jucători (Extins)</option>
-              <option value="6">6 Jucători (Extins)</option>
-              <option value="7">7 Jucători (Mare)</option>
-              <option value="8">8 Jucători</option>
+              <option value="3" data-i18n="PLAYERS_OPTION_3">3 Jucători</option>
+              <option value="4" selected data-i18n="PLAYERS_OPTION_4">4 Jucători (Standard)</option>
+              <option value="5" data-i18n="PLAYERS_OPTION_5">5 Jucători (Extins)</option>
+              <option value="6" data-i18n="PLAYERS_OPTION_6">6 Jucători (Extins)</option>
+              <option value="7" data-i18n="PLAYERS_OPTION_7">7 Jucători (Mare)</option>
+              <option value="8" data-i18n="PLAYERS_OPTION_8">8 Jucători</option>
             </select>
           </div>
 
@@ -267,10 +267,10 @@
               <span data-i18n="BUILD_ROAD">Drum</span>
             </span>
             <div class="build-cost-pills">
-              <span class="cost-pill pill-wood" title="Lemn">
+              <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Lemn">
                 <span class="ico" data-icon="wood"></span> 1
               </span>
-              <span class="cost-pill pill-brick" title="Cărămidă">
+              <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Cărămidă">
                 <span class="ico" data-icon="brick"></span> 1
               </span>
             </div>
@@ -283,16 +283,16 @@
               <span data-i18n="BUILD_SETTLEMENT">Așezare</span>
             </span>
             <div class="build-cost-pills">
-              <span class="cost-pill pill-wood" title="Lemn">
+              <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Lemn">
                 <span class="ico" data-icon="wood"></span> 1
               </span>
-              <span class="cost-pill pill-brick" title="Cărămidă">
+              <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Cărămidă">
                 <span class="ico" data-icon="brick"></span> 1
               </span>
-              <span class="cost-pill pill-wool" title="Lână">
+              <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Lână">
                 <span class="ico" data-icon="wool"></span> 1
               </span>
-              <span class="cost-pill pill-wheat" title="Grâu">
+              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Grâu">
                 <span class="ico" data-icon="wheat"></span> 1
               </span>
             </div>
@@ -305,10 +305,10 @@
               <span data-i18n="BUILD_CITY">Oraș</span>
             </span>
             <div class="build-cost-pills">
-              <span class="cost-pill pill-ore" title="Minereu">
+              <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Minereu">
                 <span class="ico" data-icon="ore"></span> 3
               </span>
-              <span class="cost-pill pill-wheat" title="Grâu">
+              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Grâu">
                 <span class="ico" data-icon="wheat"></span> 2
               </span>
             </div>
@@ -321,13 +321,13 @@
               <span data-i18n="BUY_DEV_CARD">Carte dezv.</span>
             </span>
             <div class="build-cost-pills">
-              <span class="cost-pill pill-ore" title="Minereu">
+              <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Minereu">
                 <span class="ico" data-icon="ore"></span> 1
               </span>
-              <span class="cost-pill pill-wool" title="Lână">
+              <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Lână">
                 <span class="ico" data-icon="wool"></span> 1
               </span>
-              <span class="cost-pill pill-wheat" title="Grâu">
+              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Grâu">
                 <span class="ico" data-icon="wheat"></span> 1
               </span>
             </div>
@@ -380,13 +380,13 @@
           <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
             <span class="ico" data-icon="chat"></span>
           </button>
-          <button id="btn-zoom-in" class="board-control-btn" title="Zoom In">
+          <button id="btn-zoom-in" class="board-control-btn" data-i18n-title="ZOOM_IN" title="Zoom In">
             <span class="ico" data-icon="plus"></span>
           </button>
-          <button id="btn-zoom-out" class="board-control-btn" title="Zoom Out">
+          <button id="btn-zoom-out" class="board-control-btn" data-i18n-title="ZOOM_OUT" title="Zoom Out">
             <span class="ico" data-icon="minus"></span>
           </button>
-          <button id="btn-zoom-reset" class="board-control-btn" title="Reset View">
+          <button id="btn-zoom-reset" class="board-control-btn" data-i18n-title="ZOOM_RESET" title="Reset View">
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
@@ -780,17 +780,17 @@
         <form id="form-bank-trade" style="display: flex; flex-direction: column; gap: 14px;">
           <div class="bank-ratio-pill" id="bank-ratio-banner" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <div>
-              <span style="font-size: 13px; font-weight: 700; color: var(--gold-primary);" id="bank-ratio-text">Rată: 4:1</span>
-              <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;" id="bank-ratio-desc">Bancă standard (fără port)</span>
+              <span style="font-size: 13px; font-weight: 700; color: var(--gold-primary);" id="bank-ratio-text" data-i18n="BANK_RATE_DEFAULT">Rată: 4:1</span>
+              <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;" id="bank-ratio-desc" data-i18n="BANK_STANDARD_RATIO">Bancă standard (fără port)</span>
             </div>
-            <span style="font-size: 11px; color: var(--text-muted);" id="bank-harbors-status">Niciun port deținut</span>
+            <span style="font-size: 11px; color: var(--text-muted);" id="bank-harbors-status" data-i18n="BANK_NO_HARBORS">Niciun port deținut</span>
           </div>
 
           <!-- Visual Give Selection -->
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="BANK_GIVE_LABEL">Dai:</label>
-              <span style="font-size: 11px; color: var(--text-secondary);" id="bank-give-needed-label">Alege resursa oferită</span>
+              <span style="font-size: 11px; color: var(--text-secondary);" id="bank-give-needed-label" data-i18n="SELECT_GIVE">Alege resursa oferită</span>
             </div>
             <div class="bank-res-grid" id="bank-give-grid"></div>
           </div>
@@ -799,7 +799,7 @@
           <div class="bank-exchange-arrow" id="bank-exchange-indicator">
             <span id="bank-give-summary">4x Lemn</span>
             <span class="ico" data-icon="trade"></span>
-            <span id="bank-want-summary">1x Cărămidă</span>
+            <span id="bank-want-summary" data-i18n="BANK_WANT_PLACEHOLDER">1x Cărămidă</span>
           </div>
 
           <!-- Visual Receive Selection -->
@@ -1011,11 +1011,11 @@
         Alege 1 resursă. Toți ceilalți jucători trebuie să-ți predea toate cărțile din acea resursă.
       </p>
       <div class="modal-res-buttons-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
-        <button type="button" class="btn-glass res-choice-btn" data-res="wood">Lemn</button>
-        <button type="button" class="btn-glass res-choice-btn" data-res="brick">Cărămidă</button>
-        <button type="button" class="btn-glass res-choice-btn" data-res="wool">Lână</button>
-        <button type="button" class="btn-glass res-choice-btn" data-res="wheat">Grâu</button>
-        <button type="button" class="btn-glass res-choice-btn" data-res="ore">Minereu</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wood" data-i18n="RES_WOOD">Lemn</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="brick" data-i18n="RES_BRICK">Cărămidă</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wool" data-i18n="RES_WOOL">Lână</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wheat" data-i18n="RES_WHEAT">Grâu</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="ore" data-i18n="RES_ORE">Minereu</button>
       </div>
     </div>
   </div>
@@ -1032,23 +1032,23 @@
       </p>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
         <div>
-          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;">Prima resursă</label>
+          <label for="yop-res-1" style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;" data-i18n="YEAR_OF_PLENTY_SLOT_1">Prima resursă</label>
           <select id="yop-res-1" class="form-select" style="width: 100%;">
-            <option value="wood">Lemn</option>
-            <option value="brick">Cărămidă</option>
-            <option value="wool">Lână</option>
-            <option value="wheat">Grâu</option>
-            <option value="ore">Minereu</option>
+            <option value="wood" data-i18n="RES_WOOD">Lemn</option>
+            <option value="brick" data-i18n="RES_BRICK">Cărămidă</option>
+            <option value="wool" data-i18n="RES_WOOL">Lână</option>
+            <option value="wheat" data-i18n="RES_WHEAT">Grâu</option>
+            <option value="ore" data-i18n="RES_ORE">Minereu</option>
           </select>
         </div>
         <div>
-          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;">A doua resursă</label>
+          <label for="yop-res-2" style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;" data-i18n="YEAR_OF_PLENTY_SLOT_2">A doua resursă</label>
           <select id="yop-res-2" class="form-select" style="width: 100%;">
-            <option value="wood">Lemn</option>
-            <option value="brick" selected>Cărămidă</option>
-            <option value="wool">Lână</option>
-            <option value="wheat">Grâu</option>
-            <option value="ore">Minereu</option>
+            <option value="wood" data-i18n="RES_WOOD">Lemn</option>
+            <option value="brick" selected data-i18n="RES_BRICK">Cărămidă</option>
+            <option value="wool" data-i18n="RES_WOOL">Lână</option>
+            <option value="wheat" data-i18n="RES_WHEAT">Grâu</option>
+            <option value="ore" data-i18n="RES_ORE">Minereu</option>
           </select>
         </div>
       </div>
@@ -1062,28 +1062,27 @@
       <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
       <div style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); display: flex; flex-direction: column; gap: 14px;">
         <div>
-          <strong style="color: var(--text-primary);">Resurse:</strong> Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.
+          <strong style="color: var(--text-primary);" data-i18n="RULES_RESOURCES_TITLE">Resurse:</strong>
+          <span data-i18n="RULES_RESOURCES_BODY">Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);">Costuri clădiri:</strong><br>
-          • Drum = 1 Lemn + 1 Cărămidă<br>
-          • Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV)<br>
-          • Oraș = 3 Minereu + 2 Grâu (2 PV, înlocuiește o așezare existentă)<br>
-          • Carte Dezvoltare = 1 Minereu + 1 Lână + 1 Grâu
+          <strong style="color: var(--text-primary);" data-i18n="RULES_COSTS_TITLE">Costuri clădiri:</strong>
+          <span data-i18n="RULES_COSTS_BODY">Drum = 1 Lemn + 1 Cărămidă. Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV). Oraș = 3 Minereu + 2 Grâu (2 PV, înlocuiește o așezare existentă). Carte Dezvoltare = 1 Minereu + 1 Lână + 1 Grâu.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);">Regula distanței:</strong> Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.
+          <strong style="color: var(--text-primary);" data-i18n="RULES_DISTANCE_TITLE">Regula distanței:</strong>
+          <span data-i18n="RULES_DISTANCE_BODY">Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);">Zarul 7 & Hoțul:</strong> Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.
+          <strong style="color: var(--text-primary);" data-i18n="RULES_ROBBER_TITLE">Zarul 7 &amp; Hoțul:</strong>
+          <span data-i18n="RULES_ROBBER_BODY">Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);">Titluri speciale:</strong><br>
-          • Cel mai lung drum (minim 5 segmente continue) = +2 PV<br>
-          • Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV
+          <strong style="color: var(--text-primary);" data-i18n="RULES_TITLES_TITLE">Titluri speciale:</strong>
+          <span data-i18n="RULES_TITLES_BODY">Cel mai lung drum (minim 5 segmente continue) = +2 PV. Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV.</span>
         </div>
       </div>
-      <p class="icon-credit">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite &amp; Lorc.</p>
+      <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite &amp; Lorc.</p>
       <button id="btn-close-rules" class="btn-glass btn-primary" style="margin-top: 12px;" data-i18n="CANCEL_ACTION">Închide</button>
     </div>
   </div>

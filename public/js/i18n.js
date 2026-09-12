@@ -39,6 +39,12 @@ export const TRANSLATIONS = {
     TIMER_90S: "90 Seconds (Casual)",
     TIMER_NONE: "No Timer",
     CREATE_ROOM_BTN: "Create Room",
+    PLAYERS_OPTION_3: "3 Players",
+    PLAYERS_OPTION_4: "4 Players (Standard)",
+    PLAYERS_OPTION_5: "5 Players (Extended)",
+    PLAYERS_OPTION_6: "6 Players (Extended)",
+    PLAYERS_OPTION_7: "7 Players (Large)",
+    PLAYERS_OPTION_8: "8 Players",
     ROOM_CODE_LABEL: "Room Code",
     ROOM_CODE_PLACEHOLDER: "e.g. K9X4A",
     JOIN_ROOM_BTN: "Join Game",
@@ -185,6 +191,20 @@ export const TRANSLATIONS = {
     YEAR_OF_PLENTY_SELECT_TITLE: "Year of Plenty: Choose 2 Resources",
     YEAR_OF_PLENTY_SLOT_1: "First Resource",
     YEAR_OF_PLENTY_SLOT_2: "Second Resource",
+    RULES_RESOURCES_TITLE: "Resources:",
+    RULES_RESOURCES_BODY: "Wood (Forest), Brick (Hills), Wool (Pasture), Wheat (Fields), Ore (Mountains). The desert produces no resources.",
+    RULES_COSTS_TITLE: "Building costs:",
+    RULES_COSTS_BODY: "Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP, replaces an existing settlement). Development Card = 1 Ore + 1 Wool + 1 Wheat.",
+    RULES_DISTANCE_TITLE: "Distance rule:",
+    RULES_DISTANCE_BODY: "Any two settlements or cities must be at least 2 intersections apart.",
+    RULES_ROBBER_TITLE: "The 7 & the Robber:",
+    RULES_ROBBER_BODY: "If the dice sum is 7, players with more than 7 cards in hand discard half. The active player moves the robber onto a hex and may take 1 resource from a player with an adjacent settlement or city.",
+    RULES_TITLES_TITLE: "Special titles:",
+    RULES_TITLES_BODY: "Longest Road (at least 5 continuous segments) = +2 VP. Largest Army (at least 3 knights played) = +2 VP.",
+    ICON_CREDIT: "UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite & Lorc.",
+    ZOOM_IN: "Zoom In",
+    ZOOM_OUT: "Zoom Out",
+    ZOOM_RESET: "Reset View",
 
     // Awards
     LONGEST_ROAD: "Longest Road (+2 VP)",
@@ -202,6 +222,8 @@ export const TRANSLATIONS = {
     AVAILABLE_IN_HAND: "({count} in hand)",
     BANK_EXCHANGE_TITLE: "Bank & Harbor Trade",
     BANK_RATE_LABEL: "Exchange Rate:",
+    BANK_RATE_VALUE: "Rate: {ratio}:1",
+    BANK_RATE_DEFAULT: "Rate: 4:1",
     BANK_RATE_DESC: "Give {giveCount} to get 1",
     BANK_GIVE_LABEL: "You Give",
     BANK_RECEIVE_LABEL: "You Receive",
@@ -211,6 +233,7 @@ export const TRANSLATIONS = {
     BANK_RATIO_SPECIAL: "Specialized Harbor (2:1)",
     BANK_HARBORS_OWNED: "Harbors owned: {harbors}",
     BANK_NO_HARBORS: "No harbors owned",
+    BANK_WANT_PLACEHOLDER: "1x Brick",
     SELECT_GIVE: "Select resource to give",
     SELECT_RECEIVE: "Select resource to receive",
     TRADE_INVALID_SELECTION: "Select at least 1 resource to offer and 1 to receive.",
@@ -436,6 +459,12 @@ export const TRANSLATIONS = {
     TIMER_90S: "90 Secunde (Relaxat)",
     TIMER_NONE: "Fără limită de timp",
     CREATE_ROOM_BTN: "Creează cameră",
+    PLAYERS_OPTION_3: "3 Jucători",
+    PLAYERS_OPTION_4: "4 Jucători (Standard)",
+    PLAYERS_OPTION_5: "5 Jucători (Extins)",
+    PLAYERS_OPTION_6: "6 Jucători (Extins)",
+    PLAYERS_OPTION_7: "7 Jucători (Mare)",
+    PLAYERS_OPTION_8: "8 Jucători",
     ROOM_CODE_LABEL: "Cod cameră",
     ROOM_CODE_PLACEHOLDER: "ex: K9X4A",
     JOIN_ROOM_BTN: "Intră în joc",
@@ -582,6 +611,20 @@ export const TRANSLATIONS = {
     YEAR_OF_PLENTY_SELECT_TITLE: "Anul Abundenței: Alege 2 resurse",
     YEAR_OF_PLENTY_SLOT_1: "Prima resursă",
     YEAR_OF_PLENTY_SLOT_2: "A doua resursă",
+    RULES_RESOURCES_TITLE: "Resurse:",
+    RULES_RESOURCES_BODY: "Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.",
+    RULES_COSTS_TITLE: "Costuri clădiri:",
+    RULES_COSTS_BODY: "Drum = 1 Lemn + 1 Cărămidă. Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV). Oraș = 3 Minereu + 2 Grâu (2 PV, înlocuiește o așezare existentă). Carte Dezvoltare = 1 Minereu + 1 Lână + 1 Grâu.",
+    RULES_DISTANCE_TITLE: "Regula distanței:",
+    RULES_DISTANCE_BODY: "Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.",
+    RULES_ROBBER_TITLE: "Zarul 7 & Hoțul:",
+    RULES_ROBBER_BODY: "Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.",
+    RULES_TITLES_TITLE: "Titluri speciale:",
+    RULES_TITLES_BODY: "Cel mai lung drum (minim 5 segmente continue) = +2 PV. Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV.",
+    ICON_CREDIT: "Iconițe UI: Phosphor Duotone (MIT). Iconițe resurse: Game-Icons.net (CC BY 3.0) de Delapouite & Lorc.",
+    ZOOM_IN: "Mărește",
+    ZOOM_OUT: "Micșorează",
+    ZOOM_RESET: "Resetează vederea",
 
     // Awards
     LONGEST_ROAD: "Cel mai lung drum (+2 PV)",
@@ -599,6 +642,8 @@ export const TRANSLATIONS = {
     AVAILABLE_IN_HAND: "({count} în mână)",
     BANK_EXCHANGE_TITLE: "Schimb Bancă & Port",
     BANK_RATE_LABEL: "Rată de schimb:",
+    BANK_RATE_VALUE: "Rată: {ratio}:1",
+    BANK_RATE_DEFAULT: "Rată: 4:1",
     BANK_RATE_DESC: "Dai {giveCount} pentru a primi 1",
     BANK_GIVE_LABEL: "Dai",
     BANK_RECEIVE_LABEL: "Primești",
@@ -608,6 +653,7 @@ export const TRANSLATIONS = {
     BANK_RATIO_SPECIAL: "Port specializat (2:1)",
     BANK_HARBORS_OWNED: "Porturi deținute: {harbors}",
     BANK_NO_HARBORS: "Niciun port deținut",
+    BANK_WANT_PLACEHOLDER: "1x Cărămidă",
     SELECT_GIVE: "Alege resursa oferită",
     SELECT_RECEIVE: "Alege resursa dorită",
     TRADE_INVALID_SELECTION: "Selectează cel puțin o resursă de oferit și una de cerut.",
@@ -829,7 +875,9 @@ class I18nService {
   }
 
   updateDOM() {
-    // Update text content for elements with data-i18n
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.lang = this.currentLang;
+    }
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
       el.textContent = this.t(key);
