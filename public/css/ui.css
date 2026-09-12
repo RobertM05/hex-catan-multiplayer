@@ -420,16 +420,92 @@
 
 .turn-timer-bar {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.turn-timer-bar .timer-header {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: #38bdf8;
-  font-weight: 600;
+  font-weight: 700;
+  transition: color 0.3s ease;
 }
 
-.turn-timer-bar .ico {
+.turn-timer-bar .timer-header .ico {
   font-size: 14px;
+}
+
+.timer-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.timer-progress-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+  transition: width 1s linear, background 0.3s ease;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+}
+
+/* Color states based on percentage */
+.turn-timer-bar.timer-normal .timer-progress-fill {
+  background: linear-gradient(90deg, #10b981, #38bdf8);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.turn-timer-bar.timer-normal .timer-header {
+  color: #38bdf8;
+}
+
+.turn-timer-bar.timer-warning .timer-progress-fill {
+  background: linear-gradient(90deg, #f59e0b, #eab308);
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+}
+
+.turn-timer-bar.timer-warning .timer-header {
+  color: #facc15;
+}
+
+.turn-timer-bar.timer-critical .timer-progress-fill {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
+}
+
+.turn-timer-bar.timer-critical .timer-header {
+  color: #f87171;
+}
+
+/* Low-time pulsing warning */
+.turn-timer-bar.timer-pulse {
+  animation: timerPulseCritical 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes timerPulseCritical {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.02); filter: brightness(1.25) drop-shadow(0 0 6px rgba(239, 68, 68, 0.6)); }
+}
+
+/* Infinite / No limit mode */
+.turn-timer-bar.timer-infinite .timer-progress-track {
+  display: none;
+}
+
+.turn-timer-bar.timer-infinite .timer-header {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 15px;
 }
 
 /* Dice Shaker Area */
