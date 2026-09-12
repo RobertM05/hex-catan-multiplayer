@@ -15,6 +15,7 @@ import {
   unplayedProgressCards,
   revealedProgressCards
 } from './progressCards.js';
+import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, BUILD_COSTS } from './turnStatus.js';
 
 class CatanApp {
   constructor() {
@@ -2270,6 +2271,27 @@ class CatanApp {
     };
   }
 
+  setActionEnabled(el, enabled, reasonKey) {
+    if (!el) return;
+    el.disabled = !enabled;
+    if (enabled) {
+      el.removeAttribute('title');
+    } else if (reasonKey) {
+      el.title = i18n.t(reasonKey);
+    }
+  }
+
+  setBuildEnabled(id, inActionPhase, me, cost, phaseReasonKey) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!inActionPhase) {
+      this.setActionEnabled(el, false, phaseReasonKey);
+      return;
+    }
+    const ok = canPayCost(me?.resources, cost);
+    this.setActionEnabled(el, ok, ok ? null : 'REASON_NOT_ENOUGH_RESOURCES');
+  }
+
   renderGameState() {
     const s = this.gameState;
     if (!s) return;
@@ -2350,16 +2372,31 @@ class CatanApp {
     document.getElementById('turn-commander-name').style.color = curPlayer.color;
     document.getElementById('round-number-display').textContent = s.turnNumber;
 
-    const rollBtn = document.getElementById('btn-roll-dice');
-    const endTurnBtn = document.getElementById('btn-end-turn');
-    const buildBtns = document.querySelectorAll('.btn-build-action');
+    const statusEl = document.getElementById('turn-phase-status');
+    if (statusEl) {
+      const statusKey = mapPhaseToStatusKey(s.phase, isMyTurn);
+      statusEl.textContent = i18n.t(statusKey, { name: curPlayer.name });
+    }
 
+    const me = s.players.find(p => p.id === this.myPlayerId);
     const isActionPhase = s.phase === 'TURN_ACTION' && isMyTurn;
     const isRollPhase = s.phase === 'TURN_ROLL' && isMyTurn;
+    const notTurnReason = !isMyTurn ? 'REASON_NOT_YOUR_TURN' : 'REASON_WRONG_PHASE';
 
-    rollBtn.disabled = !isRollPhase;
-    endTurnBtn.disabled = !isActionPhase;
-    buildBtns.forEach(b => b.disabled = !isActionPhase);
+    this.setActionEnabled(document.getElementById('btn-roll-dice'), isRollPhase, isMyTurn && !isRollPhase ? 'REASON_ALREADY_ROLLED' : notTurnReason);
+    this.setActionEnabled(document.getElementById('btn-end-turn'), isActionPhase, notTurnReason);
+    this.setActionEnabled(document.getElementById('btn-open-trade'), isActionPhase, notTurnReason);
+    const unplayedDev = (me?.devCards || []).filter(c => !c.played);
+    this.setActionEnabled(
+      document.getElementById('btn-open-dev-cards'),
+      isActionPhase && unplayedDev.length > 0,
+      !isActionPhase ? notTurnReason : 'REASON_WRONG_PHASE'
+    );
+
+    this.setBuildEnabled('btn-build-road', isActionPhase, me, BUILD_COSTS.ROAD, notTurnReason);
+    this.setBuildEnabled('btn-build-settlement', isActionPhase, me, BUILD_COSTS.SETTLEMENT, notTurnReason);
+    this.setBuildEnabled('btn-build-city', isActionPhase, me, BUILD_COSTS.CITY, notTurnReason);
+    this.setBuildEnabled('btn-buy-dev-card', isActionPhase && !this.isCitiesKnights(), me, BUILD_COSTS.DEV_CARD, notTurnReason);
 
     // Update Dice Values
     if (s.dice) {
@@ -2368,10 +2405,9 @@ class CatanApp {
       document.getElementById('dice-sum').textContent = s.dice[0] + s.dice[1];
     }
 
-    this.renderCkHud(s, s.players.find(p => p.id === this.myPlayerId), isActionPhase);
+    this.renderCkHud(s, me, isActionPhase);
 
     // Update My Resources
-    const me = s.players.find(p => p.id === this.myPlayerId);
     if (me) {
       document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
 
@@ -2401,7 +2437,8 @@ class CatanApp {
     oppContainer.innerHTML = '';
     s.players.forEach(p => {
       const card = document.createElement('div');
-      card.className = 'opponent-mini-card';
+      const isActivePlayer = p.id === curPlayer.id;
+      card.className = `opponent-mini-card${isActivePlayer ? ' is-active-turn' : ''}`;
       const resourceCount = typeof p.resources.total === 'number'
         ? p.resources.total
         : Object.values(p.resources || {}).reduce((a, b) => a + b, 0);
@@ -2409,18 +2446,23 @@ class CatanApp {
         ? p.commodities.total
         : Object.values(p.commodities || {}).reduce((a, b) => a + b, 0);
       const cardCount = resourceCount + commodityCount;
+      const stateKey = mapPhaseToOpponentStateKey(s.phase, isActivePlayer);
+      const you = p.id === this.myPlayerId ? ` ${i18n.t('YOU_SUFFIX')}` : '';
 
       card.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${p.color};"></span>
-          <span style="font-weight: 600;">${p.name} ${p.id === this.myPlayerId ? '(You)' : ''}</span>
+        <div class="opponent-identity">
+          <span class="opponent-swatch" style="background: ${p.color};"></span>
+          <span class="opponent-name">${p.name}${you}</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px;">
-            ${ico('cards', 'ico-opp')}
-            ${cardCount}
-          </span>
-          <span class="opponent-vp-badge">${p.victoryPoints} ${i18n.t('VICTORY_POINTS_ABBR')}</span>
+        <div class="opponent-card-meta">
+          <span class="opponent-phase">${i18n.t(stateKey)}</span>
+          <div class="opponent-stats">
+            <span class="opponent-card-count">
+              ${ico('cards', 'ico-opp')}
+              ${cardCount}
+            </span>
+            <span class="opponent-vp-badge">${p.victoryPoints} ${i18n.t('VICTORY_POINTS_ABBR')}</span>
+          </div>
         </div>
         ${this.opponentRevealedProgressHtml(p)}
       `;
@@ -2513,10 +2555,10 @@ class CatanApp {
         hintText = i18n.t('ACTION_HINT_METROPOLIS');
       }
     } else if (s.phase === 'TURN_ROLL') {
-      if (isMyTurn) {
-        isActionable = true;
-        hintText = i18n.t('ACTION_HINT_ROLL');
-      }
+      isActionable = isMyTurn;
+      hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
+    } else if (s.phase === 'TURN_DISCARD') {
+      hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
     } else if (s.phase === 'TURN_ACTION') {
       if (isMyTurn) {
         if (this.selectedAction && this.selectedAction.type === 'road') {
@@ -2540,8 +2582,14 @@ class CatanApp {
         } else if (this.selectedAction && this.selectedAction.type === 'wall') {
           isActionable = true;
           hintText = i18n.t('ACTION_HINT_BUILD_WALL');
+        } else {
+          hintText = i18n.t('STATUS_YOUR_ACTION');
         }
+      } else if (curPlayer) {
+        hintText = i18n.t('STATUS_WAIT_ACTION', { name: curPlayer.name });
       }
+    } else if (curPlayer) {
+      hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer.name });
     }
 
     hintTextEl.textContent = hintText;
