@@ -251,6 +251,32 @@ export class GameEngine {
     }
     this.pendingDiscards.delete(playerId);
     this.pendingBarbarianDowngrades.delete(playerId);
+    if (this.pendingProgressDiscard) {
+      this.pendingProgressDiscard.delete(playerId);
+    }
+
+    // Clean up interrupted phases if removed player was the decider
+    if (this.pendingMetropolisChoice && this.pendingMetropolisChoice.playerId === playerId) {
+      this.pendingMetropolisChoice = null;
+      if (this.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+        this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+        this.previousPhase = null;
+      }
+    }
+
+    if (this.pendingKnightRelocation && this.pendingKnightRelocation.playerId === playerId) {
+      this.pendingKnightRelocation = null;
+      if (this.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
+        this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+        this.previousPhase = null;
+      }
+    }
+
+    // If removed during setup, reset setupStep so next player starts with settlement
+    if (this.phase === GAME_PHASES.SETUP_ROUND_1 || this.phase === GAME_PHASES.SETUP_ROUND_2) {
+      this.setupStep = 'settlement';
+      this.lastSetupSettlementVertex = null;
+    }
 
     // Adjust turn player index if needed
     if (this.players.length > 0) {
@@ -1635,7 +1661,7 @@ export class GameEngine {
   autoResolveKnightRelocation() {
     const pending = this.pendingKnightRelocation;
     if (!pending || this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) return;
-    if (pending.options[0]) {
+    if (pending.options && pending.options[0]) {
       this.relocateDisplacedKnight(pending.playerId, pending.options[0]);
       return;
     }

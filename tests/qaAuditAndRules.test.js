@@ -502,3 +502,70 @@ describe('RoomManager Deduplication & Socket Safety', () => {
   });
 });
 
+describe('CORE-01: Soft-Lock Prevention & Interrupted Phase Recovery', () => {
+  it('should clean up pendingMetropolisChoice and revert phase when chooser disconnects', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'P1' });
+    engine.addPlayer({ id: 'p2', name: 'P2' });
+    engine.startGame('standard');
+
+    engine.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
+    engine.previousPhase = GAME_PHASES.TURN_ACTION;
+    engine.pendingMetropolisChoice = { playerId: 'p1', track: 'trade' };
+
+    engine.removePlayer('p1');
+
+    assert.equal(engine.pendingMetropolisChoice, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('should clean up pendingKnightRelocation and revert phase when displaced player disconnects', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'P1' });
+    engine.addPlayer({ id: 'p2', name: 'P2' });
+    engine.startGame('standard');
+
+    engine.phase = GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE;
+    engine.previousPhase = GAME_PHASES.TURN_ACTION;
+    engine.pendingKnightRelocation = { playerId: 'p1', fromVertexId: 'v1' };
+
+    engine.removePlayer('p1');
+
+    assert.equal(engine.pendingKnightRelocation, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('should reset setupStep to settlement if active player disconnects after placing settlement', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'P1' });
+    engine.addPlayer({ id: 'p2', name: 'P2' });
+    engine.startGame('standard');
+
+    const v = Array.from(engine.grid.vertices.keys())[0];
+    engine.placeSetupSettlement('p1', v);
+    assert.equal(engine.setupStep, 'road');
+    assert.equal(engine.lastSetupSettlementVertex, v);
+
+    engine.removePlayer('p1');
+
+    assert.equal(engine.setupStep, 'settlement');
+    assert.equal(engine.lastSetupSettlementVertex, null);
+  });
+
+  it('should auto-resolve TURN_CHOOSE_KNIGHT_RELOCATE in BotAI.playCurrentBotStep', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'b1', name: 'Bot1', isBot: true });
+    engine.addPlayer({ id: 'b2', name: 'Bot2', isBot: true });
+    engine.startGame('standard');
+
+    engine.phase = GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE;
+    engine.pendingKnightRelocation = { playerId: 'b1', fromVertexId: 'v1' };
+
+    const acted = BotAI.playCurrentBotStep(engine);
+    assert.equal(acted, true);
+    assert.equal(engine.pendingKnightRelocation, null);
+    assert.notEqual(engine.phase, GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE);
+  });
+});
+
+

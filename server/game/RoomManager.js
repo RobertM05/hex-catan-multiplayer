@@ -382,7 +382,13 @@ export class RoomManager {
         const pending = engine.pendingMetropolisChoice;
         const chooser = pending && engine.players.find(p => p.id === pending.playerId);
         const cityId = chooser ? engine.getFirstVulnerableCityId(chooser) : null;
-        if (pending && cityId) engine.chooseMetropolis(pending.playerId, cityId);
+        if (pending && cityId) {
+          engine.chooseMetropolis(pending.playerId, cityId);
+        } else {
+          engine.pendingMetropolisChoice = null;
+          engine.phase = engine.previousPhase || GAME_PHASES.TURN_ACTION;
+          engine.previousPhase = null;
+        }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
