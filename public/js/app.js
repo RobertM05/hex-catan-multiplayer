@@ -361,6 +361,19 @@ class CatanApp {
       }
     });
 
+    // Summon Autonomous AI Agent
+    const btnSpawnAgent = document.getElementById('btn-spawn-agent');
+    if (btnSpawnAgent) {
+      btnSpawnAgent.addEventListener('click', async () => {
+        try {
+          await network.spawnAiAgent();
+          this.showToast(i18n.t('TOAST_AGENT_SUMMONED') || 'AI Agent summoned!');
+        } catch (err) {
+          this.showToast(err.message, true);
+        }
+      });
+    }
+
     // Start Game (Host only)
     document.getElementById('btn-start-game').addEventListener('click', async () => {
       try {
@@ -384,6 +397,10 @@ class CatanApp {
     const isHost = lobbyData.hostId === this.myPlayerId;
     document.getElementById('btn-start-game').classList.toggle('is-hidden', !isHost);
     document.getElementById('btn-add-bot').classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
+    const btnSpawnAgent = document.getElementById('btn-spawn-agent');
+    if (btnSpawnAgent) {
+      btnSpawnAgent.classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
+    }
 
     lobbyData.players.forEach(p => {
       const card = document.createElement('div');
