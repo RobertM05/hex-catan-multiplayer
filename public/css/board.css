@@ -356,6 +356,14 @@
   pointer-events: none;
 }
 
+.road-length-tooltip.tooltip-flip-below {
+  transform: translate(-50%, 0) translateY(14px);
+}
+
+.road-length-tooltip.tooltip-flip-below.hidden {
+  transform: translate(-50%, 0) translateY(6px);
+}
+
 .road-tooltip-header {
   display: flex;
   align-items: center;

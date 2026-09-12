@@ -574,6 +574,16 @@ export class RoomManager {
     const engine = room.engine;
     if (!engine.activeTrade) return;
 
+    const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+    const vpTarget = engine.vpTarget || 10;
+    // Kingmaking protection: reject trading to a leader who is within 2 VP of victory
+    if (proposer && (proposer.victoryPoints || 0) >= vpTarget - 2) {
+      return;
+    }
+
+    const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
+    const getCardValue = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
+
     for (const player of room.players) {
       if (player.isBot && player.id !== engine.activeTrade.fromPlayerId) {
         const botPlayer = engine.players.find(p => p.id === player.id);
@@ -588,14 +598,37 @@ export class RoomManager {
         }
 
         if (canAfford) {
-          const giveTotal = Object.values(engine.activeTrade.give).reduce((a, b) => a + b, 0);
-          const wantTotal = Object.values(engine.activeTrade.want).reduce((a, b) => a + b, 0);
-          const isFavorable = giveTotal >= wantTotal;
-          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) =>
-            amt <= 0 || engine.getPlayerCardCount(botPlayer, res) >= amt + 2
-          );
+          let giveValue = 0;
+          let giveTotal = 0;
+          for (const [res, amt] of Object.entries(engine.activeTrade.give)) {
+            if (amt > 0) {
+              giveTotal += amt;
+              giveValue += amt * getCardValue(res);
+            }
+          }
 
-          if (isFavorable || hasSurplus) {
+          let wantValue = 0;
+          let wantTotal = 0;
+          for (const [res, amt] of Object.entries(engine.activeTrade.want)) {
+            if (amt > 0) {
+              wantTotal += amt;
+              wantValue += amt * getCardValue(res);
+            }
+          }
+
+          // Reject 1:2 rip-offs (proposer must offer at least as many cards as asked)
+          if (giveTotal < wantTotal) continue;
+
+          // Reject commodity milking (value offered must be at least value demanded)
+          if (giveValue < wantValue) continue;
+
+          // Bot only gives away cards if it has a comfortable surplus or if the trade is strictly profitable
+          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) =>
+            amt <= 0 || engine.getPlayerCardCount(botPlayer, res) >= amt + 1
+          );
+          const isProfitable = giveValue > wantValue;
+
+          if (isProfitable || hasSurplus) {
             setTimeout(() => {
               if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId !== botPlayer.id) {
                 try {
