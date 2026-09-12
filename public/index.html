@@ -36,7 +36,7 @@
       </div>
 
       <!-- Sound Toggle -->
-      <button id="btn-sound-toggle" class="btn-glass" title="Sound">
+      <button id="btn-sound-toggle" class="btn-glass" title="Sound" aria-label="Sound">
         <span class="btn-icon ico" data-icon="speakerHigh"></span>
         <span class="sound-label" data-i18n="SOUND_TOGGLE">Sunet</span>
       </button>
@@ -346,13 +346,13 @@
 
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
-          <button id="btn-zoom-in" class="board-control-btn" title="Zoom In">
+          <button id="btn-zoom-in" class="board-control-btn" title="Zoom In" aria-label="Zoom In">
             <span class="ico" data-icon="plus"></span>
           </button>
-          <button id="btn-zoom-out" class="board-control-btn" title="Zoom Out">
+          <button id="btn-zoom-out" class="board-control-btn" title="Zoom Out" aria-label="Zoom Out">
             <span class="ico" data-icon="minus"></span>
           </button>
-          <button id="btn-zoom-reset" class="board-control-btn" title="Reset View">
+          <button id="btn-zoom-reset" class="board-control-btn" title="Reset View" aria-label="Reset View">
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
@@ -478,7 +478,7 @@
   <div id="active-trade-banner" style="display: none;"></div>
 
   <!-- Trade Modal -->
-  <div id="trade-modal" class="modal-overlay">
+  <div id="trade-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box trade-modal-box" style="max-width: 580px; width: 94%; box-sizing: border-box; overflow: hidden;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
         <h3 class="modal-title" style="margin: 0;" data-i18n="TRADE_TITLE">Comerț cu resurse</h3>
@@ -775,7 +775,7 @@
   </div>
 
   <!-- Discard Cards Modal (Rolled 7) -->
-  <div id="discard-modal" class="modal-overlay">
+  <div id="discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 560px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h3 class="modal-title" style="color: #f87171; margin: 0;" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
@@ -898,7 +898,7 @@
   </div>
 
   <!-- Robber Target Modal -->
-  <div id="robber-target-modal" class="modal-overlay">
+  <div id="robber-target-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 420px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h3 class="modal-title" style="margin: 0;" data-i18n="ROBBER_STEAL_TITLE">Alege jucătorul pentru furt</h3>
@@ -908,7 +908,7 @@
     </div>
   </div>
 
-  <div id="barbarian-modal" class="modal-overlay">
+  <div id="barbarian-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 440px; width: 94%;">
       <h3 class="modal-title" id="barbarian-modal-title" data-i18n="BARBARIAN_ATTACK_TITLE">Invazia barbarilor</h3>
       <p id="barbarian-modal-body" class="barbarian-modal-body"></p>
@@ -920,7 +920,7 @@
   </div>
 
   <!-- Dev Cards In Hand Modal -->
-  <div id="dev-cards-modal" class="modal-overlay">
+  <div id="dev-cards-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 480px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h3 class="modal-title" style="margin: 0;" data-i18n="MY_DEV_CARDS_TITLE">Cărți de dezvoltare</h3>
@@ -932,7 +932,7 @@
   </div>
 
   <!-- Monopoly Resource Selector Modal -->
-  <div id="monopoly-modal" class="modal-overlay">
+  <div id="monopoly-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 420px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <h3 class="modal-title" style="margin: 0;" data-i18n="MONOPOLY_SELECT_TITLE">Monopol: Alege resursa</h3>
@@ -952,7 +952,7 @@
   </div>
 
   <!-- Year of Plenty Resource Selector Modal -->
-  <div id="year-of-plenty-modal" class="modal-overlay">
+  <div id="year-of-plenty-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 440px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <h3 class="modal-title" style="margin: 0;" data-i18n="YEAR_OF_PLENTY_SELECT_TITLE">Anul Abundenței: Alege 2 resurse</h3>
@@ -988,7 +988,7 @@
   </div>
 
   <!-- Rules Cheat Sheet Modal -->
-  <div id="rules-modal" class="modal-overlay">
+  <div id="rules-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="max-width: 680px; max-height: 80vh; overflow-y: auto;">
       <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
       <div style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); display: flex; flex-direction: column; gap: 14px;">
@@ -1020,7 +1020,7 @@
   </div>
 
   <!-- Victory Celebration Modal -->
-  <div id="victory-modal" class="modal-overlay">
+  <div id="victory-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box" style="text-align: center; align-items: center;">
       <div class="victory-icon-badge" style="margin-bottom: 8px;">
         <span class="ico" data-icon="trophy"></span>
