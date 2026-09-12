@@ -372,6 +372,13 @@ export class RoomManager {
         if (botRob && botRob.hexId) {
           engine.moveRobber(curPlayer.id, botRob.hexId, botRob.targetPlayerId);
         }
+      } else if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
+        for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
+          const p = engine.players.find(x => x.id === pId);
+          if (p && p.citiesBuilt[0]) {
+            engine.downgradeCity(pId, p.citiesBuilt[0]);
+          }
+        }
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }
@@ -403,6 +410,26 @@ export class RoomManager {
                 this.checkAndTriggerBotTurn(room);
               } catch (err) {
                 console.error('Bot discard error:', err);
+              }
+            }
+          }, 800);
+        }
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
+      for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
+        const p = engine.players.find(x => x.id === pId);
+        if (p && p.isBot && p.citiesBuilt[0]) {
+          setTimeout(() => {
+            if (room.isStarted && engine.pendingBarbarianDowngrades.has(pId)) {
+              try {
+                engine.downgradeCity(pId, p.citiesBuilt[0]);
+                this.broadcastState(room);
+                this.checkAndTriggerBotTurn(room);
+              } catch (err) {
+                console.error('Bot barbarian downgrade error:', err);
               }
             }
           }, 800);

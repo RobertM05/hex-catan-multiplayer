@@ -238,6 +238,30 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.improveCityTrack(currentPlayerId, data.track), cb);
   });
 
+  socket.on('place_knight', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.placeKnight(currentPlayerId, data.vertexId), cb);
+  });
+
+  socket.on('activate_knight', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.activateKnight(currentPlayerId, data.vertexId), cb);
+  });
+
+  socket.on('promote_knight', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.promoteKnight(currentPlayerId, data.vertexId), cb);
+  });
+
+  socket.on('move_knight', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.moveKnight(currentPlayerId, data.fromVertexId, data.toVertexId), cb);
+  });
+
+  socket.on('chase_robber', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb);
+  });
+
+  socket.on('downgrade_city', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb);
+  });
+
   socket.on('buy_dev_card', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
   });

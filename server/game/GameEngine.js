@@ -52,14 +52,29 @@ export const GAME_PHASES = {
   TURN_DISCARD: 'TURN_DISCARD',
   TURN_ROBBER: 'TURN_ROBBER',
   TURN_ACTION: 'TURN_ACTION',
+  TURN_BARBARIAN_RESOLVE: 'TURN_BARBARIAN_RESOLVE',
+  TURN_BARBARIAN_DOWNGRADE: 'TURN_BARBARIAN_DOWNGRADE',
   GAME_OVER: 'GAME_OVER'
+};
+
+export const EVENT_DIE_FACES = ['barbarian', 'barbarian', 'barbarian', 'trade', 'politics', 'science'];
+export const BARBARIAN_TRACK_MAX = 7;
+export const CITY_WALL_SUPPLY = 3;
+
+export const KNIGHT_RANKS = {
+  basic: { strength: 1, next: 'strong', politicsRequired: 0 },
+  strong: { strength: 2, next: 'mighty', politicsRequired: 1 },
+  mighty: { strength: 3, next: null, politicsRequired: 2 }
 };
 
 export const COSTS = {
   ROAD: { wood: 1, brick: 1 },
   SETTLEMENT: { wood: 1, brick: 1, wool: 1, wheat: 1 },
   CITY: { ore: 3, wheat: 2 },
-  DEV_CARD: { ore: 1, wool: 1, wheat: 1 }
+  DEV_CARD: { ore: 1, wool: 1, wheat: 1 },
+  KNIGHT: { ore: 1, wool: 1 },
+  ACTIVATE_KNIGHT: { wheat: 1 },
+  PROMOTE_KNIGHT: { wheat: 1, ore: 1 }
 };
 
 export const DEV_CARD_TYPES = {
@@ -94,6 +109,12 @@ export class GameEngine {
     // Cities & Knights shared state (serialized even in base mode as empty/defaults)
     this.barbarianPosition = 0;
     this.defenderOfCatan = null;
+    this.pendingBarbarianDowngrades = new Set();
+    this.pendingProgressCardColor = null;
+    this.pendingProgressDraws = [];
+    this.lastBarbarianResult = null;
+    this.postBarbarianPhase = null;
+    this.progressDecks = { trade: [], politics: [], science: [] };
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -119,6 +140,8 @@ export class GameEngine {
 
   initDevCardDeck() {
     this.devCardDeck = [];
+    // C&K replaces the base development deck with progress cards (CK-05/06/07).
+    if (this.isCitiesKnights()) return;
     // 14 Knights
     for (let i = 0; i < 14; i++) this.devCardDeck.push(DEV_CARD_TYPES.KNIGHT);
     // 5 Victory points
@@ -150,7 +173,7 @@ export class GameEngine {
       cityImprovements: { trade: 0, politics: 0, science: 0 },
       knightsAvailable: { basic: 2, strong: 2, mighty: 1 },
       knightsPlaced: [],
-      cityWalls: [],
+      cityWalls: CITY_WALL_SUPPLY, // remaining walls in supply (CK-01 / CK-08 count model)
       metropolis: { trade: false, politics: false, science: false },
       progressCards: [],
       devCards: [], // { type, boughtTurn, played }
@@ -182,6 +205,7 @@ export class GameEngine {
       }
     }
     this.pendingDiscards.delete(playerId);
+    this.pendingBarbarianDowngrades.delete(playerId);
 
     // Adjust turn player index if needed
     if (this.players.length > 0) {
@@ -262,14 +286,11 @@ export class GameEngine {
     if (!player || player.settlementsRemaining <= 0) return { ok: false, reason: 'NO_SETTLEMENTS_LEFT' };
 
     const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex || vertex.building) return { ok: false, reason: 'VERTEX_OCCUPIED' };
+    if (!vertex || vertex.building || vertex.knight) return { ok: false, reason: 'VERTEX_OCCUPIED' };
 
-    // Distance rule: no settlement/city on adjacent vertices
-    for (const adjVId of vertex.adjacentVertices) {
-      const adjVertex = this.grid.vertices.get(adjVId);
-      if (adjVertex && adjVertex.building) {
-        return { ok: false, reason: 'DISTANCE_RULE_VIOLATION' };
-      }
+    // Distance rule: no settlement/city/knight on adjacent vertices
+    if (this.violatesDistanceRule(vertexId)) {
+      return { ok: false, reason: 'DISTANCE_RULE_VIOLATION' };
     }
 
     if (isSetup) {
@@ -374,9 +395,41 @@ export class GameEngine {
   canBuyDevCard(playerId) {
     const player = this.players.find(p => p.id === playerId);
     if (!player) return { ok: false, reason: 'PLAYER_NOT_FOUND' };
+    if (this.isCitiesKnights()) return { ok: false, reason: 'DEV_CARDS_DISABLED_IN_CK' };
     if (this.devCardDeck.length === 0) return { ok: false, reason: 'DECK_EMPTY' };
     if (!this.hasResources(player, COSTS.DEV_CARD)) return { ok: false, reason: 'NOT_ENOUGH_RESOURCES' };
     return { ok: true };
+  }
+
+  violatesDistanceRule(vertexId, ignoreVertexIds = []) {
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex) return true;
+    const ignored = new Set(ignoreVertexIds);
+    for (const adjVId of vertex.adjacentVertices) {
+      if (ignored.has(adjVId)) continue;
+      const adjVertex = this.grid.vertices.get(adjVId);
+      if (adjVertex && (adjVertex.building || adjVertex.knight)) return true;
+    }
+    return false;
+  }
+
+  vertexHasPlayerRoad(vertex, playerId) {
+    for (const edgeId of vertex.adjacentEdges) {
+      const edge = this.grid.edges.get(edgeId);
+      if (edge && edge.road && edge.road.playerId === playerId) return true;
+    }
+    return false;
+  }
+
+  verticesSharePlayerRoad(fromId, toId, playerId) {
+    const from = this.grid.vertices.get(fromId);
+    if (!from) return false;
+    for (const edgeId of from.adjacentEdges) {
+      const edge = this.grid.edges.get(edgeId);
+      if (!edge || !edge.road || edge.road.playerId !== playerId) continue;
+      if (edge.v1 === toId || edge.v2 === toId) return true;
+    }
+    return false;
   }
 
   hasResources(player, cost) {
@@ -407,9 +460,56 @@ export class GameEngine {
     return Object.values(player.commodities).reduce((sum, count) => sum + count, 0);
   }
 
+  countResources(player) {
+    return Object.values(player.resources || {}).reduce((sum, count) => sum + count, 0);
+  }
+
   countTotalCards(player) {
-    const resources = Object.values(player.resources || {}).reduce((sum, count) => sum + count, 0);
-    return resources + this.countCommodities(player);
+    return this.countResources(player) + this.countCommodities(player);
+  }
+
+  getBuiltCityWallCount(player) {
+    let walls = 0;
+    for (const vid of player.citiesBuilt || []) {
+      const vertex = this.grid?.vertices.get(vid);
+      if (vertex?.building?.hasWall) walls++;
+    }
+    return walls;
+  }
+
+  getDiscardThreshold(player) {
+    return 7 + this.getBuiltCityWallCount(player) * 2;
+  }
+
+  playerBuildingTouchesHex(player, hexId) {
+    const ids = (player.settlementsBuilt || []).concat(player.citiesBuilt || []);
+    return ids.some((vid) => this.grid.vertices.get(vid)?.hexes?.includes(hexId));
+  }
+
+  isTradableType(type) {
+    if (RESOURCE_VALUES.includes(type)) return true;
+    return this.isCitiesKnights() && COMMODITY_VALUES.includes(type);
+  }
+
+  getPlayerCardCount(player, type) {
+    if (COMMODITY_VALUES.includes(type)) return player.commodities?.[type] || 0;
+    return player.resources?.[type] || 0;
+  }
+
+  adjustPlayerCard(player, type, delta) {
+    if (COMMODITY_VALUES.includes(type)) {
+      player.commodities[type] = (player.commodities[type] || 0) + delta;
+      return;
+    }
+    player.resources[type] = (player.resources[type] || 0) + delta;
+  }
+
+  getProgressCardEligiblePlayers(track, dieNumber) {
+    return this.players.filter(p => (p.cityImprovements?.[track] || 0) >= dieNumber);
+  }
+
+  getActiveKnightStrength(player) {
+    return (player.knightsPlaced || []).reduce((sum, k) => sum + (k.active ? k.strength : 0), 0);
   }
 
   /* =========================================================
@@ -525,39 +625,104 @@ export class GameEngine {
     this.dice = [d1, d2];
     const rollSum = d1 + d2;
     this.hasRolledDice = true;
+    this.eventDie = null;
+    this.pendingProgressCardColor = null;
+    this.pendingProgressDraws = [];
+    this.lastBarbarianResult = null;
+    this.postBarbarianPhase = null;
+
+    if (this.isCitiesKnights()) {
+      this.eventDie = EVENT_DIE_FACES[Math.floor(Math.random() * EVENT_DIE_FACES.length)];
+      if (this.eventDie === 'barbarian') {
+        this.barbarianPosition = Math.min(BARBARIAN_TRACK_MAX, this.barbarianPosition + 1);
+        this.logEvent({
+          type: 'BARBARIAN_ADVANCED',
+          messageKey: 'LOG_BARBARIAN_ADVANCED',
+          args: { position: this.barbarianPosition }
+        });
+      } else {
+        this.pendingProgressCardColor = this.eventDie;
+      }
+    }
 
     this.logEvent({
       type: 'DICE_ROLLED',
       messageKey: 'LOG_DICE_ROLLED',
-      args: { playerName: player.name, d1, d2, sum: rollSum }
+      args: { playerName: player.name, d1, d2, sum: rollSum, eventDie: this.eventDie }
     });
 
-    if (rollSum === 7) {
-      // Robber rolled: check players needing discard (>7 cards)
-      this.pendingDiscards.clear();
-      for (const p of this.players) {
-        const count = this.countTotalCards(p);
-        if (count > 7) {
-          this.pendingDiscards.add(p.id);
-        }
-      }
+    let production = {};
+    const robber = rollSum === 7;
 
-      if (this.pendingDiscards.size > 0) {
-        this.phase = GAME_PHASES.TURN_DISCARD;
-        this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
-        this.logEvent({
-          type: 'DISCARD_REQUIRED',
-          messageKey: 'LOG_DISCARD_REQUIRED',
-          args: { playerIds: Array.from(this.pendingDiscards) }
-        });
-      } else {
-        this.phase = GAME_PHASES.TURN_ROBBER;
-        this.discardDeadline = null;
-      }
-      return { dice: this.dice, sum: rollSum, produces: {}, robber: true };
+    if (robber) {
+      this.queueDiscardsForSeven();
+    } else {
+      production = this.produceForRoll(rollSum);
+      this.logProductionEvents(production, rollSum);
     }
 
-    // Produce resources
+    if (this.pendingProgressCardColor) {
+      this.distributeProgressCardDraws(this.pendingProgressCardColor, d1);
+    }
+
+    if (this.isCitiesKnights() && this.barbarianPosition >= BARBARIAN_TRACK_MAX) {
+      this.postBarbarianPhase = robber
+        ? (this.pendingDiscards.size > 0 ? GAME_PHASES.TURN_DISCARD : GAME_PHASES.TURN_ROBBER)
+        : GAME_PHASES.TURN_ACTION;
+      const attack = this.resolveBarbarianAttack();
+      return {
+        dice: this.dice,
+        eventDie: this.eventDie,
+        sum: rollSum,
+        produces: production,
+        robber,
+        barbarian: attack,
+        progressDraws: this.pendingProgressDraws
+      };
+    }
+
+    if (robber) {
+      this.enterRobberFlow();
+    } else {
+      this.phase = GAME_PHASES.TURN_ACTION;
+    }
+
+    return {
+      dice: this.dice,
+      eventDie: this.eventDie,
+      sum: rollSum,
+      produces: production,
+      robber,
+      barbarian: this.lastBarbarianResult,
+      progressDraws: this.pendingProgressDraws
+    };
+  }
+
+  queueDiscardsForSeven() {
+    this.pendingDiscards.clear();
+    for (const p of this.players) {
+      if (this.countTotalCards(p) > this.getDiscardThreshold(p)) {
+        this.pendingDiscards.add(p.id);
+      }
+    }
+  }
+
+  enterRobberFlow() {
+    if (this.pendingDiscards.size > 0) {
+      this.phase = GAME_PHASES.TURN_DISCARD;
+      this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
+      this.logEvent({
+        type: 'DISCARD_REQUIRED',
+        messageKey: 'LOG_DISCARD_REQUIRED',
+        args: { playerIds: Array.from(this.pendingDiscards) }
+      });
+    } else {
+      this.phase = GAME_PHASES.TURN_ROBBER;
+      this.discardDeadline = null;
+    }
+  }
+
+  produceForRoll(rollSum) {
     const production = {};
     for (const p of this.players) production[p.id] = {};
 
@@ -573,8 +738,10 @@ export class GameEngine {
         }
       }
     }
+    return production;
+  }
 
-    // Log resource production events for game log transparency
+  logProductionEvents(production, rollSum) {
     let anyProduced = false;
     for (const p of this.players) {
       const pProd = production[p.id];
@@ -601,9 +768,34 @@ export class GameEngine {
         args: { sum: rollSum }
       });
     }
+  }
 
-    this.phase = GAME_PHASES.TURN_ACTION;
-    return { dice: this.dice, sum: rollSum, produces: production, robber: false };
+  distributeProgressCardDraws(track, redDie) {
+    const eligible = this.getProgressCardEligiblePlayers(track, redDie);
+    this.pendingProgressDraws = eligible.map(p => {
+      const drawn = this.drawProgressCard(p, track);
+      return { playerId: p.id, track, drawn: Boolean(drawn), cardType: drawn };
+    });
+    if (eligible.length) {
+      this.logEvent({
+        type: 'PROGRESS_CARD_CHECK',
+        messageKey: 'LOG_PROGRESS_CARD_CHECK',
+        args: { track, redDie, playerIds: eligible.map(p => p.id) }
+      });
+    }
+  }
+
+  drawProgressCard(player, track) {
+    const deck = this.progressDecks?.[track];
+    if (!deck || deck.length === 0) return null;
+    const cardType = deck.pop();
+    player.progressCards.push({
+      id: `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type: cardType,
+      track,
+      boughtTurn: this.turnNumber
+    });
+    return cardType;
   }
 
   applyHexProduction(player, hexResource, buildingType, production) {
@@ -635,7 +827,12 @@ export class GameEngine {
 
     let discardedCount = 0;
     for (const [cardType, count] of Object.entries(discarded)) {
-      if (!RESOURCE_VALUES.includes(cardType) && !COMMODITY_VALUES.includes(cardType)) {
+      if (!count) continue;
+      const isCommodity = COMMODITY_VALUES.includes(cardType);
+      if (isCommodity && !this.isCitiesKnights()) {
+        throw new Error(`INVALID_RESOURCE_${cardType}`);
+      }
+      if (!RESOURCE_VALUES.includes(cardType) && !isCommodity) {
         throw new Error(`INVALID_RESOURCE_${cardType}`);
       }
       if (!Number.isInteger(count) || count < 0) throw new Error('DISCARD_COUNT_MUST_BE_NON_NEGATIVE_INTEGER');
@@ -683,7 +880,9 @@ export class GameEngine {
     if (!player) throw new Error('PLAYER_NOT_FOUND');
 
     const need = Math.floor(this.countTotalCards(player) / 2);
-    const discarded = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0, cloth: 0, coin: 0, paper: 0 };
+    const discarded = this.isCitiesKnights()
+      ? { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0, cloth: 0, coin: 0, paper: 0 }
+      : { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
     let left = need;
     while (left > 0) {
       let maxKey = null;
@@ -722,36 +921,9 @@ export class GameEngine {
     if (targetPlayerId && targetPlayerId !== playerId) {
       const target = this.players.find(p => p.id === targetPlayerId);
       if (target) {
-        // Check adjacency
-        const isAdjacent = Array.from(this.grid.vertices.values()).some(v =>
-          v.hexes.includes(hexId) && v.building && v.building.playerId === targetPlayerId
-        );
-
+        const isAdjacent = this.playerBuildingTouchesHex(target, hexId);
         if (isAdjacent && this.countTotalCards(target) > 0) {
-          const pool = [];
-          for (const [res, count] of Object.entries(target.resources || {})) {
-            for (let i = 0; i < count; i++) pool.push({ bag: 'resources', type: res });
-          }
-          for (const [com, count] of Object.entries(target.commodities || {})) {
-            for (let i = 0; i < count; i++) pool.push({ bag: 'commodities', type: com });
-          }
-          if (pool.length > 0) {
-            const picked = pool[Math.floor(Math.random() * pool.length)];
-            if (picked.bag === 'commodities') {
-              target.commodities[picked.type]--;
-              player.commodities[picked.type] = (player.commodities[picked.type] || 0) + 1;
-            } else {
-              target.resources[picked.type]--;
-              player.resources[picked.type] = (player.resources[picked.type] || 0) + 1;
-            }
-            stolenResource = picked.type;
-
-            this.logEvent({
-              type: 'ROBBER_STOLE',
-              messageKey: 'LOG_ROBBER_STOLE',
-              args: { robberName: player.name, victimName: target.name }
-            });
-          }
+          stolenResource = this.stealRandomCard(player, target);
         }
       }
     }
@@ -764,6 +936,33 @@ export class GameEngine {
     });
 
     return { hexId, stolenFrom: targetPlayerId, stolenResource };
+  }
+
+  stealRandomCard(thief, target) {
+    const pool = [];
+    for (const [res, count] of Object.entries(target.resources || {})) {
+      for (let i = 0; i < count; i++) pool.push({ bag: 'resources', type: res });
+    }
+    if (this.isCitiesKnights()) {
+      for (const [com, count] of Object.entries(target.commodities || {})) {
+        for (let i = 0; i < count; i++) pool.push({ bag: 'commodities', type: com });
+      }
+    }
+    if (pool.length === 0) return null;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    if (picked.bag === 'commodities') {
+      target.commodities[picked.type]--;
+      thief.commodities[picked.type] = (thief.commodities[picked.type] || 0) + 1;
+    } else {
+      target.resources[picked.type]--;
+      thief.resources[picked.type] = (thief.resources[picked.type] || 0) + 1;
+    }
+    this.logEvent({
+      type: 'ROBBER_STOLE',
+      messageKey: 'LOG_ROBBER_STOLE',
+      args: { robberName: thief.name, victimName: target.name }
+    });
+    return picked.type;
   }
 
   /* =========================================================
@@ -889,10 +1088,322 @@ export class GameEngine {
     return { track, level: player.cityImprovements[track], cost };
   }
 
+  assertCkAction(playerId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    const player = this.getCurrentPlayer();
+    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    return player;
+  }
+
+  getKnightRecord(player, vertexId) {
+    return (player.knightsPlaced || []).find(k => k.vertexId === vertexId) || null;
+  }
+
+  returnKnightToSupply(owner, knight) {
+    if (!knight) return;
+    owner.knightsAvailable[knight.rank] = (owner.knightsAvailable[knight.rank] || 0) + 1;
+    owner.knightsPlaced = owner.knightsPlaced.filter(k => k !== knight);
+    const vertex = this.grid.vertices.get(knight.vertexId);
+    if (vertex && vertex.knight === knight) vertex.knight = null;
+  }
+
+  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
+    const from = this.grid.vertices.get(fromVertexId);
+    if (!from) return null;
+    for (const adjId of from.adjacentVertices) {
+      const dest = this.grid.vertices.get(adjId);
+      if (!dest || dest.building || dest.knight) continue;
+      if (!this.verticesSharePlayerRoad(fromVertexId, adjId, playerId)) continue;
+      if (this.violatesDistanceRule(adjId, [fromVertexId, ...extraIgnore])) continue;
+      return adjId;
+    }
+    return null;
+  }
+
+  placeKnight(playerId, vertexId) {
+    const player = this.assertCkAction(playerId);
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex) throw new Error('INVALID_VERTEX');
+    if (vertex.building || vertex.knight) throw new Error('VERTEX_OCCUPIED');
+    if (this.violatesDistanceRule(vertexId)) throw new Error('DISTANCE_RULE_VIOLATION');
+    if (!this.vertexHasPlayerRoad(vertex, playerId)) throw new Error('MUST_CONNECT_TO_ROAD');
+    if ((player.knightsAvailable.basic || 0) <= 0) throw new Error('NO_KNIGHTS_AVAILABLE');
+    if (!this.hasResources(player, COSTS.KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
+
+    this.deductResources(player, COSTS.KNIGHT);
+    player.knightsAvailable.basic--;
+    const knight = {
+      playerId,
+      vertexId,
+      rank: 'basic',
+      active: false,
+      strength: KNIGHT_RANKS.basic.strength
+    };
+    vertex.knight = knight;
+    player.knightsPlaced.push(knight);
+
+    this.logEvent({
+      type: 'KNIGHT_PLACED',
+      messageKey: 'LOG_KNIGHT_PLACED',
+      args: { playerName: player.name }
+    });
+    return { vertexId, knight };
+  }
+
+  activateKnight(playerId, vertexId) {
+    const player = this.assertCkAction(playerId);
+    const knight = this.getKnightRecord(player, vertexId);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (knight.active) throw new Error('KNIGHT_ALREADY_ACTIVE');
+    if (!this.hasResources(player, COSTS.ACTIVATE_KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
+
+    this.deductResources(player, COSTS.ACTIVATE_KNIGHT);
+    knight.active = true;
+
+    this.logEvent({
+      type: 'KNIGHT_ACTIVATED',
+      messageKey: 'LOG_KNIGHT_ACTIVATED',
+      args: { playerName: player.name }
+    });
+    return { vertexId, knight };
+  }
+
+  promoteKnight(playerId, vertexId) {
+    const player = this.assertCkAction(playerId);
+    const knight = this.getKnightRecord(player, vertexId);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    const current = KNIGHT_RANKS[knight.rank];
+    if (!current?.next) throw new Error('KNIGHT_MAX_RANK');
+    const nextRank = current.next;
+    const next = KNIGHT_RANKS[nextRank];
+    if ((player.cityImprovements.politics || 0) < next.politicsRequired) {
+      throw new Error('POLITICS_LEVEL_TOO_LOW');
+    }
+    if ((player.knightsAvailable[nextRank] || 0) <= 0) throw new Error('NO_KNIGHTS_AVAILABLE');
+    if (!this.hasResources(player, COSTS.PROMOTE_KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
+
+    this.deductResources(player, COSTS.PROMOTE_KNIGHT);
+    player.knightsAvailable[knight.rank] = (player.knightsAvailable[knight.rank] || 0) + 1;
+    player.knightsAvailable[nextRank]--;
+    knight.rank = nextRank;
+    knight.strength = next.strength;
+    knight.active = true;
+
+    this.logEvent({
+      type: 'KNIGHT_PROMOTED',
+      messageKey: 'LOG_KNIGHT_PROMOTED',
+      args: { playerName: player.name, rank: nextRank }
+    });
+    return { vertexId, knight };
+  }
+
+  moveKnight(playerId, fromVertexId, toVertexId) {
+    const player = this.assertCkAction(playerId);
+    const knight = this.getKnightRecord(player, fromVertexId);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
+    if (fromVertexId === toVertexId) throw new Error('INVALID_KNIGHT_MOVE');
+    if (!this.verticesSharePlayerRoad(fromVertexId, toVertexId, playerId)) {
+      throw new Error('MUST_MOVE_ALONG_OWN_ROAD');
+    }
+
+    const dest = this.grid.vertices.get(toVertexId);
+    if (!dest) throw new Error('INVALID_VERTEX');
+    if (dest.building) throw new Error('VERTEX_OCCUPIED');
+
+    let displaced = null;
+    if (dest.knight) {
+      if (dest.knight.playerId === playerId) throw new Error('VERTEX_OCCUPIED');
+      if (dest.knight.strength >= knight.strength) throw new Error('CANNOT_DISPLACE_EQUAL_OR_STRONGER');
+      displaced = this.displaceKnight(dest.knight, toVertexId, fromVertexId);
+    } else if (this.violatesDistanceRule(toVertexId, [fromVertexId])) {
+      throw new Error('DISTANCE_RULE_VIOLATION');
+    }
+
+    const from = this.grid.vertices.get(fromVertexId);
+    if (from) from.knight = null;
+    knight.vertexId = toVertexId;
+    knight.active = false;
+    dest.knight = knight;
+
+    this.logEvent({
+      type: 'KNIGHT_MOVED',
+      messageKey: 'LOG_KNIGHT_MOVED',
+      args: { playerName: player.name }
+    });
+    return { fromVertexId, toVertexId, knight, displaced };
+  }
+
+  displaceKnight(victimKnight, fromVertexId, attackerFromId) {
+    const owner = this.players.find(p => p.id === victimKnight.playerId);
+    const relocateTo = owner
+      ? this.findKnightRelocation(owner.id, fromVertexId, [attackerFromId])
+      : null;
+    if (relocateTo) {
+      const dest = this.grid.vertices.get(relocateTo);
+      victimKnight.vertexId = relocateTo;
+      victimKnight.active = false;
+      dest.knight = victimKnight;
+      return { playerId: victimKnight.playerId, vertexId: relocateTo, removed: false };
+    }
+    if (owner) this.returnKnightToSupply(owner, victimKnight);
+    return { playerId: victimKnight.playerId, vertexId: null, removed: true };
+  }
+
+  chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
+    const player = this.assertCkAction(playerId);
+    const knight = this.getKnightRecord(player, vertexId);
+    if (!knight) throw new Error('KNIGHT_NOT_FOUND');
+    if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex || !vertex.hexes.includes(this.grid.robberHexId)) {
+      throw new Error('KNIGHT_NOT_ADJACENT_TO_ROBBER');
+    }
+    if (hexId === this.grid.robberHexId) throw new Error('MUST_MOVE_ROBBER_TO_NEW_HEX');
+    if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
+
+    this.grid.robberHexId = hexId;
+    let stolenResource = null;
+    if (targetPlayerId && targetPlayerId !== playerId) {
+      const target = this.players.find(p => p.id === targetPlayerId);
+      const isAdjacent = target && this.playerBuildingTouchesHex(target, hexId);
+      if (isAdjacent && this.countTotalCards(target) > 0) {
+        stolenResource = this.stealRandomCard(player, target);
+      }
+    }
+    knight.active = false;
+
+    this.logEvent({
+      type: 'KNIGHT_CHASED_ROBBER',
+      messageKey: 'LOG_KNIGHT_CHASED_ROBBER',
+      args: { playerName: player.name, hexId }
+    });
+    return { vertexId, hexId, stolenFrom: targetPlayerId, stolenResource };
+  }
+
+  resolveBarbarianAttack() {
+    this.phase = GAME_PHASES.TURN_BARBARIAN_RESOLVE;
+    const totalCities = this.players.reduce((sum, p) => sum + p.citiesBuilt.length, 0);
+    const strengths = this.players.map(p => ({
+      player: p,
+      strength: this.getActiveKnightStrength(p)
+    }));
+    const totalActiveKnights = strengths.reduce((sum, row) => sum + row.strength, 0);
+    const victory = totalActiveKnights >= totalCities;
+
+    let result;
+    if (victory) {
+      const maxStrength = Math.max(0, ...strengths.map(row => row.strength));
+      const leaders = strengths.filter(row => row.strength === maxStrength && maxStrength > 0);
+      if (leaders.length === 1) {
+        this.defenderOfCatan = leaders[0].player.id;
+        this.recalculateVictoryPoints();
+        this.logEvent({
+          type: 'BARBARIAN_VICTORY',
+          messageKey: 'LOG_BARBARIAN_VICTORY',
+          args: { playerName: leaders[0].player.name }
+        });
+      } else {
+        this.logEvent({
+          type: 'BARBARIAN_VICTORY_TIE',
+          messageKey: 'LOG_BARBARIAN_VICTORY_TIE',
+          args: {}
+        });
+      }
+      this.pendingBarbarianDowngrades.clear();
+      result = { outcome: 'victory', defenderOfCatan: this.defenderOfCatan, totalActiveKnights, totalCities };
+    } else {
+      const cityOwners = strengths.filter(row => row.player.citiesBuilt.length > 0);
+      const minStrength = cityOwners.length
+        ? Math.min(...cityOwners.map(row => row.strength))
+        : 0;
+      this.pendingBarbarianDowngrades = new Set(
+        cityOwners.filter(row => row.strength === minStrength).map(row => row.player.id)
+      );
+      this.logEvent({
+        type: 'BARBARIAN_DEFEAT',
+        messageKey: 'LOG_BARBARIAN_DEFEAT',
+        args: { playerIds: Array.from(this.pendingBarbarianDowngrades) }
+      });
+      result = {
+        outcome: 'defeat',
+        pendingDowngrades: Array.from(this.pendingBarbarianDowngrades),
+        totalActiveKnights,
+        totalCities
+      };
+    }
+
+    for (const p of this.players) {
+      for (const k of p.knightsPlaced) k.active = false;
+    }
+    this.barbarianPosition = 0;
+    this.lastBarbarianResult = result;
+
+    if (result.outcome === 'defeat' && this.pendingBarbarianDowngrades.size > 0) {
+      this.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    } else {
+      this.continueAfterBarbarian();
+    }
+    this.checkVictory();
+    return result;
+  }
+
+  continueAfterBarbarian() {
+    const next = this.postBarbarianPhase || GAME_PHASES.TURN_ACTION;
+    this.postBarbarianPhase = null;
+    if (next === GAME_PHASES.TURN_DISCARD || next === GAME_PHASES.TURN_ROBBER) {
+      this.enterRobberFlow();
+    } else {
+      this.phase = next;
+    }
+  }
+
+  downgradeCity(playerId, vertexId) {
+    if (this.phase !== GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) throw new Error('NOT_IN_BARBARIAN_DOWNGRADE');
+    if (!this.pendingBarbarianDowngrades.has(playerId)) throw new Error('NO_DOWNGRADE_NEEDED');
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+    const vertex = this.grid.vertices.get(vertexId);
+    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
+      throw new Error('MUST_DOWNGRADE_OWN_CITY');
+    }
+
+    if (vertex.building.hasWall) {
+      vertex.building.hasWall = false;
+      player.cityWalls = (player.cityWalls || 0) + 1;
+    }
+    const cityIndex = player.citiesBuilt.indexOf(vertexId);
+    if (cityIndex !== -1) player.citiesBuilt.splice(cityIndex, 1);
+    player.citiesRemaining++;
+
+    if (player.settlementsRemaining > 0) {
+      vertex.building.type = 'settlement';
+      player.settlementsBuilt.push(vertexId);
+      player.settlementsRemaining--;
+    } else {
+      vertex.building = null;
+    }
+
+    this.pendingBarbarianDowngrades.delete(playerId);
+    this.recalculateVictoryPoints();
+    this.logEvent({
+      type: 'CITY_DOWNGRADED',
+      messageKey: 'LOG_CITY_DOWNGRADED',
+      args: { playerName: player.name }
+    });
+
+    if (this.pendingBarbarianDowngrades.size === 0) {
+      this.continueAfterBarbarian();
+    }
+    return { vertexId, remaining: Array.from(this.pendingBarbarianDowngrades) };
+  }
+
   buyDevCard(playerId) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    if (this.isCitiesKnights()) throw new Error('DEV_CARDS_DISABLED_IN_CK');
 
     const check = this.canBuyDevCard(playerId);
     if (!check.ok) throw new Error(check.reason);
@@ -1005,8 +1516,7 @@ export class GameEngine {
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
-    const validResources = [RESOURCE_TYPES.WOOD, RESOURCE_TYPES.BRICK, RESOURCE_TYPES.WOOL, RESOURCE_TYPES.WHEAT, RESOURCE_TYPES.ORE];
-    if (!validResources.includes(giveRes) || !validResources.includes(receiveRes)) {
+    if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
       throw new Error('INVALID_RESOURCE');
     }
     if (giveRes === receiveRes) {
@@ -1015,24 +1525,26 @@ export class GameEngine {
 
     // Determine player's best available trade ratio for giveRes
     let bestRatio = 4;
-    for (const vKey of player.settlementsBuilt.concat(player.citiesBuilt)) {
-      const v = this.grid.vertices.get(vKey);
-      if (v && v.harbor) {
-        if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-          bestRatio = 2;
-          break;
-        }
-        if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-          bestRatio = Math.min(bestRatio, 3);
+    if (RESOURCE_VALUES.includes(giveRes)) {
+      for (const vKey of player.settlementsBuilt.concat(player.citiesBuilt)) {
+        const v = this.grid.vertices.get(vKey);
+        if (v && v.harbor) {
+          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
+            bestRatio = 2;
+            break;
+          }
+          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
+            bestRatio = Math.min(bestRatio, 3);
+          }
         }
       }
     }
 
     if (ratio < bestRatio) throw new Error('INVALID_TRADE_RATIO');
-    if ((player.resources[giveRes] || 0) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');
+    if (this.getPlayerCardCount(player, giveRes) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');
 
-    player.resources[giveRes] -= bestRatio;
-    player.resources[receiveRes] = (player.resources[receiveRes] || 0) + 1;
+    this.adjustPlayerCard(player, giveRes, -bestRatio);
+    this.adjustPlayerCard(player, receiveRes, 1);
 
     this.logEvent({
       type: 'BANK_TRADE',
@@ -1051,18 +1563,17 @@ export class GameEngine {
       throw new Error('INVALID_TRADE_FORMAT');
     }
 
-    const validResources = [RESOURCE_TYPES.WOOD, RESOURCE_TYPES.BRICK, RESOURCE_TYPES.WOOL, RESOURCE_TYPES.WHEAT, RESOURCE_TYPES.ORE];
     let totalGive = 0;
     for (const [res, amount] of Object.entries(give)) {
-      if (!validResources.includes(res)) throw new Error(`INVALID_RESOURCE_${res}`);
+      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
       if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      if ((player.resources[res] || 0) < amount) throw new Error('NOT_ENOUGH_RESOURCES_TO_GIVE');
+      if (this.getPlayerCardCount(player, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES_TO_GIVE');
       totalGive += amount;
     }
 
     let totalWant = 0;
     for (const [res, amount] of Object.entries(want)) {
-      if (!validResources.includes(res)) throw new Error(`INVALID_RESOURCE_${res}`);
+      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
       if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
       totalWant += amount;
     }
@@ -1102,7 +1613,7 @@ export class GameEngine {
     if (accept) {
       // Check responder has what the current player wants
       for (const [res, amount] of Object.entries(this.activeTrade.want)) {
-        if ((responder.resources[res] || 0) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
+        if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
       }
       this.activeTrade.acceptedBy.add(playerId);
     } else {
@@ -1124,20 +1635,20 @@ export class GameEngine {
 
     // Final checks
     for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      if ((initiator.resources[res] || 0) < amt) throw new Error('INITIATOR_MISSING_RESOURCES');
+      if (this.getPlayerCardCount(initiator, res) < amt) throw new Error('INITIATOR_MISSING_RESOURCES');
     }
     for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      if ((partner.resources[res] || 0) < amt) throw new Error('PARTNER_MISSING_RESOURCES');
+      if (this.getPlayerCardCount(partner, res) < amt) throw new Error('PARTNER_MISSING_RESOURCES');
     }
 
     // Execute exchange
     for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      initiator.resources[res] -= amt;
-      partner.resources[res] = (partner.resources[res] || 0) + amt;
+      this.adjustPlayerCard(initiator, res, -amt);
+      this.adjustPlayerCard(partner, res, amt);
     }
     for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      partner.resources[res] -= amt;
-      initiator.resources[res] = (initiator.resources[res] || 0) + amt;
+      this.adjustPlayerCard(partner, res, -amt);
+      this.adjustPlayerCard(initiator, res, amt);
     }
 
     const tradeRecord = { ...this.activeTrade, partnerId: targetPlayerId };
@@ -1446,6 +1957,10 @@ export class GameEngine {
         publicPoints += 2;
       }
 
+      if (this.defenderOfCatan === player.id) {
+        publicPoints += 1;
+      }
+
       // Dev card victory points (1 each)
       for (const card of player.devCards) {
         if (card.type === DEV_CARD_TYPES.VICTORY_POINT) {
@@ -1478,6 +1993,9 @@ export class GameEngine {
       grid: this.grid ? this.grid.toJSON() : null,
       pendingDiscards: Array.from(this.pendingDiscards),
       discardDeadline: this.discardDeadline,
+      pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
+      lastBarbarianResult: this.lastBarbarianResult,
+      pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
         acceptedBy: Array.from(this.activeTrade.acceptedBy)
@@ -1495,13 +2013,15 @@ export class GameEngine {
           color: p.color,
           isBot: p.isBot,
           botDifficulty: p.botDifficulty,
-          // If self, reveal resources and hidden dev cards; if opponent, reveal only count
-          resources: isSelf ? p.resources : { total: this.countTotalCards(p) },
+          // Fog-of-war: opponents see resource totals and commodity totals separately.
+          // Hand size = resources.total + commodities.total. Never fold commodities into resources.total.
+          resources: isSelf ? p.resources : { total: this.countResources(p) },
           commodities: isSelf ? p.commodities : { total: this.countCommodities(p) },
           cityImprovements: p.cityImprovements,
           knightsAvailable: isSelf ? p.knightsAvailable : undefined,
           knightsPlaced: p.knightsPlaced,
           cityWalls: p.cityWalls,
+          discardThreshold: this.getDiscardThreshold(p),
           metropolis: p.metropolis,
           progressCards: isSelf ? p.progressCards : { count: (p.progressCards || []).length },
           devCards: isSelf ? p.devCards : { count: p.devCards.filter(c => !c.played).length },
