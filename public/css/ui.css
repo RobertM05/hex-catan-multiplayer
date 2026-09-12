@@ -737,6 +737,16 @@
   z-index: 25;
 }
 
+body.mode-cities-knights .hud-bottom {
+  height: auto;
+  min-height: 96px;
+  max-height: 220px;
+  padding: 8px 18px 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .resource-cards-deck {
   display: flex;
   gap: 10px;
@@ -1708,238 +1718,129 @@ input[type="number"] {
   text-align: left;
 }
 
-/* =========================================================
- * RESPONSIVE LAYOUT (UX-01)
- * ========================================================= */
-@media (max-width: 1024px) {
-  .hud-overlay-toggle {
-    display: flex;
-  }
-
-  .game-viewport-container {
-    grid-template-columns: 200px minmax(0, 1fr);
-    grid-template-areas:
-      "left board"
-      "left bottom";
-  }
-
-  .hud-left {
-    padding: 10px;
-    gap: 8px;
-  }
-
-  .hud-right {
-    position: fixed;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    width: min(360px, 92vw);
-    grid-area: unset;
-    z-index: 80;
-    transform: translateX(100%);
-    transition: transform var(--transition-smooth);
-    border-left: 1px solid var(--border-subtle);
-    box-shadow: var(--shadow-lg);
-  }
-
-  .game-viewport-container.sidebar-open .hud-right {
-    transform: translateX(0);
-  }
-
-  .hud-sidebar-backdrop {
-    display: none;
-    position: fixed;
-    inset: 56px 0 0 0;
-    background: oklch(0.1 0.02 264 / 0.45);
-    z-index: 70;
-  }
-
-  .game-viewport-container.sidebar-open .hud-sidebar-backdrop {
-    display: block;
-  }
-
-  .btn-build-action,
-  .btn-glass,
-  .lobby-tab-btn,
-  .segmented-tab,
-  .sidebar-tab-btn {
-    min-height: 44px;
-  }
-
-  .board-control-btn {
-    width: 44px;
-    height: 44px;
-  }
-
-  .lang-btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 8px 12px;
-  }
-}
-
-@media (max-width: 640px) {
-  .app-header {
-    padding: 0 10px;
-  }
-
-  .brand-title {
-    font-size: 13px;
-    max-width: 42vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sound-label {
-    display: none;
-  }
-
-  .header-actions .btn-glass span:not(.btn-icon):not(.ico) {
-    display: none;
-  }
-
-  .lobby-container,
-  .waiting-container {
-    margin: 16px auto;
-    padding: 0 12px;
-  }
-
-  .lobby-panel {
-    padding: 16px;
-  }
-
-  .lobby-tabs {
-    flex-wrap: wrap;
-    border-radius: 16px;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .waiting-header,
-  .waiting-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .game-viewport-container {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
-    grid-template-areas:
-      "status"
-      "board"
-      "actions"
-      "hand";
-    height: calc(100dvh - 56px);
-  }
-
-  .hud-left {
-    display: contents;
-    padding: 0;
-    border: none;
-    overflow: visible;
-    background: transparent;
-  }
-
-  .hud-left-status {
-    grid-area: status;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px 10px;
-    gap: 8px;
-    background: oklch(0.165 0.012 264 / 0.92);
-    border-bottom: 1px solid var(--border-subtle);
-    max-height: none;
-  }
-
-  .hud-left-status .turn-banner,
-  .hud-left-status .dice-container {
-    flex: 0 0 auto;
-    min-width: 148px;
-  }
-
-  .hud-left-status .ck-hud-widget {
-    flex: 0 0 auto;
-    min-width: 160px;
-  }
-
-  .hud-left-actions {
-    grid-area: actions;
-    margin-top: 0;
-    padding: 8px 10px;
-    gap: 8px;
-    background: oklch(0.165 0.012 264 / 0.92);
-    border-top: 1px solid var(--border-subtle);
-    max-height: 28vh;
-    overflow-y: auto;
-  }
-
-  .build-actions-list {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-  }
-
-  .hud-bottom {
-    grid-area: hand;
-    min-height: 72px;
-    padding: 6px 10px;
-    overflow-x: auto;
-    gap: 8px;
-  }
-
-  .resource-cards-deck {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-
-  .res-card {
-    width: 56px;
-    height: 68px;
-    flex-shrink: 0;
-  }
-
-  .hud-right {
-    top: auto;
-    height: min(70dvh, 520px);
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    transform: translateY(100%);
-  }
-
-  .game-viewport-container.sidebar-open .hud-right {
-    transform: translateY(0);
-  }
-
-  .modal-overlay {
-    padding: 8px;
-    align-items: flex-end;
-  }
-
-  .modal-box,
-  .trade-modal-box {
-    max-width: 100% !important;
-    width: 100%;
-    max-height: 90dvh;
-    overflow-y: auto;
-    padding: 16px;
-  }
-
-  .trade-steppers-grid,
-  .trade-inputs-row,
-  body.mode-cities-knights #discard-form .trade-steppers-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .board-hint {
     bottom: 8px;
     padding: 6px 12px;
     font-size: 11px;
   }
+}
+
+.progress-cards-panel {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  flex: 1 1 100%;
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
+  display: flex !important;
+}
+
+.progress-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.progress-cards-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-primary);
+}
+.progress-limit-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.progress-cards-panel.at-limit .progress-limit-hint {
+  color: #f59e0b;
+  font-weight: 700;
+}
+.progress-card-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.progress-card {
+  width: 70px;
+  height: 100px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  color: #fff;
+  text-align: center;
+  transition: transform 0.2s;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+.progress-card:hover { transform: translateY(-8px); }
+.progress-card.playing { animation: progress-card-play 0.35s ease forwards; }
+@keyframes progress-card-play {
+  to { transform: translateX(80px); opacity: 0; }
+}
+.progress-card .card-icon { font-size: 22px; line-height: 1; }
+.progress-card .card-name { font-size: 10px; font-weight: 700; line-height: 1.2; }
+.card-trade { background: linear-gradient(135deg, #FFB703, #FB8500); }
+.card-politics { background: linear-gradient(135deg, #219EBC, #023047); }
+.card-science { background: linear-gradient(135deg, #52B788, #2D6A4F); }
+.progress-special-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.progress-special-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid #facc15;
+  color: #facc15;
+}
+.progress-card-modal-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+}
+.progress-card-target-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-target-btn, .progress-discard-item {
+  width: 100%;
+  text-align: left;
+}
+.progress-discard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.alchemist-dice-row {
+  display: flex;
+  gap: 10px;
+}
+.alchemist-dice-row label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.alchemist-dice-row select {
+  width: 100%;
+  margin-top: 4px;
+}
+.progress-card-reveal {
+  animation: progress-card-reveal 0.45s ease;
+}
+@keyframes progress-card-reveal {
+  from { transform: scale(0.6) rotateY(90deg); opacity: 0; }
+  to { transform: scale(1) rotateY(0); opacity: 1; }
 }

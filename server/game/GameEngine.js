@@ -2495,7 +2495,14 @@ export class GameEngine {
           cityWalls: p.cityWalls,
           discardThreshold: this.getDiscardThreshold(p),
           metropolis: p.metropolis,
-          progressCards: isSelf ? p.progressCards : { count: (p.progressCards || []).length },
+          progressCards: isSelf
+            ? p.progressCards
+            : {
+              count: (p.progressCards || []).length,
+              revealed: (p.progressCards || [])
+                .filter(c => c.revealed || (c.played && ['constitution', 'printer'].includes(c.type)))
+                .map(c => ({ id: c.id, type: c.type, revealed: true, played: true }))
+            },
           devCards: isSelf ? p.devCards : { count: p.devCards.filter(c => !c.played).length },
           playedKnights: p.playedKnights,
           settlementsRemaining: p.settlementsRemaining,
