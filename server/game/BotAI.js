@@ -597,6 +597,11 @@ export class BotAI {
       return true;
     }
 
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
+      engine.autoResolveKnightRelocation();
+      return true;
+    }
+
     const cur = engine.getCurrentPlayer();
     if (!cur) return false;
 
