@@ -4,7 +4,7 @@
  * Can participate in setup, dice rolling, discarding, robber movement, building, and trading.
  */
 
-import { GAME_PHASES, COSTS, DEV_CARD_TYPES } from './GameEngine.js';
+import { GAME_PHASES, GAME_MODES, COSTS, DEV_CARD_TYPES, IMPROVEMENT_TRACKS } from './GameEngine.js';
 import { RESOURCE_TYPES } from './HexGrid.js';
 
 export class BotAI {
@@ -183,6 +183,11 @@ export class BotAI {
   }
 
   static decideTurnAction(engine, botPlayer) {
+    if (engine.mode === GAME_MODES.CITIES_KNIGHTS || engine.isCitiesKnights?.()) {
+      const ck = this.decideCkTurnAction(engine, botPlayer);
+      if (ck) return ck;
+    }
+
     const grid = engine.grid;
 
     // 1. Play unplayed knight card if robber is on one of bot's hexes
@@ -261,5 +266,356 @@ export class BotAI {
 
     // Nothing left to build or trade -> End turn
     return { action: 'end_turn' };
+  }
+
+  static isCk(engine) {
+    return engine.mode === GAME_MODES.CITIES_KNIGHTS || engine.isCitiesKnights?.();
+  }
+
+  static findValidKnightVertices(engine, botPlayer) {
+    const ids = [];
+    for (const [vId, vertex] of engine.grid.vertices) {
+      if (vertex.building || vertex.knight) continue;
+      if (engine.violatesDistanceRule(vId)) continue;
+      if (!engine.vertexHasPlayerRoad(vertex, botPlayer.id)) continue;
+      ids.push(vId);
+    }
+    return ids;
+  }
+
+  static findCityWithoutWall(engine, botPlayer) {
+    for (const vid of botPlayer.citiesBuilt || []) {
+      const v = engine.grid.vertices.get(vid);
+      if (v?.building?.type === 'city' && !v.building.hasWall) return vid;
+    }
+    return null;
+  }
+
+  static cityResourceScore(engine, vertexId) {
+    return this.getVertexScore(engine.grid, vertexId);
+  }
+
+  static chooseCityToDowngrade(engine, playerId) {
+    const player = engine.players.find(p => p.id === playerId);
+    if (!player?.citiesBuilt?.length) return null;
+    let worst = player.citiesBuilt[0];
+    let worstScore = Infinity;
+    for (const vid of player.citiesBuilt) {
+      const score = this.cityResourceScore(engine, vid);
+      if (score < worstScore) {
+        worstScore = score;
+        worst = vid;
+      }
+    }
+    return worst;
+  }
+
+  static chooseCityForMetropolis(engine, playerId) {
+    const player = engine.players.find(p => p.id === playerId);
+    if (!player?.citiesBuilt?.length) return null;
+    let best = player.citiesBuilt[0];
+    let bestScore = -1;
+    for (const vid of player.citiesBuilt) {
+      const score = this.cityResourceScore(engine, vid);
+      if (score > bestScore) {
+        bestScore = score;
+        best = vid;
+      }
+    }
+    return best;
+  }
+
+  static chooseBestImprovementTrack(engine, me) {
+    if (!me.citiesBuilt?.length) return null;
+    const tracks = ['trade', 'politics', 'science'];
+    const affordable = [];
+    for (const track of tracks) {
+      const level = me.cityImprovements?.[track] || 0;
+      if (level >= 5) continue;
+      let cost = level + 1;
+      if (me.craneDiscount) cost = Math.max(0, cost - 1);
+      const commodity = IMPROVEMENT_TRACKS[track];
+      if ((me.commodities?.[commodity] || 0) >= cost) affordable.push({ track, level, cost });
+    }
+    if (!affordable.length) return null;
+    const difficulty = me.botDifficulty || 'medium';
+    if (difficulty === 'easy') {
+      return affordable[Math.floor(Math.random() * affordable.length)].track;
+    }
+    let best = affordable[0];
+    let bestScore = -Infinity;
+    for (const opt of affordable) {
+      const contested = engine.players.reduce((sum, p) => {
+        if (p.id === me.id) return sum;
+        return sum + (p.cityImprovements?.[opt.track] || 0);
+      }, 0);
+      const score = opt.level * 3 - contested + (opt.track === 'politics' && (me.knightsPlaced || []).length ? 1 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = opt;
+      }
+    }
+    return best.track;
+  }
+
+  static progressCardValue(type) {
+    const order = {
+      constitution: 100, printer: 100, alchemist: 80, warlord: 70, smith: 65,
+      merchant: 60, merchant_fleet: 55, crane: 50, medicine: 45, master_merchant: 40,
+      bishop: 35, engineer: 30, inventor: 25, intrigue: 20, deserter: 18,
+      diplomat: 15, irrigation: 12, mining: 12, commercial_harbor: 10, resource_monopoly: 8
+    };
+    return order[type] || 5;
+  }
+
+  static decideProgressDiscard(botPlayer) {
+    const cards = (botPlayer.progressCards || []).filter(c => !c.played);
+    if (!cards.length) return null;
+    cards.sort((a, b) => this.progressCardValue(a.type) - this.progressCardValue(b.type));
+    return cards[0].id;
+  }
+
+  static decideProgressCardPlay(engine, me) {
+    const cards = (me.progressCards || []).filter(c => !c.played && !c.revealed);
+    const vp = cards.find(c => c.type === 'constitution' || c.type === 'printer');
+    if (vp && engine.phase === GAME_PHASES.TURN_ACTION) {
+      return { action: 'play_progress_card', cardId: vp.id, options: {} };
+    }
+    if (engine.phase === GAME_PHASES.TURN_ROLL) {
+      const alchemist = cards.find(c => c.type === 'alchemist');
+      if (alchemist) {
+        const tokens = [];
+        for (const vid of [...(me.settlementsBuilt || []), ...(me.citiesBuilt || [])]) {
+          const v = engine.grid.vertices.get(vid);
+          for (const hid of v?.hexes || []) {
+            const token = engine.grid.hexes.get(hid)?.token;
+            if (token) tokens.push(token);
+          }
+        }
+        const target = tokens.sort((a, b) => b - a)[0] || 7;
+        const d1 = Math.min(6, Math.max(1, Math.floor(target / 2)));
+        return { action: 'play_progress_card', cardId: alchemist.id, options: { d1, d2: target - d1 } };
+      }
+      return null;
+    }
+    if (engine.phase !== GAME_PHASES.TURN_ACTION) return null;
+
+    const inactive = (me.knightsPlaced || []).filter(k => !k.active);
+    const warlord = cards.find(c => c.type === 'warlord');
+    if (warlord && inactive.length >= 2) {
+      return { action: 'play_progress_card', cardId: warlord.id, options: {} };
+    }
+    const fleet = cards.find(c => c.type === 'merchant_fleet');
+    if (fleet && engine.countTotalCards(me) >= 7) {
+      return { action: 'play_progress_card', cardId: fleet.id, options: {} };
+    }
+    const crane = cards.find(c => c.type === 'crane');
+    if (crane && this.chooseBestImprovementTrack(engine, me)) {
+      return { action: 'play_progress_card', cardId: crane.id, options: {} };
+    }
+    const master = cards.find(c => c.type === 'master_merchant');
+    if (master) {
+      const leader = engine.players
+        .filter(p => p.id !== me.id)
+        .sort((a, b) => (b.victoryPoints || 0) - (a.victoryPoints || 0))[0];
+      if (leader && engine.countTotalCards(leader) >= 2) {
+        const steal = [];
+        for (const [res, n] of Object.entries(leader.resources || {})) {
+          for (let i = 0; i < n && steal.length < 2; i++) steal.push(res);
+        }
+        for (const [com, n] of Object.entries(leader.commodities || {})) {
+          for (let i = 0; i < n && steal.length < 2; i++) steal.push(com);
+        }
+        if (steal.length === 2) {
+          return {
+            action: 'play_progress_card',
+            cardId: master.id,
+            options: { targetPlayerId: leader.id, steal }
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  static decideCkTurnAction(engine, me) {
+    const progress = this.decideProgressCardPlay(engine, me);
+    if (progress) return progress;
+
+    if (engine.barbarianPosition >= 5) {
+      const inactive = (me.knightsPlaced || []).filter(k => !k.active);
+      if (inactive.length && (me.resources.wheat || 0) >= 1) {
+        return { action: 'activate_knight', vertexId: inactive[0].vertexId };
+      }
+    }
+
+    const robberHex = engine.grid.robberHexId;
+    for (const knight of me.knightsPlaced || []) {
+      if (!knight.active) continue;
+      const v = engine.grid.vertices.get(knight.vertexId);
+      if (v?.hexes?.includes(robberHex)) {
+        const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
+        if (dest) return { action: 'chase_robber', vertexId: knight.vertexId, hexId: dest };
+      }
+    }
+
+    if ((me.knightsPlaced || []).length === 0 && (me.resources.ore || 0) >= 1 && (me.resources.wool || 0) >= 1) {
+      const valid = this.findValidKnightVertices(engine, me);
+      if (valid.length) return { action: 'place_knight', vertexId: valid[0] };
+    }
+
+    const politics = me.cityImprovements?.politics || 0;
+    for (const knight of me.knightsPlaced || []) {
+      const nextReq = knight.rank === 'basic' ? 1 : knight.rank === 'strong' ? 2 : 99;
+      if (politics >= nextReq && knight.rank !== 'mighty'
+        && (me.resources.wheat || 0) >= 1 && (me.resources.ore || 0) >= 1) {
+        const nextRank = knight.rank === 'basic' ? 'strong' : 'mighty';
+        if ((me.knightsAvailable?.[nextRank] || 0) > 0) {
+          return { action: 'promote_knight', vertexId: knight.vertexId };
+        }
+      }
+    }
+
+    const track = this.chooseBestImprovementTrack(engine, me);
+    if (track) return { action: 'improve_city', track };
+
+    if (engine.countTotalCards(me) >= 6 && (me.cityWalls || 0) > 0 && (me.resources.brick || 0) >= 2) {
+      const city = this.findCityWithoutWall(engine, me);
+      if (city) return { action: 'build_city_wall', vertexId: city };
+    }
+
+    if ((me.resources.ore || 0) >= 1 && (me.resources.wool || 0) >= 1) {
+      const valid = this.findValidKnightVertices(engine, me);
+      if (valid.length && (me.knightsAvailable?.basic || 0) > 0) {
+        return { action: 'place_knight', vertexId: valid[0] };
+      }
+    }
+
+    return null;
+  }
+
+  static applyTurnAction(engine, botPlayer, action) {
+    if (!action) {
+      engine.endTurn(botPlayer.id);
+      return;
+    }
+    switch (action.action) {
+      case 'build_city':
+        engine.buildCity(botPlayer.id, action.vertexId);
+        break;
+      case 'build_settlement':
+        engine.buildSettlement(botPlayer.id, action.vertexId);
+        break;
+      case 'build_road':
+        engine.buildRoad(botPlayer.id, action.edgeId);
+        break;
+      case 'buy_dev_card':
+        engine.buyDevCard(botPlayer.id);
+        break;
+      case 'bank_trade':
+        engine.tradeWithBank(botPlayer.id, action.give, action.receive, action.ratio);
+        break;
+      case 'play_dev_card':
+        engine.playDevCard(botPlayer.id, action.cardId);
+        break;
+      case 'play_progress_card':
+        engine.playProgressCard(botPlayer.id, action.cardId, action.options || {});
+        break;
+      case 'place_knight':
+        engine.placeKnight(botPlayer.id, action.vertexId);
+        break;
+      case 'activate_knight':
+        engine.activateKnight(botPlayer.id, action.vertexId);
+        break;
+      case 'promote_knight':
+        engine.promoteKnight(botPlayer.id, action.vertexId);
+        break;
+      case 'build_city_wall':
+        engine.buildCityWall(botPlayer.id, action.vertexId);
+        break;
+      case 'improve_city':
+        engine.improveCityTrack(botPlayer.id, action.track);
+        break;
+      case 'chase_robber':
+        engine.chaseRobber(botPlayer.id, action.vertexId, action.hexId, action.targetPlayerId);
+        break;
+      default:
+        engine.endTurn(botPlayer.id);
+    }
+  }
+
+  static playCurrentBotStep(engine) {
+    if (engine.phase === GAME_PHASES.GAME_OVER) return false;
+
+    if (engine.pendingProgressDiscard?.size) {
+      for (const pId of Array.from(engine.pendingProgressDiscard)) {
+        const p = engine.players.find(x => x.id === pId);
+        if (!p) continue;
+        const cardId = this.decideProgressDiscard(p);
+        if (cardId) engine.discardProgressCard(pId, cardId);
+      }
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_DISCARD) {
+      for (const pId of Array.from(engine.pendingDiscards)) {
+        const p = engine.players.find(x => x.id === pId);
+        if (!p) continue;
+        const dis = this.decideDiscard(engine, p);
+        engine.discardCards(pId, dis.discarded);
+      }
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
+      for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
+        const city = this.chooseCityToDowngrade(engine, pId);
+        if (city) engine.downgradeCity(pId, city);
+      }
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+      const chooser = engine.pendingMetropolisChoice?.playerId || engine.getCurrentPlayer()?.id;
+      const city = this.chooseCityForMetropolis(engine, chooser);
+      if (city) engine.chooseMetropolis(chooser, city);
+      return true;
+    }
+
+    const cur = engine.getCurrentPlayer();
+    if (!cur) return false;
+
+    if (engine.phase === GAME_PHASES.SETUP_ROUND_1 || engine.phase === GAME_PHASES.SETUP_ROUND_2) {
+      const setup = this.decideSetupAction(engine, cur);
+      if (setup?.action === 'place_setup_settlement') engine.placeSetupSettlement(cur.id, setup.vertexId);
+      else if (setup?.action === 'place_setup_road') engine.placeSetupRoad(cur.id, setup.edgeId);
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_ROLL) {
+      const alchemist = this.decideProgressCardPlay(engine, cur);
+      if (alchemist) engine.playProgressCard(cur.id, alchemist.cardId, alchemist.options);
+      engine.rollDice(cur.id);
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_ROBBER) {
+      const rob = this.decideRobberMove(engine, cur);
+      engine.moveRobber(cur.id, rob.hexId, rob.targetPlayerId);
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_ACTION) {
+      const action = this.decideTurnAction(engine, cur);
+      try {
+        this.applyTurnAction(engine, cur, action);
+      } catch {
+        if (engine.phase === GAME_PHASES.TURN_ACTION) {
+          try { engine.endTurn(cur.id); } catch { /* ignore */ }
+        }
+      }
+      return true;
+    }
+
+    return false;
   }
 }

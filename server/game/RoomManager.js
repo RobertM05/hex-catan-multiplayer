@@ -396,6 +396,26 @@ export class RoomManager {
     const engine = room.engine;
     if (engine.phase === GAME_PHASES.GAME_OVER) return;
 
+    if (engine.pendingProgressDiscard && engine.pendingProgressDiscard.size) {
+      for (const pId of Array.from(engine.pendingProgressDiscard)) {
+        const p = engine.players.find(x => x.id === pId);
+        if (p && p.isBot) {
+          setTimeout(() => {
+            if (room.isStarted && engine.pendingProgressDiscard.has(pId)) {
+              try {
+                const cardId = BotAI.decideProgressDiscard(p);
+                if (cardId) engine.discardProgressCard(pId, cardId);
+                this.broadcastState(room);
+                this.checkAndTriggerBotTurn(room);
+              } catch (err) {
+                console.error('Bot progress discard error:', err);
+              }
+            }
+          }, 800);
+        }
+      }
+    }
+
     // Discard phase: check if any bots need to discard
     if (engine.phase === GAME_PHASES.TURN_DISCARD) {
       for (const pId of Array.from(engine.pendingDiscards)) {
@@ -421,11 +441,12 @@ export class RoomManager {
     if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
       for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
         const p = engine.players.find(x => x.id === pId);
-        if (p && p.isBot && p.citiesBuilt[0]) {
+        if (p && p.isBot) {
           setTimeout(() => {
             if (room.isStarted && engine.pendingBarbarianDowngrades.has(pId)) {
               try {
-                engine.downgradeCity(pId, p.citiesBuilt[0]);
+                const city = BotAI.chooseCityToDowngrade(engine, pId) || p.citiesBuilt[0];
+                if (city) engine.downgradeCity(pId, city);
                 this.broadcastState(room);
                 this.checkAndTriggerBotTurn(room);
               } catch (err) {
@@ -434,6 +455,26 @@ export class RoomManager {
             }
           }, 800);
         }
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+      const chooserId = engine.pendingMetropolisChoice?.playerId || engine.getCurrentPlayer()?.id;
+      const chooser = engine.players.find(p => p.id === chooserId);
+      if (chooser && chooser.isBot) {
+        setTimeout(() => {
+          if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
+            try {
+              const city = BotAI.chooseCityForMetropolis(engine, chooserId);
+              if (city) engine.chooseMetropolis(chooserId, city);
+              this.broadcastState(room);
+              this.checkAndTriggerBotTurn(room);
+            } catch (err) {
+              console.error('Bot metropolis choice error:', err);
+            }
+          }
+        }, 800);
       }
       return;
     }
@@ -455,27 +496,22 @@ export class RoomManager {
             }
           }
         } else if (engine.phase === GAME_PHASES.TURN_ROLL) {
+          const alchemist = BotAI.decideProgressCardPlay(engine, curPlayer);
+          if (alchemist?.action === 'play_progress_card') {
+            engine.playProgressCard(curPlayer.id, alchemist.cardId, alchemist.options);
+          }
           engine.rollDice(curPlayer.id);
         } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
           const robAction = BotAI.decideRobberMove(engine, curPlayer);
           engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
         } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
           const action = BotAI.decideTurnAction(engine, curPlayer);
-          if (action.action === 'build_city') {
-            engine.buildCity(curPlayer.id, action.vertexId);
-          } else if (action.action === 'build_settlement') {
-            engine.buildSettlement(curPlayer.id, action.vertexId);
-          } else if (action.action === 'build_road') {
-            engine.buildRoad(curPlayer.id, action.edgeId);
-          } else if (action.action === 'buy_dev_card') {
-            engine.buyDevCard(curPlayer.id);
-          } else if (action.action === 'bank_trade') {
-            engine.tradeWithBank(curPlayer.id, action.give, action.receive, action.ratio);
-          } else if (action.action === 'play_dev_card') {
-            engine.playDevCard(curPlayer.id, action.cardId);
-          } else {
+          if (action.action === 'end_turn') {
             engine.endTurn(curPlayer.id);
             this.resetTurnTimer(room);
+          } else {
+            BotAI.applyTurnAction(engine, curPlayer, action);
+            if (action.action === 'end_turn') this.resetTurnTimer(room);
           }
         }
 
