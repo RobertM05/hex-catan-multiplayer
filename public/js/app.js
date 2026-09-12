@@ -71,8 +71,8 @@ export function renderVictoryStatsHtml(winner, s) {
   return cardsHtml;
 }
 
-class CatanApp {
-  constructor() {
+export class CatanApp {
+  constructor(autoInit = true) {
     this.boardRenderer = null;
     this.turnTimerUI = new TurnTimerUI({ audio });
     this.currentRoom = null;
@@ -87,9 +87,22 @@ class CatanApp {
     this.deferredProductionToasts = [];
     this.progressPlay = null;
     this.seenProgressDrawKeys = new Set();
-    this.myPlayerId = null;
+    this._myPlayerId = null;
 
-    this.init();
+    if (autoInit && typeof document !== 'undefined') {
+      this.init();
+    }
+  }
+
+  get myPlayerId() {
+    return this._myPlayerId || network.currentPlayerId || null;
+  }
+
+  set myPlayerId(id) {
+    this._myPlayerId = id || null;
+    if (id) {
+      network.currentPlayerId = id;
+    }
   }
 
   isCitiesKnights() {
@@ -363,6 +376,7 @@ class CatanApp {
           mapSize,
           vpTarget: mode === 'cities_knights' ? 13 : 10
         });
+        this.myPlayerId = res.playerId;
         this.enterWaitingRoom(res.roomCode);
       } catch (err) {
         this.showToast(err.message, true);
@@ -378,6 +392,7 @@ class CatanApp {
 
       try {
         const res = await network.joinRoom(code, playerName);
+        this.myPlayerId = res.playerId;
         if (res.isStarted) {
           this.showView('view-game');
         } else {
@@ -426,6 +441,7 @@ class CatanApp {
    * WAITING ROOM
    * ========================================================= */
   enterWaitingRoom(code) {
+    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     this.showView('view-waiting');
     document.getElementById('display-room-code').textContent = code;
 
@@ -488,6 +504,7 @@ class CatanApp {
   }
 
   renderWaitingRoom(lobbyData) {
+    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     this.currentRoom = lobbyData;
     this.syncRulesModal(lobbyData.mode);
     const slotsContainer = document.getElementById('waiting-slots-grid');
@@ -2568,6 +2585,7 @@ class CatanApp {
    * ========================================================= */
   bindNetworkEvents() {
     network.onLobbyUpdate = (lobbyData) => {
+      this.myPlayerId = network.currentPlayerId || this.myPlayerId;
       this.renderWaitingRoom(lobbyData);
     };
 

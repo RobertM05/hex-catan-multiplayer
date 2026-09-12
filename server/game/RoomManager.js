@@ -188,7 +188,7 @@ export class RoomManager {
   addBot(code, difficulty = 'medium') {
     const room = this.getRoom(code);
     if (!room || room.isStarted) return null;
-    if (room.players.length >= room.maxPlayers) return null;
+    if (room.players.length + (room.pendingAgentSpawns || 0) >= room.maxPlayers) return null;
 
     const botNames = ['Bot Ada', 'Bot Gauss', 'Bot Euler', 'Bot Turing', 'Bot Pascal', 'Bot Fermat'];
     const existingNames = room.players.map(p => p.name);
