@@ -133,14 +133,27 @@ export class BoardRenderer {
 
   attachPanZoomEvents() {
     const isInteractiveTarget = (target) => {
-      if (!target || !target.classList) return false;
-      return target.classList.contains('interactive-node')
-        || target.classList.contains('interactive-edge')
-        || (typeof target.closest === 'function' && target.closest('.hex-robber-target'));
+      if (!target || typeof target.closest !== 'function') return false;
+      return Boolean(target.closest([
+        '.interactive-node',
+        '.interactive-edge',
+        '.valid-settlement-target',
+        '.valid-road-group',
+        '.valid-city-target',
+        '.valid-progress-vertex',
+        '.valid-progress-road',
+        '.hex-robber-target',
+        '.hex-progress-target',
+        '.knight-piece'
+      ].join(', ')));
     };
 
     this.svg.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // Let build/robber/knight clicks fire on the target. Capturing on the SVG
+      // here swallows the following click and makes settlements/roads unplaceable.
+      if (isInteractiveTarget(e.target)) return;
+
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { this.svg.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
 
