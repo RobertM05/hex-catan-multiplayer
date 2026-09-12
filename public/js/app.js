@@ -910,8 +910,8 @@ class CatanApp {
 
       const total = Object.values(resCounts).reduce((a, b) => a + b, 0);
       const needed = Math.floor(total / 2);
-      const wallsBuilt = Math.max(0, 3 - (typeof me.cityWalls === 'number' ? me.cityWalls : 3));
-      const threshold = 7 + wallsBuilt * 2;
+      const wallsBuilt = (me.citiesBuilt || []).filter((vid) => this.gameState.grid?.vertices?.[vid]?.building?.hasWall).length;
+      const threshold = typeof me.discardThreshold === 'number' ? me.discardThreshold : (7 + wallsBuilt * 2);
 
       const neededCountEl = document.getElementById('discard-needed-count');
       if (neededCountEl) neededCountEl.textContent = needed;
