@@ -56,6 +56,7 @@ class CatanApp {
     this.setupLanguageSelector();
     this.setupSoundToggle();
     this.setupRulesModal();
+    this.setupModalAccessibility();
 
     // Initialize SVG board renderer
     const boardContainer = document.getElementById('board-container');
@@ -148,6 +149,8 @@ class CatanApp {
     const updateIcon = () => {
       const iconMarkup = ico(audio.enabled ? 'speakerHigh' : 'speakerSlash', 'btn-icon');
       soundBtn.innerHTML = `${iconMarkup} <span>${i18n.t('SOUND_TOGGLE')}</span>`;
+      soundBtn.setAttribute('aria-label', i18n.t('SOUND_TOGGLE'));
+      soundBtn.setAttribute('title', i18n.t('SOUND_TOGGLE'));
     };
     soundBtn.addEventListener('click', () => {
       audio.toggle();
@@ -163,6 +166,38 @@ class CatanApp {
     });
     document.getElementById('btn-close-rules').addEventListener('click', () => {
       modal.classList.remove('active');
+    });
+  }
+
+  setupModalAccessibility() {
+    this.modalReturnFocus = null;
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (btn && !btn.closest('.modal-overlay')) this.modalReturnFocus = btn;
+    }, true);
+
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      const observer = new MutationObserver(() => {
+        if (!overlay.classList.contains('active')) return;
+        const focusable = overlay.querySelector('button, [href], input, select, textarea');
+        if (focusable) focusable.focus();
+      });
+      observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const open = [...document.querySelectorAll('.modal-overlay.active')]
+        .filter(m => m.id !== 'victory-modal');
+      const top = open[open.length - 1];
+      if (!top) return;
+      e.preventDefault();
+      top.classList.remove('active');
+      if (this.modalReturnFocus && typeof this.modalReturnFocus.focus === 'function') {
+        this.modalReturnFocus.focus();
+      }
     });
   }
 
