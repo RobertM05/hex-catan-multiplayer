@@ -1031,15 +1031,22 @@ export class BoardRenderer {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const safeX = Math.max(80, Math.min(rect.width - 80, x));
-    const safeY = Math.max(50, y);
+    const flipBelow = y < 110;
+    if (flipBelow) {
+      this.roadTooltip.classList.add('tooltip-flip-below');
+      this.roadTooltip.style.top = `${y + 20}px`;
+    } else {
+      this.roadTooltip.classList.remove('tooltip-flip-below');
+      this.roadTooltip.style.top = `${y}px`;
+    }
     this.roadTooltip.style.left = `${safeX}px`;
-    this.roadTooltip.style.top = `${safeY}px`;
   }
 
   handleRoadMouseLeave() {
     this.activeHoveredEdgeId = null;
     if (this.roadTooltip) {
       this.roadTooltip.classList.add('hidden');
+      this.roadTooltip.classList.remove('tooltip-flip-below');
     }
     if (this.edgeLayer) {
       const highlighted = this.edgeLayer.querySelectorAll('.road-hover-highlight, .road-hover-active');

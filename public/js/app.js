@@ -1027,8 +1027,8 @@ class CatanApp {
     const rect = viewport.getBoundingClientRect();
     const x = evt?.clientX ? evt.clientX - rect.left : 24;
     const y = evt?.clientY ? evt.clientY - rect.top : 24;
-    menu.style.left = `${Math.min(x, rect.width - 240)}px`;
-    menu.style.top = `${Math.min(y, rect.height - 180)}px`;
+    menu.style.left = `${Math.max(12, Math.min(x, rect.width - 240))}px`;
+    menu.style.top = `${Math.max(12, Math.min(y, rect.height - 180))}px`;
     menu.querySelectorAll('.knight-action-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();

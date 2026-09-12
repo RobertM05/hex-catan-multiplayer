@@ -738,5 +738,79 @@ describe('CK-16: Official C&K Rules Alignment', () => {
   });
 });
 
+describe('AI-02 & UX-09: Bot Trade Balancing & Goal-Oriented Bank Trading', () => {
+  it('evaluateBotsTrade rejects kingmaking trades to players near victory point target', () => {
+    const rm = new RoomManager({ emit: () => {} });
+    const room = rm.createRoom({ id: 'h1', name: 'HumanHost' }, { name: 'Room1', turnDuration: 60 });
+    rm.addBot(room.code, 'medium');
+    room.engine.startGame('standard');
+
+    const human = room.engine.players[0];
+    const bot = room.engine.players[1];
+
+    // Proposer is at 8 VP in a 10 VP game
+    human.victoryPoints = 8;
+    human.resources = { wood: 5, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    bot.resources = { wood: 3, brick: 3, wool: 3, wheat: 3, ore: 3 };
+
+    room.engine.phase = GAME_PHASES.TURN_ACTION;
+    room.engine.currentTurnPlayerIndex = 0;
+    room.engine.proposeTrade(human.id, { wood: 1 }, { brick: 1 });
+
+    rm.evaluateBotsTrade(room);
+    assert.equal(room.engine.activeTrade.acceptedBy.has(bot.id), false);
+  });
+
+  it('evaluateBotsTrade rejects 1:1 commodity drains and 1:2 rip-offs', () => {
+    const rm = new RoomManager({ emit: () => {} });
+    const room = rm.createRoom({ id: 'h1', name: 'HumanHost' }, { name: 'Room2', turnDuration: 60, mode: 'cities_knights' });
+    rm.addBot(room.code, 'medium');
+    room.engine.startGame('standard');
+
+    const human = room.engine.players[0];
+    const bot = room.engine.players[1];
+
+    human.resources = { wood: 5, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    bot.commodities = { cloth: 2, coin: 2, paper: 2 };
+    bot.resources = { wood: 4, brick: 4, wool: 4, wheat: 4, ore: 4 };
+
+    room.engine.phase = GAME_PHASES.TURN_ACTION;
+    room.engine.currentTurnPlayerIndex = 0;
+
+    // Test 1: Commodity drain (1 wood for 1 coin)
+    room.engine.proposeTrade(human.id, { wood: 1 }, { coin: 1 });
+    rm.evaluateBotsTrade(room);
+    assert.equal(room.engine.activeTrade.acceptedBy.has(bot.id), false);
+
+    // Test 2: 1:2 rip-off (1 wood for 2 ore)
+    room.engine.proposeTrade(human.id, { wood: 1 }, { ore: 2 });
+    rm.evaluateBotsTrade(room);
+    assert.equal(room.engine.activeTrade.acceptedBy.has(bot.id), false);
+  });
+
+  it('BotAI executes goal-oriented bank trade to fulfill city deficit', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'bot1', name: 'Bot', isBot: true });
+    engine.addPlayer({ id: 'p2', name: 'Human' });
+    engine.startGame('standard');
+
+    const bot = engine.players[0];
+    const vId = Array.from(engine.grid.vertices.keys())[0];
+    engine.grid.vertices.get(vId).building = { type: 'settlement', playerId: bot.id };
+    bot.settlementsBuilt.push(vId);
+
+    // Needs 3 ore + 2 wheat for city. Has 2 ore, 2 wheat, and 4 brick surplus.
+    bot.resources = { wood: 0, brick: 4, wool: 0, wheat: 2, ore: 2 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    const action = BotAI.decideTurnAction(engine, bot);
+    assert.equal(action.action, 'bank_trade');
+    assert.equal(action.give, 'brick');
+    assert.equal(action.receive, 'ore');
+    assert.equal(action.ratio, 4);
+  });
+});
+
+
 
 

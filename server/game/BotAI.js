@@ -238,15 +238,85 @@ export class BotAI {
       return { action: 'buy_dev_card' };
     }
 
-    // 6. Bank trade with best available ratio (considering 2:1 and 3:1 harbors)
+    // 6. Goal-oriented bank trading (considering 2:1 and 3:1 harbors and Trade Level 5)
     const validTradeResources = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+
+    // Prioritized build goals: City -> Settlement -> Road
+    const goals = [];
+    if (botPlayer.citiesRemaining > 0 && botPlayer.settlementsBuilt?.length > 0) {
+      goals.push({ ore: 3, wheat: 2 });
+    }
+    if (botPlayer.settlementsRemaining > 0) {
+      goals.push({ wood: 1, brick: 1, wool: 1, wheat: 1 });
+    }
+    if (botPlayer.roadsRemaining > 0) {
+      goals.push({ wood: 1, brick: 1 });
+    }
+
+    const tradeCandidates = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    if (this.isCk(engine)) {
+      tradeCandidates.push('cloth', 'coin', 'paper');
+    }
+
+    for (const goal of goals) {
+      const deficits = {};
+      let totalDeficit = 0;
+      for (const [res, needed] of Object.entries(goal)) {
+        const have = botPlayer.resources[res] || 0;
+        if (have < needed) {
+          deficits[res] = needed - have;
+          totalDeficit += deficits[res];
+        }
+      }
+
+      if (totalDeficit > 0 && totalDeficit <= 2) {
+        for (const give of tradeCandidates) {
+          const ratio = this.getBestBankTradeRatio(engine, botPlayer, give);
+          const count = engine.getPlayerCardCount(botPlayer, give);
+          const neededForGoal = goal[give] || 0;
+          if (count >= ratio && count - ratio >= neededForGoal) {
+            const receive = Object.keys(deficits)[0];
+            if (receive && receive !== give) {
+              return { action: 'bank_trade', give, receive, ratio };
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: trade surplus cards to gain any resource currently at 0
     for (const res of validTradeResources) {
+      const ratio = this.getBestBankTradeRatio(engine, botPlayer, res);
       const count = botPlayer.resources[res] || 0;
-      let bestRatio = 4;
-      for (const vKey of botPlayer.settlementsBuilt.concat(botPlayer.citiesBuilt)) {
-        const v = grid.vertices.get(vKey);
+      if (count >= ratio) {
+        const needed = validTradeResources.find(r => r !== res && (botPlayer.resources[r] || 0) === 0);
+        if (needed) {
+          try {
+            return { action: 'bank_trade', give: res, receive: needed, ratio };
+          } catch (e) {}
+        }
+      }
+    }
+
+    // Nothing left to build or trade -> End turn
+    return { action: 'end_turn' };
+  }
+
+  static getBestBankTradeRatio(engine, botPlayer, giveRes) {
+    let bestRatio = 4;
+    if (botPlayer.merchantFleetActive) {
+      bestRatio = 2;
+    } else if ((botPlayer.cityImprovements?.trade || 0) >= 5) {
+      bestRatio = 2;
+    } else if (engine.merchantHolder === botPlayer.id && engine.merchantHexId) {
+      const hex = engine.grid?.hexes?.get(engine.merchantHexId);
+      if (hex && hex.resource === giveRes) bestRatio = 2;
+    }
+    if (bestRatio > 2) {
+      for (const vKey of (botPlayer.settlementsBuilt || []).concat(botPlayer.citiesBuilt || [])) {
+        const v = engine.grid?.vertices?.get(vKey);
         if (v && v.harbor) {
-          if (v.harbor.type === res && v.harbor.ratio === 2) {
+          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
             bestRatio = 2;
             break;
           }
@@ -255,19 +325,8 @@ export class BotAI {
           }
         }
       }
-
-      if (count >= bestRatio) {
-        const needed = validTradeResources.find(r => r !== res && (botPlayer.resources[r] || 0) === 0);
-        if (needed) {
-          try {
-            return { action: 'bank_trade', give: res, receive: needed, ratio: bestRatio };
-          } catch (e) {}
-        }
-      }
     }
-
-    // Nothing left to build or trade -> End turn
-    return { action: 'end_turn' };
+    return bestRatio;
   }
 
   static isCk(engine) {
@@ -434,7 +493,7 @@ export class BotAI {
       const leader = engine.players
         .filter(p => p.id !== me.id)
         .sort((a, b) => (b.victoryPoints || 0) - (a.victoryPoints || 0))[0];
-      if (leader && engine.countTotalCards(leader) >= 2) {
+      if (leader && (leader.victoryPoints || 0) > (me.victoryPoints || 0) && engine.countTotalCards(leader) >= 2) {
         const steal = [];
         for (const [res, n] of Object.entries(leader.resources || {})) {
           for (let i = 0; i < n && steal.length < 2; i++) steal.push(res);
