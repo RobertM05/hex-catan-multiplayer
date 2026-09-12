@@ -178,15 +178,19 @@ io.on('connection', (socket) => {
 
   socket.on('add_bot', (data, callback) => {
     try {
-      if (!data || currentRoomCode !== data.code || !currentPlayerId) throw new Error('ROOM_MISMATCH');
-      const existingRoom = roomManager.getRoom(data.code);
-      if (!existingRoom || existingRoom.hostId !== currentPlayerId) throw new Error('ONLY_HOST_CAN_MANAGE_LOBBY');
-      const bot = roomManager.addBot(data.code, data.difficulty);
-      const room = roomManager.getRoom(data.code);
-      if (room) {
-        roomManager.broadcastLobbyState(room);
-        if (callback) callback({ success: true, bot });
-      }
+      const roomCode = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
+      if (currentRoomCode && roomCode !== currentRoomCode) throw new Error('ROOM_MISMATCH');
+      const existingRoom = roomManager.getRoom(roomCode);
+      if (!existingRoom) throw new Error('ROOM_NOT_FOUND');
+      if (!currentPlayerId || existingRoom.hostId !== currentPlayerId) throw new Error('ONLY_HOST_CAN_MANAGE_LOBBY');
+      if (existingRoom.isStarted) throw new Error('GAME_ALREADY_STARTED');
+      if (existingRoom.players.length + (existingRoom.pendingAgentSpawns || 0) >= existingRoom.maxPlayers) throw new Error('ROOM_FULL');
+
+      const bot = roomManager.addBot(roomCode, data?.difficulty || 'medium');
+      if (!bot) throw new Error('BOT_ADD_FAILED');
+      roomManager.broadcastLobbyState(existingRoom);
+      if (callback) callback({ success: true, bot });
     } catch (err) {
       if (callback) callback({ success: false, error: err.message });
     }
@@ -194,13 +198,14 @@ io.on('connection', (socket) => {
 
   socket.on('spawn_ai_agent', (data, callback) => {
     try {
-      const roomCode = (data && (data.code || data.roomCode)) || currentRoomCode;
+      const roomCode = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
       if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
+      if (currentRoomCode && roomCode !== currentRoomCode) throw new Error('ROOM_MISMATCH');
       const room = roomManager.getRoom(roomCode);
       if (!room) throw new Error('ROOM_NOT_FOUND');
-      if (room.hostId !== currentPlayerId) throw new Error('ONLY_HOST_CAN_MANAGE_LOBBY');
+      if (!currentPlayerId || room.hostId !== currentPlayerId) throw new Error('ONLY_HOST_CAN_MANAGE_LOBBY');
       if (room.isStarted) throw new Error('GAME_ALREADY_STARTED');
-      if (room.players.length >= room.maxPlayers) throw new Error('ROOM_FULL');
+      if (room.players.length + (room.pendingAgentSpawns || 0) >= room.maxPlayers) throw new Error('ROOM_FULL');
 
       const agentNames = ['AlphaSettler', 'DeepHex', 'ClaudeBot', 'GeminiKnight', 'SnighiBot', 'HexMaster'];
       const existingNames = room.players.map(p => p.name);
@@ -216,23 +221,28 @@ io.on('connection', (socket) => {
 
   socket.on('remove_player', (data, callback) => {
     try {
-      const room = roomManager.getRoom(data.code);
-      if (room && (room.hostId === currentPlayerId || data.id === currentPlayerId)) {
-        roomManager.removePlayerOrBot(data.code, data.id);
-        const updated = roomManager.getRoom(data.code);
-        if (updated) {
-          roomManager.broadcastLobbyState(updated);
-        }
-        if (callback) callback({ success: true });
+      const roomCode = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
+      if (currentRoomCode && roomCode !== currentRoomCode) throw new Error('ROOM_MISMATCH');
+      const room = roomManager.getRoom(roomCode);
+      if (!room) throw new Error('ROOM_NOT_FOUND');
+      if (!currentPlayerId || (room.hostId !== currentPlayerId && data?.id !== currentPlayerId)) {
+        throw new Error('NOT_AUTHORIZED');
       }
+      roomManager.removePlayerOrBot(roomCode, data.id);
+      const updated = roomManager.getRoom(roomCode);
+      if (updated) {
+        roomManager.broadcastLobbyState(updated);
+      }
+      if (callback) callback({ success: true });
     } catch (err) {
       if (callback) callback({ success: false, error: err.message });
     }
   });
 
   socket.on('set_ready', (data, callback) => {
-    const code = data && (data.code || data.roomCode);
-    const ok = Boolean(data) && roomManager.setPlayerReady(code, currentPlayerId, data.isReady);
+    const code = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+    const ok = Boolean(code) && roomManager.setPlayerReady(code, currentPlayerId, data?.isReady);
     if (ok) {
       const room = roomManager.getRoom(code);
       roomManager.broadcastLobbyState(room);
@@ -244,9 +254,10 @@ io.on('connection', (socket) => {
 
   socket.on('set_color', (data) => {
     try {
-      const ok = Boolean(data) && roomManager.setPlayerColor(data.code, currentPlayerId, data.color);
+      const code = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      const ok = Boolean(code) && roomManager.setPlayerColor(code, currentPlayerId, data?.color);
       if (ok) {
-        const room = roomManager.getRoom(data.code);
+        const room = roomManager.getRoom(code);
         roomManager.broadcastLobbyState(room);
       }
     } catch (err) {
@@ -256,7 +267,10 @@ io.on('connection', (socket) => {
 
   socket.on('start_game', (data, callback) => {
     try {
-      const room = roomManager.startGame(data.code, currentPlayerId);
+      const roomCode = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
+      if (currentRoomCode && roomCode !== currentRoomCode) throw new Error('ROOM_MISMATCH');
+      const room = roomManager.startGame(roomCode, currentPlayerId);
       io.to(room.code).emit('game_started', { code: room.code });
       roomManager.broadcastState(room);
       if (callback) callback({ success: true });
@@ -266,8 +280,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send_chat', (data) => {
-    const roomCode = currentRoomCode || data?.code;
-    if (!roomCode || (currentRoomCode && data?.code && currentRoomCode !== data.code)) return;
+    const roomCode = (currentRoomCode || data?.code)?.toUpperCase();
+    if (!roomCode || (currentRoomCode && data?.code && currentRoomCode !== data.code.toUpperCase())) return;
     const room = roomManager.getRoom(roomCode);
     if (room && data?.text) {
       const sender = room.players.find(p => p.id === currentPlayerId) || { name: 'Player' };
@@ -290,8 +304,8 @@ io.on('connection', (socket) => {
    * ========================================================= */
 
   const handleGameAction = (code, actionFn, callback) => {
-    const roomCode = currentRoomCode || code;
-    if (!roomCode || (currentRoomCode && code && currentRoomCode !== code)) {
+    const roomCode = (code || currentRoomCode)?.toUpperCase();
+    if (!roomCode || (currentRoomCode && code && currentRoomCode !== code.toUpperCase())) {
       if (callback) callback({ success: false, error: 'ROOM_MISMATCH' });
       return;
     }

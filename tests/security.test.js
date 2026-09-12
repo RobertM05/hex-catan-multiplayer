@@ -7,7 +7,8 @@ import {
   validatePlayerColor,
   validateRoomName
 } from '../server/game/RoomManager.js';
-import { escapeHtml } from '../public/js/app.js';
+import { escapeHtml, CatanApp } from '../public/js/app.js';
+import { network } from '../public/js/network.js';
 
 describe('SEC-01: multiplayer session authority', () => {
   it('does not reconnect a player from their public ID when legacy matching is disabled', () => {
@@ -61,5 +62,42 @@ describe('SEC-03: agent spawn reservations', () => {
     roomManager.releaseAgentSpawn(room.code);
     assert.doesNotThrow(() => roomManager.reserveAgentSpawn(room.code));
     roomManager.destroyRoom(room.code);
+  });
+});
+
+describe('SEC-04: lobby bot spawning & host authorization', () => {
+  it('RoomManager.addBot rejects addition when capacity reached including pending agent spawns', () => {
+    const roomManager = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = roomManager.createRoom({ id: 'host', name: 'Host', socketId: 'host' }, { maxPlayers: 2 });
+
+    roomManager.reserveAgentSpawn(room.code);
+    const bot = roomManager.addBot(room.code, 'medium');
+    assert.equal(bot, null);
+    roomManager.releaseAgentSpawn(room.code);
+
+    const botAfterRelease = roomManager.addBot(room.code, 'medium');
+    assert.ok(botAfterRelease);
+    assert.equal(botAfterRelease.isBot, true);
+    assert.equal(room.players.length, 2);
+
+    const botWhenFull = roomManager.addBot(room.code, 'medium');
+    assert.equal(botWhenFull, null);
+
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('CatanApp synchronizes player identity between app and network client', () => {
+    const app = new CatanApp(false);
+    assert.equal(app.myPlayerId, null);
+
+    network.currentPlayerId = 'p_test_123';
+    assert.equal(app.myPlayerId, 'p_test_123');
+
+    app.myPlayerId = 'p_test_456';
+    assert.equal(app.myPlayerId, 'p_test_456');
+    assert.equal(network.currentPlayerId, 'p_test_456');
+
+    app.myPlayerId = null;
+    network.currentPlayerId = null;
   });
 });
