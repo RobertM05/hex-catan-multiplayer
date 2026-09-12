@@ -1,0 +1,73 @@
+/** Progress card metadata for Cities & Knights hand UI (CK-12). */
+
+export const PROGRESS_DECK_BY_TYPE = {
+  commercial_harbor: 'trade',
+  master_merchant: 'trade',
+  merchant: 'trade',
+  merchant_fleet: 'trade',
+  resource_monopoly: 'trade',
+  bishop: 'politics',
+  constitution: 'politics',
+  deserter: 'politics',
+  diplomat: 'politics',
+  intrigue: 'politics',
+  warlord: 'politics',
+  alchemist: 'science',
+  crane: 'science',
+  engineer: 'science',
+  inventor: 'science',
+  irrigation: 'science',
+  medicine: 'science',
+  mining: 'science',
+  printer: 'science',
+  smith: 'science'
+};
+
+export const PROGRESS_CARD_ICONS = {
+  commercial_harbor: '⚓',
+  master_merchant: '⚖',
+  merchant: '🐪',
+  merchant_fleet: '⛵',
+  resource_monopoly: '♦',
+  bishop: '✝',
+  constitution: '📜',
+  deserter: '🏃',
+  diplomat: '🤝',
+  intrigue: '🗡',
+  warlord: '⚔',
+  alchemist: '⚗',
+  crane: '🏗',
+  engineer: '🧱',
+  inventor: '🔧',
+  irrigation: '🌾',
+  medicine: '✚',
+  mining: '⛏',
+  printer: '🖨',
+  smith: '🔨'
+};
+
+export const PROGRESS_VP_TYPES = new Set(['constitution', 'printer']);
+
+export function getProgressDeck(type) {
+  return PROGRESS_DECK_BY_TYPE[type] || 'trade';
+}
+
+export function isRevealedProgressCard(card) {
+  if (!card) return false;
+  return Boolean(card.revealed) || (card.played && PROGRESS_VP_TYPES.has(card.type));
+}
+
+export function unplayedProgressCards(cards) {
+  if (!Array.isArray(cards)) return [];
+  return cards.filter(c => !c.played && !c.revealed);
+}
+
+export function revealedProgressCards(cards) {
+  if (!Array.isArray(cards)) return [];
+  return cards.filter(isRevealedProgressCard).map(c => ({
+    id: c.id,
+    type: c.type,
+    revealed: true,
+    played: true
+  }));
+}

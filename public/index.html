@@ -462,6 +462,15 @@
             <span id="dev-card-badge" class="badge-count" style="display: none;">0</span>
           </button>
         </div>
+
+        <div id="progress-cards-panel" class="progress-cards-panel ck-hud-widget">
+          <div class="progress-cards-header">
+            <h3 id="progress-cards-title">Progress Cards (0/4)</h3>
+            <span id="progress-cards-limit" class="progress-limit-hint"></span>
+          </div>
+          <div id="progress-card-hand" class="progress-card-hand"></div>
+          <div id="progress-special-cards" class="progress-special-cards"></div>
+        </div>
       </footer>
 
       <!-- Right HUD (Opponents, Chronicles Log, Tavern Chat) -->
@@ -953,6 +962,29 @@
       </div>
       <div id="dev-cards-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; padding: 4px 0;"></div>
       <button id="btn-close-dev-cards" class="btn-glass" style="margin-top: 8px; width: 100%;" data-i18n="CANCEL_ACTION">Închide</button>
+    </div>
+  </div>
+
+  <div id="progress-card-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box" style="max-width: 440px; width: 94%;">
+      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h3 class="modal-title" id="progress-card-modal-title" style="margin: 0;">Card</h3>
+        <button type="button" id="btn-close-progress-card" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <p id="progress-card-modal-desc" class="progress-card-modal-desc"></p>
+      <div id="progress-card-target-ui" class="progress-card-target-ui"></div>
+      <div style="display: flex; gap: 8px; margin-top: 14px;">
+        <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary" style="flex: 1;" data-i18n="ACTION_PLAY_CARD">Joacă</button>
+        <button type="button" id="btn-cancel-progress-card" class="btn-glass" style="flex: 1;" data-i18n="CANCEL_ACTION">Anulează</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="progress-discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box" style="max-width: 440px; width: 94%;">
+      <h3 class="modal-title" data-i18n="PROGRESS_DISCARD_TITLE">Discard a progress card</h3>
+      <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress cards. Discard one to continue.</p>
+      <div id="progress-discard-list" class="progress-discard-list"></div>
     </div>
   </div>
 

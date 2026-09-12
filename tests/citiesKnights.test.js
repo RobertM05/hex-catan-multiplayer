@@ -1285,3 +1285,31 @@ describe('CK-07: Science Progress Cards', () => {
   });
 });
 
+describe('CK-12: Progress Card State', () => {
+  it('should include progressCards in self player state', () => {
+    const engine = makeCkEngine();
+    engine.players[0].progressCards.push({ id: 'c1', type: 'crane', played: false });
+    const self = engine.getStateForPlayer('p1').players[0];
+    assert.equal(Array.isArray(self.progressCards), true);
+    assert.equal(self.progressCards[0].type, 'crane');
+  });
+
+  it('should only show progressCards count for opponents', () => {
+    const engine = makeCkEngine();
+    engine.players[0].progressCards.push({ id: 'c1', type: 'crane', played: false });
+    const opp = engine.getStateForPlayer('p2').players[0];
+    assert.equal(opp.progressCards.count, 1);
+    assert.equal(opp.progressCards[0], undefined);
+  });
+
+  it('should include revealed VP cards for all players', () => {
+    const engine = makeCkEngine();
+    engine.players[0].progressCards.push({ id: 'c1', type: 'constitution', played: true, revealed: true });
+    engine.players[0].progressCards.push({ id: 'c2', type: 'crane', played: false });
+    const opp = engine.getStateForPlayer('p2').players[0];
+    assert.equal(opp.progressCards.count, 2);
+    assert.equal(opp.progressCards.revealed.length, 1);
+    assert.equal(opp.progressCards.revealed[0].type, 'constitution');
+  });
+});
+

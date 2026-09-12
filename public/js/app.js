@@ -10,6 +10,12 @@ import { network } from './network.js';
 import { BoardRenderer } from './renderer.js';
 import { ico } from './icons.js';
 import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, BUILD_COSTS } from './turnStatus.js';
+import {
+  getProgressDeck,
+  PROGRESS_CARD_ICONS,
+  unplayedProgressCards,
+  revealedProgressCards
+} from './progressCards.js';
 
 class CatanApp {
   constructor() {
@@ -23,6 +29,8 @@ class CatanApp {
     this.diceAnim = null;
     this.diceFaceTimer = null;
     this.deferredProductionToasts = [];
+    this.progressPlay = null;
+    this.seenProgressDrawKeys = new Set();
     this.myPlayerId = localStorage.getItem('catan_player_id') || `p_${Math.random().toString(36).substring(2, 8)}`;
     localStorage.setItem('catan_player_id', this.myPlayerId);
     network.currentPlayerId = this.myPlayerId;
@@ -77,6 +85,7 @@ class CatanApp {
     this.setupTradeModals();
     this.setupDiscardModal();
     this.setupDevCardsModal();
+    this.setupProgressCardUi();
 
     // Connect to WebSocket Server
     await network.connect();
@@ -652,6 +661,8 @@ class CatanApp {
           await network.sendAction('build_city_wall', { vertexId });
           audio.playBuild();
           this.clearActiveAction();
+        } else if (this.selectedAction && this.selectedAction.type === 'progress_vertex') {
+          this.onProgressVertexPicked(vertexId);
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -675,6 +686,8 @@ class CatanApp {
           } else {
             this.clearActiveAction();
           }
+        } else if (this.selectedAction && this.selectedAction.type === 'progress_road') {
+          this.onProgressRoadPicked(edgeId);
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -682,8 +695,11 @@ class CatanApp {
     };
 
     this.boardRenderer.onHexClick = async (hexId) => {
+      if (this.selectedAction && this.selectedAction.type === 'progress_hex') {
+        this.onProgressHexPicked(hexId);
+        return;
+      }
       if (this.gameState && this.gameState.phase === 'TURN_ROBBER') {
-        // Open robber steal target selector
         this.openRobberTargetModal(hexId);
       }
     };
@@ -824,6 +840,9 @@ class CatanApp {
     this.renderBarbarianOverlay(s, me);
     const wallCount = document.getElementById('wall-supply-count');
     if (wallCount) wallCount.textContent = String(me?.cityWalls ?? 0);
+    this.renderProgressCardHand();
+    this.notifyProgressDraws(s);
+    this.checkProgressDiscardState();
   }
 
   renderEventDie(s) {
@@ -1743,6 +1762,322 @@ class CatanApp {
     });
   }
 
+  setupProgressCardUi() {
+    document.getElementById('btn-close-progress-card')?.addEventListener('click', () => this.closeProgressCardModal());
+    document.getElementById('btn-cancel-progress-card')?.addEventListener('click', () => this.closeProgressCardModal());
+    document.getElementById('btn-play-progress-card')?.addEventListener('click', () => this.confirmProgressCardPlay());
+  }
+
+  getMe() {
+    if (!this.gameState) return null;
+    return this.gameState.players.find(p => p.id === this.myPlayerId) || null;
+  }
+
+  opponentRevealedProgressHtml(player) {
+    if (!this.isCitiesKnights()) return '';
+    const revealed = Array.isArray(player.progressCards)
+      ? revealedProgressCards(player.progressCards)
+      : (player.progressCards?.revealed || []);
+    if (!revealed.length) return '';
+    return `<div class="progress-special-cards">${revealed.map(c =>
+      `<span class="progress-special-chip">${i18n.t(`CARD_${c.type.toUpperCase()}`)}</span>`
+    ).join('')}</div>`;
+  }
+
+  renderProgressCardHand() {
+    const panel = document.getElementById('progress-cards-panel');
+    if (!panel) return;
+    if (!this.isCitiesKnights()) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    const me = this.getMe();
+    const cards = unplayedProgressCards(me?.progressCards);
+    const title = document.getElementById('progress-cards-title');
+    if (title) title.textContent = i18n.t('PROGRESS_CARDS_TITLE', { count: cards.length });
+    const limit = document.getElementById('progress-cards-limit');
+    panel.classList.toggle('at-limit', cards.length >= 4);
+    if (limit) limit.textContent = cards.length >= 4 ? i18n.t('PROGRESS_CARDS_AT_LIMIT') : '';
+
+    const hand = document.getElementById('progress-card-hand');
+    if (hand) {
+      hand.innerHTML = cards.map(card => {
+        const deck = getProgressDeck(card.type);
+        const name = i18n.t(`CARD_${card.type.toUpperCase()}`);
+        const desc = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
+        return `<button type="button" class="progress-card card-${deck} progress-card-reveal" data-card-id="${card.id}" title="${desc}">
+          <span class="card-icon">${PROGRESS_CARD_ICONS[card.type] || '◆'}</span>
+          <span class="card-name">${name}</span>
+        </button>`;
+      }).join('');
+      hand.querySelectorAll('.progress-card').forEach(el => {
+        el.addEventListener('click', () => this.openProgressCardModal(el.dataset.cardId));
+      });
+    }
+
+    const special = document.getElementById('progress-special-cards');
+    if (special) {
+      const revealed = revealedProgressCards(me?.progressCards);
+      special.innerHTML = revealed.length
+        ? `<div class="progress-special-label">${i18n.t('PROGRESS_SPECIAL_TITLE')}</div>` +
+          revealed.map(c => `<span class="progress-special-chip">${i18n.t(`CARD_${c.type.toUpperCase()}`)} +1 VP</span>`).join('')
+        : '';
+    }
+
+    const badge = document.getElementById('dev-card-badge');
+    if (badge) {
+      badge.textContent = cards.length;
+      badge.style.display = cards.length > 0 ? 'inline-flex' : 'none';
+    }
+  }
+
+  notifyProgressDraws(s) {
+    const meId = this.myPlayerId;
+    for (const draw of s.pendingProgressDraws || []) {
+      const key = `${s.turnNumber}-${draw.playerId}-${draw.cardType}-${draw.drawn}`;
+      if (this.seenProgressDrawKeys.has(key)) continue;
+      this.seenProgressDrawKeys.add(key);
+      if (draw.playerId === meId && draw.drawn && draw.cardType) {
+        const name = i18n.t(`CARD_${String(draw.cardType).toUpperCase()}`);
+        this.showToast(i18n.t('DREW_PROGRESS_CARD', { card: name }));
+      }
+    }
+  }
+
+  checkProgressDiscardState() {
+    const modal = document.getElementById('progress-discard-modal');
+    if (!modal || !this.gameState) return;
+    const pending = this.gameState.pendingProgressDiscard || [];
+    const mustDiscard = this.isCitiesKnights() && pending.includes(this.myPlayerId);
+    if (!mustDiscard) {
+      modal.classList.remove('active');
+      return;
+    }
+    const me = this.getMe();
+    const cards = unplayedProgressCards(me?.progressCards);
+    const list = document.getElementById('progress-discard-list');
+    if (list) {
+      list.innerHTML = cards.map(card => `
+        <button type="button" class="btn-glass progress-discard-item" data-card-id="${card.id}">
+          ${PROGRESS_CARD_ICONS[card.type] || ''} ${i18n.t(`CARD_${card.type.toUpperCase()}`)}
+        </button>`).join('');
+      list.querySelectorAll('.progress-discard-item').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            await network.sendAction('discard_progress_card', { cardId: btn.dataset.cardId });
+          } catch (err) {
+            this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+          }
+        });
+      });
+    }
+    modal.classList.add('active');
+  }
+
+  openProgressCardModal(cardId) {
+    const me = this.getMe();
+    const card = (me?.progressCards || []).find(c => c.id === cardId && !c.played);
+    if (!card) return;
+    this.progressPlay = { card, options: {}, picks: [] };
+    const modal = document.getElementById('progress-card-modal');
+    document.getElementById('progress-card-modal-title').textContent = i18n.t(`CARD_${card.type.toUpperCase()}`);
+    document.getElementById('progress-card-modal-desc').textContent = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
+    this.renderCardTargetSelector(card);
+    const canPlayNow = card.type === 'alchemist'
+      ? this.gameState.phase === 'TURN_ROLL' && this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId
+      : this.gameState.phase === 'TURN_ACTION' && this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId;
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (playBtn) playBtn.disabled = !canPlayNow;
+    modal.classList.add('active');
+  }
+
+  closeProgressCardModal() {
+    document.getElementById('progress-card-modal')?.classList.remove('active');
+    this.progressPlay = null;
+    if (this.selectedAction && String(this.selectedAction.type).startsWith('progress_')) {
+      this.clearActiveAction();
+    }
+  }
+
+  renderCardTargetSelector(card) {
+    const box = document.getElementById('progress-card-target-ui');
+    if (!box) return;
+    box.innerHTML = '';
+    const type = card.type;
+    if (type === 'alchemist') {
+      box.innerHTML = `<div class="alchemist-dice-row">
+        <label>${i18n.t('PROGRESS_DIE_1')}<select id="alchemist-d1">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
+        <label>${i18n.t('PROGRESS_DIE_2')}<select id="alchemist-d2">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
+      </div>`;
+      return;
+    }
+    if (type === 'resource_monopoly' || type === 'commercial_harbor') {
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE')}</div>
+        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+          ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${i18n.t(`RES_${r.toUpperCase()}`)}</button>`).join('')}
+        </div>`;
+      box.querySelectorAll('.res-choice-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.resource = b.dataset.res;
+          box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+        });
+      });
+      return;
+    }
+    if (type === 'master_merchant') {
+      const opponents = this.gameState.players.filter(p => p.id !== this.myPlayerId);
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>` +
+        opponents.map(p => `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${p.name}</button>`).join('') +
+        `<div>${i18n.t('PROGRESS_SELECT_STEAL')}</div>
+         <select id="mm-steal-1">${this.handTypeOptions()}</select>
+         <select id="mm-steal-2">${this.handTypeOptions()}</select>`;
+      box.querySelectorAll('.progress-target-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.targetPlayerId = b.dataset.id;
+          box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+        });
+      });
+      return;
+    }
+    const hints = {
+      bishop: 'PROGRESS_SELECT_HEX',
+      merchant: 'PROGRESS_SELECT_HEX',
+      inventor: 'PROGRESS_SELECT_HEX',
+      smith: 'PROGRESS_SELECT_KNIGHTS',
+      deserter: 'PROGRESS_SELECT_KNIGHT',
+      intrigue: 'PROGRESS_SELECT_KNIGHT',
+      engineer: 'PROGRESS_SELECT_CITY',
+      diplomat: 'PROGRESS_SELECT_ROAD'
+    };
+    if (hints[type]) {
+      box.innerHTML = `<p>${i18n.t(hints[type])}</p>`;
+      this.beginProgressBoardPick(type);
+    }
+  }
+
+  handTypeOptions() {
+    return ['wood','brick','wool','wheat','ore','cloth','coin','paper']
+      .map(t => `<option value="${t}">${this.cardLabel(t)}</option>`).join('');
+  }
+
+  beginProgressBoardPick(type) {
+    if (!this.gameState?.grid) return;
+    const me = this.getMe();
+    const vertices = Object.values(this.gameState.grid.vertices || {});
+    const hexes = Object.values(this.gameState.grid.hexes || {});
+    const edges = Object.values(this.gameState.grid.edges || {});
+    if (type === 'bishop') {
+      this.selectedAction = {
+        type: 'progress_hex',
+        validIds: new Set(hexes.filter(h => h.id !== this.gameState.grid.robberHexId).map(h => h.id))
+      };
+    } else if (type === 'merchant') {
+      const mine = new Set([...(me.settlementsBuilt || []), ...(me.citiesBuilt || [])]);
+      const ids = new Set();
+      vertices.forEach(v => {
+        if (mine.has(v.id) && v.hexes) v.hexes.forEach(hid => ids.add(hid));
+      });
+      this.selectedAction = { type: 'progress_hex', validIds: ids };
+    } else if (type === 'inventor') {
+      const forbidden = new Set([2, 6, 8, 12]);
+      this.selectedAction = {
+        type: 'progress_hex',
+        validIds: new Set(hexes.filter(h => h.token && !forbidden.has(h.token)).map(h => h.id))
+      };
+    } else if (type === 'smith') {
+      const ids = new Set((me.knightsPlaced || []).map(k => k.vertexId));
+      this.selectedAction = { type: 'progress_vertex', validIds: ids };
+    } else if (type === 'deserter' || type === 'intrigue') {
+      const ids = new Set();
+      vertices.forEach(v => {
+        if (v.knight && v.knight.playerId !== this.myPlayerId) ids.add(v.id);
+      });
+      this.selectedAction = { type: 'progress_vertex', validIds: ids };
+    } else if (type === 'engineer') {
+      const ids = new Set();
+      (me.citiesBuilt || []).forEach(vid => {
+        const v = this.gameState.grid.vertices[vid];
+        if (v?.building && !v.building.hasWall) ids.add(vid);
+      });
+      this.selectedAction = { type: 'progress_vertex', validIds: ids };
+    } else if (type === 'diplomat') {
+      this.selectedAction = { type: 'progress_road', validIds: new Set(edges.filter(e => e.road).map(e => e.id)) };
+    }
+    this.boardRenderer.render(this.gameState.grid, this.selectedAction);
+  }
+
+  onProgressHexPicked(hexId) {
+    if (!this.progressPlay) return;
+    const type = this.progressPlay.card.type;
+    if (type === 'inventor') {
+      this.progressPlay.picks.push(hexId);
+      if (this.progressPlay.picks.length === 1) {
+        document.getElementById('progress-card-target-ui').innerHTML = `<p>${i18n.t('PROGRESS_SELECT_HEX_2')}</p>`;
+        return;
+      }
+      this.progressPlay.options.hexId1 = this.progressPlay.picks[0];
+      this.progressPlay.options.hexId2 = this.progressPlay.picks[1];
+      this.confirmProgressCardPlay();
+      return;
+    }
+    this.progressPlay.options.hexId = hexId;
+    this.confirmProgressCardPlay();
+  }
+
+  onProgressVertexPicked(vertexId) {
+    if (!this.progressPlay) return;
+    const type = this.progressPlay.card.type;
+    if (type === 'smith') {
+      if (!this.progressPlay.picks.includes(vertexId)) this.progressPlay.picks.push(vertexId);
+      if (this.progressPlay.picks.length < 2) return;
+      this.progressPlay.options.knightVertices = this.progressPlay.picks.slice(0, 2);
+      this.confirmProgressCardPlay();
+      return;
+    }
+    if (type === 'engineer') {
+      this.progressPlay.options.vertexId = vertexId;
+      this.confirmProgressCardPlay();
+      return;
+    }
+    this.progressPlay.options.vertexId = vertexId;
+    this.confirmProgressCardPlay();
+  }
+
+  onProgressRoadPicked(edgeId) {
+    if (!this.progressPlay) return;
+    this.progressPlay.options.edgeId = edgeId;
+    this.confirmProgressCardPlay();
+  }
+
+  async confirmProgressCardPlay() {
+    const play = this.progressPlay;
+    if (!play) return;
+    const options = { ...play.options };
+    if (play.card.type === 'alchemist') {
+      options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
+      options.d2 = parseInt(document.getElementById('alchemist-d2')?.value, 10);
+    }
+    if (play.card.type === 'master_merchant') {
+      options.steal = [
+        document.getElementById('mm-steal-1')?.value,
+        document.getElementById('mm-steal-2')?.value
+      ];
+    }
+    const el = document.querySelector(`.progress-card[data-card-id="${play.card.id}"]`);
+    el?.classList.add('playing');
+    try {
+      await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      audio.playBuild();
+      this.closeProgressCardModal();
+    } catch (err) {
+      el?.classList.remove('playing');
+      this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+    }
+  }
+
   /* =========================================================
    * NETWORK SYNC
    * ========================================================= */
@@ -1909,9 +2244,15 @@ class CatanApp {
       }
       const devBadge = document.getElementById('dev-card-badge');
       if (devBadge) {
-        const unplayed = (me.devCards || []).filter(c => !c.played);
-        devBadge.textContent = unplayed.length;
-        devBadge.style.display = unplayed.length > 0 ? 'inline-flex' : 'none';
+        if (this.isCitiesKnights()) {
+          const unplayed = unplayedProgressCards(me.progressCards);
+          devBadge.textContent = unplayed.length;
+          devBadge.style.display = unplayed.length > 0 ? 'inline-flex' : 'none';
+        } else {
+          const unplayed = (me.devCards || []).filter(c => !c.played);
+          devBadge.textContent = unplayed.length;
+          devBadge.style.display = unplayed.length > 0 ? 'inline-flex' : 'none';
+        }
       }
     }
 
@@ -1947,6 +2288,7 @@ class CatanApp {
             <span class="opponent-vp-badge">${p.victoryPoints} ${i18n.t('VICTORY_POINTS_ABBR')}</span>
           </div>
         </div>
+        ${this.opponentRevealedProgressHtml(p)}
       `;
       oppContainer.appendChild(card);
     });
