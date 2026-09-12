@@ -610,9 +610,11 @@ export class GameEngine {
     const edge = this.grid.edges.get(edgeId);
     if (!edge?.road) return false;
     const ownerId = edge.road.playerId;
-    const hasOtherRoadAt = (vertexId) => {
+
+    const isEndClosed = (vertexId) => {
       const vertex = this.grid.vertices.get(vertexId);
       if (!vertex) return false;
+      if (vertex.building && vertex.building.playerId === ownerId) return true;
       for (const adjId of vertex.adjacentEdges || []) {
         if (adjId === edgeId) continue;
         const adj = this.grid.edges.get(adjId);
@@ -620,7 +622,8 @@ export class GameEngine {
       }
       return false;
     };
-    return !hasOtherRoadAt(edge.v1) || !hasOtherRoadAt(edge.v2);
+
+    return !isEndClosed(edge.v1) || !isEndClosed(edge.v2);
   }
 
   removeRoadSegment(edgeId) {
@@ -2098,12 +2101,6 @@ export class GameEngine {
         if (!edge?.road) throw new Error('INVALID_TARGET');
         if (!this.isOpenRoad(edgeId)) throw new Error('ROAD_NOT_OPEN');
         const wasOwn = edge.road.playerId === playerId;
-        if (!wasOwn) {
-          const hasActiveKnightOnRoad = (player.knightsPlaced || []).some(k =>
-            k.active && (k.vertexId === edge.v1 || k.vertexId === edge.v2)
-          );
-          if (!hasActiveKnightOnRoad) throw new Error('KNIGHT_NOT_ADJACENT');
-        }
         this.removeRoadSegment(edgeId);
         result.removedEdgeId = edgeId;
         if (wasOwn && options.newEdgeId) {
@@ -2117,15 +2114,13 @@ export class GameEngine {
         const targetVertex = this.grid.vertices.get(options.vertexId);
         const foe = targetVertex?.knight;
         if (!foe || foe.playerId === playerId) throw new Error('INVALID_TARGET');
-        if (!foe.active) throw new Error('KNIGHT_NOT_ACTIVE');
-        const hasActiveNeighbor = (player.knightsPlaced || []).some((k) => {
-          if (!k.active) return false;
-          const kv = this.grid.vertices.get(k.vertexId);
-          return kv && kv.adjacentVertices.includes(options.vertexId);
+        const connectedToPlayerRoad = (targetVertex.adjacentEdges || []).some(edgeId => {
+          const edge = this.grid.edges.get(edgeId);
+          return edge?.road?.playerId === playerId;
         });
-        if (!hasActiveNeighbor) throw new Error('KNIGHT_NOT_ADJACENT');
-        foe.active = false;
-        result.deactivated = options.vertexId;
+        if (!connectedToPlayerRoad) throw new Error('KNIGHT_NOT_CONNECTED_TO_ROAD');
+        const displaced = this.displaceKnight(foe, options.vertexId, null);
+        result.displaced = displaced;
         break;
       }
       case 'warlord':

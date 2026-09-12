@@ -1204,32 +1204,61 @@ describe('CK-06: Politics Progress Cards', () => {
     );
   });
 
-  it('Diplomat: should remove an open opponent road next to an active knight', () => {
+  it('Diplomat: should remove an open opponent road without requiring an active knight', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     const { edge } = giveRoad(engine, 'p2', vertex.id);
-    plantKnight(engine, 'p1', vertex.id, { active: true });
     engine.playProgressCard('p1', giveCard(engine.players[0], 'diplomat').id, { edgeId: edge.id });
     assert.equal(engine.grid.edges.get(edge.id).road, null);
     assert.equal(engine.players[1].roadsBuilt.includes(edge.id), false);
   });
 
-  it('Intrigue: should deactivate an adjacent active opponent knight', () => {
+  it('Diplomat: should reject removing a closed road between two settlements', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
-    const own = emptyVertex(engine);
-    plantKnight(engine, 'p1', own.id, { active: true });
-    const adjId = own.adjacentVertices.find(id => {
-      const v = engine.grid.vertices.get(id);
-      return v && !v.building && !v.knight;
-    });
-    plantKnight(engine, 'p2', adjId, { active: true });
-    engine.playProgressCard('p1', giveCard(engine.players[0], 'intrigue').id, { vertexId: adjId });
-    const foe = engine.grid.vertices.get(adjId).knight;
-    assert.ok(foe);
-    assert.equal(foe.active, false);
-    assert.equal(engine.players[1].knightsPlaced.length, 1);
+    const vertex1 = emptyVertex(engine);
+    const edgeId = vertex1.adjacentEdges[0];
+    const edge = engine.grid.edges.get(edgeId);
+    const vertex2 = engine.grid.vertices.get(edge.v1 === vertex1.id ? edge.v2 : edge.v1);
+    vertex1.building = { type: 'settlement', playerId: 'p2', color: engine.players[1].color };
+    vertex2.building = { type: 'settlement', playerId: 'p2', color: engine.players[1].color };
+    engine.players[1].settlementsBuilt.push(vertex1.id, vertex2.id);
+    edge.road = { playerId: 'p2', color: engine.players[1].color };
+    engine.players[1].roadsBuilt.push(edge.id);
+
+    assert.equal(engine.isOpenRoad(edge.id), false);
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'diplomat').id, { edgeId: edge.id }),
+      /ROAD_NOT_OPEN/
+    );
+  });
+
+  it('Intrigue: should displace an opponent knight connected to the player road network', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const target = emptyVertex(engine);
+    plantKnight(engine, 'p2', target.id, { active: false });
+    // Connect p1 road to target vertex
+    const roadEdge = engine.grid.edges.get(target.adjacentEdges[0]);
+    roadEdge.road = { playerId: 'p1', color: engine.players[0].color };
+    engine.players[0].roadsBuilt.push(roadEdge.id);
+
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'intrigue').id, { vertexId: target.id });
+    // Knight must have been displaced from target vertex
+    assert.equal(engine.grid.vertices.get(target.id).knight, null);
+  });
+
+  it('Intrigue: should reject displacing knight not connected to player road network', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const target = emptyVertex(engine);
+    plantKnight(engine, 'p2', target.id, { active: true });
+    // p1 has no road connected to target
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'intrigue').id, { vertexId: target.id }),
+      /KNIGHT_NOT_CONNECTED_TO_ROAD/
+    );
   });
 
   it('Warlord: should activate all own knights for free', () => {
