@@ -175,7 +175,7 @@ export const TRANSLATIONS = {
     CARD_CONSTITUTION_DESC: "+1 victory point, revealed immediately.",
     CARD_DESERTER_DESC: "Remove an opponent knight, then place one of yours of equal or lower rank on a legal intersection.",
     CARD_DIPLOMAT_DESC: "Remove an open road. If it is yours, you may rebuild it for free.",
-    CARD_INTRIGUE_DESC: "Deactivate an opponent's active knight adjacent to one of your active knights.",
+    CARD_INTRIGUE_DESC: "Displace an opponent's knight connected to your road network. The owner must relocate it.",
     CARD_SABOTEUR_DESC: "If you are tied or behind the leader, each player with more VP than you discards half their cards.",
     CARD_WARLORD_DESC: "Activate all of your knights for free.",
     CARD_ALCHEMIST_DESC: "Choose both production dice before you roll. The event die is still random.",
@@ -202,6 +202,8 @@ export const TRANSLATIONS = {
     PROGRESS_SELECT_KNIGHT_PLACE: "Choose a legal intersection for your replacement knight",
     PROGRESS_SELECT_CITY: "Click one of your cities",
     PROGRESS_SELECT_ROAD: "Click an open road",
+    PROGRESS_SELECT_ROAD_REPLACE: "Choose an edge to place your replacement road, or skip",
+    BUTTON_SKIP_REPLACE: "Skip replacement",
     PROGRESS_SELECT_STEAL: "Choose 2 card types to take",
     PROGRESS_DIE_1: "Red die",
     PROGRESS_DIE_2: "Yellow die",
@@ -465,7 +467,9 @@ export const TRANSLATIONS = {
     ERROR_NOT_YOUR_CHOICE: "It is not your turn to place a metropolis.",
     ERROR_MUST_CHOOSE_YOUR_CITY: "The metropolis must be placed on one of your cities.",
     ERROR_CANNOT_DOWNGRADE_METROPOLIS: "A metropolis cannot be destroyed by the barbarians.",
-    ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Saboteur can only be played if you are tied or behind the leader."
+    ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Saboteur can only be played if you are tied or behind the leader.",
+    ERROR_KNIGHT_NOT_CONNECTED_TO_ROAD: "The knight must be on an intersection connected to your road network.",
+    ERROR_ROAD_NOT_OPEN: "That road is closed (connected at both ends to other roads or buildings)."
   },
 
   ro: {
@@ -638,7 +642,7 @@ export const TRANSLATIONS = {
     CARD_CONSTITUTION_DESC: "+1 punct de victorie, dezvăluit imediat.",
     CARD_DESERTER_DESC: "Scoate un cavaler adversar, apoi pune unul al tău de rang egal sau mai mic pe o intersecție legală.",
     CARD_DIPLOMAT_DESC: "Scoate un drum deschis. Dacă e al tău, îl poți reconstrui gratuit.",
-    CARD_INTRIGUE_DESC: "Dezactivează un cavaler activ adversar adiacent unuia dintre cavalerii tăi activi.",
+    CARD_INTRIGUE_DESC: "Dislocă un cavaler adversar legat de drumurile tale. Proprietarul trebuie să-l relocheze.",
     CARD_SABOTEUR_DESC: "Dacă ești la egalitate sau în urmă față de lider, fiecare jucător cu mai multe PV decât tine aruncă jumătate din cărți.",
     CARD_WARLORD_DESC: "Activează toți cavalerii tăi gratuit.",
     CARD_ALCHEMIST_DESC: "Alegi ambele zaruri de producție înainte de aruncare. Zarul de eveniment rămâne aleator.",
@@ -665,6 +669,8 @@ export const TRANSLATIONS = {
     PROGRESS_SELECT_KNIGHT_PLACE: "Alege o intersecție legală pentru cavalerul tău de înlocuire",
     PROGRESS_SELECT_CITY: "Apasă unul dintre orașele tale",
     PROGRESS_SELECT_ROAD: "Apasă un drum deschis",
+    PROGRESS_SELECT_ROAD_REPLACE: "Alege un traseu pentru noul tău drum sau omite",
+    BUTTON_SKIP_REPLACE: "Omite plasarea",
     PROGRESS_SELECT_STEAL: "Alege 2 tipuri de cărți de luat",
     PROGRESS_DIE_1: "Zar roșu",
     PROGRESS_DIE_2: "Zar galben",
@@ -928,7 +934,9 @@ export const TRANSLATIONS = {
     ERROR_NOT_YOUR_CHOICE: "Nu e rândul tău să plasezi metropola.",
     ERROR_MUST_CHOOSE_YOUR_CITY: "Metropola trebuie plasată pe unul dintre orașele tale.",
     ERROR_CANNOT_DOWNGRADE_METROPOLIS: "O metropolă nu poate fi distrusă de barbari.",
-    ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Sabotorul se joacă doar dacă ești la egalitate sau în urmă față de lider."
+    ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Sabotorul se joacă doar dacă ești la egalitate sau în urmă față de lider.",
+    ERROR_KNIGHT_NOT_CONNECTED_TO_ROAD: "Cavalerul trebuie să se afle pe o intersecție conectată la drumurile tale.",
+    ERROR_ROAD_NOT_OPEN: "Acel drum este închis (este conectat la ambele capete la alte drumuri sau clădiri)."
   }
 };
 

@@ -522,7 +522,7 @@ export class BoardRenderer {
       } else {
         // If interactive road build action is active and valid
         const isInteractive = this.selectedAction &&
-          this.selectedAction.type === 'road' &&
+          (this.selectedAction.type === 'road' || this.selectedAction.type === 'progress_road_replace') &&
           this.selectedAction.validIds &&
           this.selectedAction.validIds.has(edge.id);
 

@@ -708,7 +708,7 @@ class CatanApp {
           } else {
             this.clearActiveAction();
           }
-        } else if (this.selectedAction && this.selectedAction.type === 'progress_road') {
+        } else if (this.selectedAction && (this.selectedAction.type === 'progress_road' || this.selectedAction.type === 'progress_road_replace')) {
           this.onProgressRoadPicked(edgeId);
         }
       } catch (err) {
@@ -2262,11 +2262,11 @@ class CatanApp {
       const ids = new Set((me.knightsPlaced || []).map(k => k.vertexId));
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
     } else if (type === 'intrigue') {
-      const mineActive = new Set((me.knightsPlaced || []).filter(k => k.active).map(k => k.vertexId));
       const ids = new Set();
       vertices.forEach(v => {
-        if (!v.knight || v.knight.playerId === this.myPlayerId || !v.knight.active) return;
-        if ((v.adjacentVertices || []).some(id => mineActive.has(id))) ids.add(v.id);
+        if (!v.knight || v.knight.playerId === this.myPlayerId) return;
+        const hasRoad = (v.adjacentEdges || []).some(eid => this.gameState.grid.edges[eid]?.road?.playerId === this.myPlayerId);
+        if (hasRoad) ids.add(v.id);
       });
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
     } else if (type === 'deserter') {
@@ -2283,7 +2283,26 @@ class CatanApp {
       });
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
     } else if (type === 'diplomat') {
-      this.selectedAction = { type: 'progress_road', validIds: new Set(edges.filter(e => e.road).map(e => e.id)) };
+      const ids = new Set();
+      edges.forEach(e => {
+        if (!e.road) return;
+        const ownerId = e.road.playerId;
+        const isEndClosed = (vid) => {
+          const v = this.gameState.grid.vertices[vid];
+          if (!v) return false;
+          if (v.building && v.building.playerId === ownerId) return true;
+          for (const adjEid of v.adjacentEdges || []) {
+            if (adjEid === e.id) continue;
+            const adj = this.gameState.grid.edges[adjEid];
+            if (adj?.road?.playerId === ownerId) return true;
+          }
+          return false;
+        };
+        if (!isEndClosed(e.v1) || !isEndClosed(e.v2)) {
+          ids.add(e.id);
+        }
+      });
+      this.selectedAction = { type: 'progress_road', validIds: ids };
     }
     this.boardRenderer.render(this.gameState.grid, this.selectedAction);
   }
@@ -2353,6 +2372,49 @@ class CatanApp {
 
   onProgressRoadPicked(edgeId) {
     if (!this.progressPlay) return;
+    const type = this.progressPlay.card.type;
+    if (type === 'diplomat') {
+      const edge = this.gameState.grid.edges[edgeId];
+      if (!this.progressPlay.options.edgeId) {
+        this.progressPlay.options.edgeId = edgeId;
+        const wasOwn = edge?.road?.playerId === this.myPlayerId;
+        if (wasOwn) {
+          const validRoadEdges = new Set();
+          Object.values(this.gameState.grid.edges || {}).forEach(e => {
+            if (e.road && e.id !== edgeId) return;
+            const connectsToOwnBuilding = [e.v1, e.v2].some(vid => {
+              const v = this.gameState.grid.vertices[vid];
+              return v?.building && v.building.playerId === this.myPlayerId;
+            });
+            const connectsToOwnRoad = [e.v1, e.v2].some(vid => {
+              const v = this.gameState.grid.vertices[vid];
+              return (v?.adjacentEdges || []).some(adjId => {
+                if (adjId === edgeId || adjId === e.id) return false;
+                return this.gameState.grid.edges[adjId]?.road?.playerId === this.myPlayerId;
+              });
+            });
+            if (connectsToOwnBuilding || connectsToOwnRoad) validRoadEdges.add(e.id);
+          });
+          if (validRoadEdges.size > 0) {
+            this.selectedAction = { type: 'progress_road_replace', validIds: validRoadEdges };
+            this.boardRenderer.render(this.gameState.grid, this.selectedAction);
+            const hint = document.getElementById('progress-card-target-ui');
+            if (hint) {
+              hint.innerHTML = `<p>${i18n.t('PROGRESS_SELECT_ROAD_REPLACE')}</p><button id="btn-skip-replace-road" class="btn-glass btn-sm" style="margin-top:8px">${i18n.t('BUTTON_SKIP_REPLACE')}</button>`;
+              document.getElementById('btn-skip-replace-road')?.addEventListener('click', () => {
+                this.confirmProgressCardPlay();
+              });
+            }
+            return;
+          }
+        }
+        this.confirmProgressCardPlay();
+        return;
+      }
+      this.progressPlay.options.newEdgeId = edgeId;
+      this.confirmProgressCardPlay();
+      return;
+    }
     this.progressPlay.options.edgeId = edgeId;
     this.confirmProgressCardPlay();
   }
