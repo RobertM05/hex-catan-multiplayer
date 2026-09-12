@@ -229,6 +229,7 @@ export class GameEngine {
       roadsBuilt: [],
       settlementsBuilt: [],
       citiesBuilt: [],
+      defenderCards: 0,
       victoryPoints: 0,
       publicVictoryPoints: 0
     });
@@ -423,10 +424,12 @@ export class GameEngine {
       for (const adjEdgeId of edge.adjacentEdges) {
         const adjEdge = this.grid.edges.get(adjEdgeId);
         if (adjEdge && adjEdge.road && adjEdge.road.playerId === playerId) {
-          // Check if an opponent's settlement/city blocks this intersection
+          // Check if an opponent's settlement/city or knight blocks this intersection
           const sharedVertexId = (edge.v1 === adjEdge.v1 || edge.v1 === adjEdge.v2) ? edge.v1 : edge.v2;
           const sharedVertex = this.grid.vertices.get(sharedVertexId);
-          if (!sharedVertex.building || sharedVertex.building.playerId === playerId) {
+          const blockedByBuilding = sharedVertex.building && sharedVertex.building.playerId !== playerId;
+          const blockedByKnight = sharedVertex.knight && sharedVertex.knight.playerId !== playerId;
+          if (!blockedByBuilding && !blockedByKnight) {
             connects = true;
             break;
           }
@@ -481,7 +484,7 @@ export class GameEngine {
     for (const adjVId of vertex.adjacentVertices) {
       if (ignored.has(adjVId)) continue;
       const adjVertex = this.grid.vertices.get(adjVId);
-      if (adjVertex && (adjVertex.building || adjVertex.knight)) return true;
+      if (adjVertex && adjVertex.building) return true;
     }
     return false;
   }
@@ -498,7 +501,6 @@ export class GameEngine {
     const ids = [];
     for (const [vid, v] of this.grid.vertices) {
       if (v.building || v.knight) continue;
-      if (this.violatesDistanceRule(vid)) continue;
       if (!this.vertexHasPlayerRoad(v, playerId)) continue;
       ids.push(vid);
     }
@@ -1018,21 +1020,20 @@ export class GameEngine {
     if (!deck || deck.length === 0) return null;
     const card = deck.pop();
     const type = card.type || card;
+    const isVp = ['constitution', 'printer'].includes(type);
     player.progressCards.push({
       id: card.id || `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       type,
       track,
-      played: false,
+      played: isVp,
+      revealed: isVp,
       boughtTurn: this.turnNumber
     });
+    if (isVp) {
+      this.recalculateVictoryPoints();
+    }
     if (this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
       this.pendingProgressDiscard.add(player.id);
-    }
-    if (['constitution', 'printer'].includes(type)) {
-      const drawn = player.progressCards[player.progressCards.length - 1];
-      drawn.played = true;
-      drawn.revealed = true;
-      this.recalculateVictoryPoints();
     }
     return type;
   }
@@ -1477,7 +1478,6 @@ export class GameEngine {
       const dest = this.grid.vertices.get(adjId);
       if (!dest || dest.building || dest.knight) continue;
       if (!this.verticesSharePlayerRoad(fromVertexId, adjId, playerId)) continue;
-      if (this.violatesDistanceRule(adjId, [fromVertexId, ...extraIgnore])) continue;
       options.push(adjId);
     }
     return options;
@@ -1492,7 +1492,6 @@ export class GameEngine {
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex) throw new Error('INVALID_VERTEX');
     if (vertex.building || vertex.knight) throw new Error('VERTEX_OCCUPIED');
-    if (this.violatesDistanceRule(vertexId)) throw new Error('DISTANCE_RULE_VIOLATION');
     if (!this.vertexHasPlayerRoad(vertex, playerId)) throw new Error('MUST_CONNECT_TO_ROAD');
     if ((player.knightsAvailable.basic || 0) <= 0) throw new Error('NO_KNIGHTS_AVAILABLE');
     if (!this.hasResources(player, COSTS.KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
@@ -1554,7 +1553,6 @@ export class GameEngine {
     player.knightsAvailable[nextRank]--;
     knight.rank = nextRank;
     knight.strength = next.strength;
-    knight.active = true;
 
     this.logEvent({
       type: 'KNIGHT_PROMOTED',
@@ -1583,8 +1581,6 @@ export class GameEngine {
       if (dest.knight.playerId === playerId) throw new Error('VERTEX_OCCUPIED');
       if (dest.knight.strength >= knight.strength) throw new Error('CANNOT_DISPLACE_EQUAL_OR_STRONGER');
       displaced = this.displaceKnight(dest.knight, toVertexId, fromVertexId);
-    } else if (this.violatesDistanceRule(toVertexId, [fromVertexId])) {
-      throw new Error('DISTANCE_RULE_VIOLATION');
     }
 
     const from = this.grid.vertices.get(fromVertexId);
@@ -1719,6 +1715,7 @@ export class GameEngine {
       const maxStrength = Math.max(0, ...strengths.map(row => row.strength));
       const leaders = strengths.filter(row => row.strength === maxStrength && maxStrength > 0);
       if (leaders.length === 1) {
+        leaders[0].player.defenderCards = (leaders[0].player.defenderCards || 0) + 1;
         this.defenderOfCatan = leaders[0].player.id;
         this.recalculateVictoryPoints();
         this.logEvent({
@@ -1726,7 +1723,10 @@ export class GameEngine {
           messageKey: 'LOG_BARBARIAN_VICTORY',
           args: { playerName: leaders[0].player.name }
         });
-      } else {
+      } else if (leaders.length > 1) {
+        for (const leader of leaders) {
+          this.drawProgressCard(leader.player, 'trade');
+        }
         this.logEvent({
           type: 'BARBARIAN_VICTORY_TIE',
           messageKey: 'LOG_BARBARIAN_VICTORY_TIE',
@@ -1807,7 +1807,9 @@ export class GameEngine {
       player.settlementsBuilt.push(vertexId);
       player.settlementsRemaining--;
     } else {
-      vertex.building = null;
+      vertex.building.type = 'settlement';
+      vertex.building.isCityOnSide = true;
+      player.settlementsBuilt.push(vertexId);
     }
 
     this.pendingBarbarianDowngrades.delete(playerId);
@@ -2004,8 +2006,8 @@ export class GameEngine {
       case 'master_merchant': {
         const target = this.players.find(p => p.id === options.targetPlayerId);
         if (!target || target.id === playerId) throw new Error('INVALID_TARGET');
-        if (this.countTotalCards(target) <= this.countTotalCards(player)) {
-          throw new Error('TARGET_NOT_AHEAD_IN_CARDS');
+        if ((target.victoryPoints || 0) <= (player.victoryPoints || 0)) {
+          throw new Error('TARGET_NOT_AHEAD_IN_VP');
         }
         const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
         if (steal.length !== 2) throw new Error('STEAL_TWO_CARDS');
@@ -2165,7 +2167,7 @@ export class GameEngine {
         const victims = [];
         for (const other of this.players) {
           if (other.id === playerId) continue;
-          if ((other.victoryPoints || 0) <= myVp) continue;
+          if ((other.victoryPoints || 0) < myVp) continue;
           const discarded = this.forceDiscardHalfFromLargestStacks(other);
           victims.push({ playerId: other.id, discarded });
         }
@@ -2231,7 +2233,9 @@ export class GameEngine {
         break;
       case 'smith': {
         const verts = Array.isArray(options.knightVertices) ? options.knightVertices : [];
-        if (verts.length !== 2 || verts[0] === verts[1]) throw new Error('SMITH_NEEDS_TWO_KNIGHTS');
+        if (verts.length < 1 || verts.length > 2 || (verts.length === 2 && verts[0] === verts[1])) {
+          throw new Error('SMITH_NEEDS_ONE_OR_TWO_KNIGHTS');
+        }
         for (const vertexId of verts) {
           this.promoteKnight(playerId, vertexId, { free: true });
         }
@@ -2271,9 +2275,7 @@ export class GameEngine {
     let bestRatio = 4;
     if (player.merchantFleetActive) {
       bestRatio = 2;
-    } else if ((player.cityImprovements?.trade || 0) >= 1 && RESOURCE_VALUES.includes(giveRes)) {
-      bestRatio = 2;
-    } else if ((player.cityImprovements?.trade || 0) >= 5 && COMMODITY_VALUES.includes(giveRes)) {
+    } else if ((player.cityImprovements?.trade || 0) >= 5) {
       bestRatio = 2;
     } else if (this.merchantHolder === playerId && this.merchantHexId) {
       const hex = this.grid.hexes.get(this.merchantHexId);
@@ -2574,8 +2576,8 @@ export class GameEngine {
       const vertex = this.grid.vertices.get(vertexId);
       if (!vertex) return;
 
-      // Opponent settlement/city blocks road passing through unless it's the start
-      if (currentLength > 0 && vertex.building && vertex.building.playerId !== playerId) {
+      // Opponent settlement/city or knight blocks road passing through unless it's the start
+      if (currentLength > 0 && ((vertex.building && vertex.building.playerId !== playerId) || (vertex.knight && vertex.knight.playerId !== playerId))) {
         return;
       }
 
@@ -2715,7 +2717,9 @@ export class GameEngine {
         publicPoints += 2;
       }
 
-      if (this.defenderOfCatan === player.id) {
+      if (player.defenderCards) {
+        publicPoints += player.defenderCards;
+      } else if (this.defenderOfCatan === player.id) {
         publicPoints += 1;
       }
 
@@ -2821,6 +2825,7 @@ export class GameEngine {
           settlementsBuilt: p.settlementsBuilt,
           citiesBuilt: p.citiesBuilt,
           roadsBuilt: p.roadsBuilt,
+          defenderCards: p.defenderCards || 0,
           longestRoadLength: this.calculatePlayerLongestRoad(p.id),
           victoryPoints: isSelf ? p.victoryPoints : p.publicVictoryPoints,
           publicVictoryPoints: p.publicVictoryPoints

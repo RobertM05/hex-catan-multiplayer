@@ -36,8 +36,10 @@ export function getConnectedRoadNetwork(grid, edgeId) {
       const vertex = getVertex(grid, vId);
       if (!vertex) continue;
 
-      // Opponent building blocks road connection through this vertex
-      if (vertex.building && vertex.building.playerId !== ownerId) {
+      // Opponent building or knight blocks road connection through this vertex
+      const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
+      const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
+      if (blockedByBuilding || blockedByKnight) {
         continue;
       }
 
@@ -82,7 +84,9 @@ export function calculateContinuousRoadLength(grid, edgeId) {
     if (currentLength > maxNetworkLength) maxNetworkLength = currentLength;
     const vertex = getVertex(grid, vertexId);
     if (!vertex) return;
-    if (currentLength > 0 && vertex.building && vertex.building.playerId !== ownerId) {
+    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
+    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
+    if (currentLength > 0 && (blockedByBuilding || blockedByKnight)) {
       return;
     }
     for (const adjId of vertex.adjacentEdges || []) {
@@ -116,7 +120,9 @@ export function calculateContinuousRoadLength(grid, edgeId) {
     if (len > maxThroughEdge) maxThroughEdge = len;
     const vertex = getVertex(grid, vertexId);
     if (!vertex) return;
-    if (vertex.building && vertex.building.playerId !== ownerId) {
+    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
+    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
+    if (blockedByBuilding || blockedByKnight) {
       return;
     }
     for (const adjId of vertex.adjacentEdges || []) {
@@ -137,7 +143,9 @@ export function calculateContinuousRoadLength(grid, edgeId) {
 
     const vertex = getVertex(grid, vertexId);
     if (!vertex) return;
-    if (vertex.building && vertex.building.playerId !== ownerId) {
+    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
+    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
+    if (blockedByBuilding || blockedByKnight) {
       return;
     }
     for (const adjId of vertex.adjacentEdges || []) {

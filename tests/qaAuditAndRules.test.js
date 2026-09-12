@@ -568,4 +568,175 @@ describe('CORE-01: Soft-Lock Prevention & Interrupted Phase Recovery', () => {
   });
 });
 
+describe('CK-16: Official C&K Rules Alignment', () => {
+  it('Smith progress card allows promoting 1 single knight', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.politics = 1;
+
+    const v1 = Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+    engine.grid.vertices.get(v1.id).knight = {
+      playerId: 'p1',
+      vertexId: v1.id,
+      rank: 'basic',
+      active: false,
+      strength: 1
+    };
+    engine.players[0].knightsPlaced.push(engine.grid.vertices.get(v1.id).knight);
+
+    const card = { id: 's1', type: 'smith', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    engine.playProgressCard('p1', 's1', { knightVertices: [v1.id] });
+    assert.equal(engine.grid.vertices.get(v1.id).knight.rank, 'strong');
+    assert.equal(engine.grid.vertices.get(v1.id).knight.strength, 2);
+  });
+
+  it('Saboteur affects players with equal victory points', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    engine.players[0].defenderCards = 2; // p1 has 2 VP
+    engine.players[1].defenderCards = 2; // p2 has 2 VP (tied with p1)
+    engine.players[2].defenderCards = 1; // p3 has 1 VP (lower than p1)
+    engine.recalculateVictoryPoints();
+
+    engine.players[1].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[1].commodities = { cloth: 2, coin: 0, paper: 0 }; // 6 cards total
+
+    const card = { id: 'sab1', type: 'saboteur', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    const res = engine.playProgressCard('p1', 'sab1', {});
+    assert.equal(res.victims.length, 1);
+    assert.equal(res.victims[0].playerId, 'p2');
+    assert.equal(engine.countTotalCards(engine.players[1]), 3);
+  });
+
+  it('Master Merchant rejects target when target VP <= player VP', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    engine.players[0].victoryPoints = 3;
+    engine.players[1].victoryPoints = 2; // Bob is behind in VP
+    engine.players[1].resources = { wood: 2, brick: 2, wool: 0, wheat: 0, ore: 0 };
+
+    const card = { id: 'mm1', type: 'master_merchant', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    assert.throws(
+      () => engine.playProgressCard('p1', 'mm1', { targetPlayerId: 'p2', steal: ['wood', 'brick'] }),
+      /TARGET_NOT_AHEAD_IN_VP/
+    );
+  });
+
+  it('Opponent knight blocks road building through shared intersection', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    // Find two adjacent edges sharing vertex V
+    const v = Array.from(engine.grid.vertices.values()).find(v => v.adjacentEdges.length >= 2);
+    const e1 = engine.grid.edges.get(v.adjacentEdges[0]);
+    const e2 = engine.grid.edges.get(v.adjacentEdges[1]);
+
+    // Give p1 a road on e1
+    e1.road = { playerId: 'p1', color: '#e63946' };
+    engine.players[0].roadsBuilt.push(e1.id);
+
+    // Opponent p2 places a knight on shared vertex v
+    v.knight = { playerId: 'p2', rank: 'basic', active: true, strength: 1 };
+
+    // p1 has resources for road
+    engine.players[0].resources = { wood: 1, brick: 1, wool: 0, wheat: 0, ore: 0 };
+
+    const check = engine.canBuildRoad('p1', e2.id);
+    assert.equal(check.ok, false);
+    assert.equal(check.reason, 'MUST_CONNECT_TO_NETWORK');
+  });
+
+  it('Opponent knight breaks Longest Road continuity', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    // Build a simple 3-edge line: e1 (v1-v2), e2 (v2-v3), e3 (v3-v4)
+    // Find a chain of 3 edges
+    const v1 = Array.from(engine.grid.vertices.values()).find(v => v.adjacentEdges.length >= 2);
+    const e1 = engine.grid.edges.get(v1.adjacentEdges[0]);
+    const v2Id = e1.v1 === v1.id ? e1.v2 : e1.v1;
+    const v2 = engine.grid.vertices.get(v2Id);
+    const e2Id = v2.adjacentEdges.find(eid => eid !== e1.id);
+    const e2 = engine.grid.edges.get(e2Id);
+    const v3Id = e2.v1 === v2.id ? e2.v2 : e2.v1;
+    const v3 = engine.grid.vertices.get(v3Id);
+    const e3Id = v3.adjacentEdges.find(eid => eid !== e2.id);
+    const e3 = engine.grid.edges.get(e3Id);
+
+    e1.road = { playerId: 'p1', color: '#e63946' };
+    e2.road = { playerId: 'p1', color: '#e63946' };
+    e3.road = { playerId: 'p1', color: '#e63946' };
+    engine.players[0].roadsBuilt.push(e1.id, e2.id, e3.id);
+
+    // Initial longest road without knight = 3
+    assert.equal(engine.calculatePlayerLongestRoad('p1'), 3);
+
+    // Place opponent knight on intermediate vertex v2
+    v2.knight = { playerId: 'p2', rank: 'basic', active: true, strength: 1 };
+
+    // With opponent knight blocking v2, chain e1-e2 is broken; longest continuous is 2 (e2-e3)
+    assert.equal(engine.calculatePlayerLongestRoad('p1'), 2);
+  });
+
+  it('Multiple defender cards award cumulative Victory Points', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    engine.players[0].defenderCards = 3;
+    engine.recalculateVictoryPoints();
+
+    assert.equal(engine.players[0].publicVictoryPoints, 3);
+    assert.equal(engine.players[0].victoryPoints, 3);
+
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.players[0].defenderCards, 3);
+  });
+
+  it('Constitution draw with 4 progress cards in hand does not trigger discard trap', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+
+    // Fill hand with 4 normal progress cards
+    for (let i = 0; i < 4; i++) {
+      engine.players[0].progressCards.push({ id: `c${i}`, type: 'crane', played: false });
+    }
+
+    // Put constitution on top of politics deck
+    engine.progressDecks.politics = [{ id: 'vp_const', type: 'constitution' }];
+    const drawn = engine.drawProgressCard(engine.players[0], 'politics');
+
+    assert.equal(drawn, 'constitution');
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    assert.equal(engine.players[0].publicVictoryPoints, 1);
+  });
+});
+
+
 
