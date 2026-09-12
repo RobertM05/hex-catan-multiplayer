@@ -1915,7 +1915,7 @@ class CatanApp {
       if (pending && pending.playerId === this.myPlayerId) {
         const validIds = new Set(pending.options || []);
         this.selectedAction = { type: 'relocate_knight', validIds };
-        this.boardRenderer.render(s.grid, { type: 'knight', validIds }, null, s.players);
+        this.boardRenderer.render(s.grid, { type: 'relocate_knight', validIds }, null, s.players);
       } else {
         this.boardRenderer.render(s.grid, null, null, s.players);
       }

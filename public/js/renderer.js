@@ -567,7 +567,7 @@ export class BoardRenderer {
       } else {
         // Empty vertex: check if building settlement is valid here
         const isInteractive = this.selectedAction &&
-          ['settlement', 'knight', 'move_knight'].includes(this.selectedAction.type) &&
+          ['settlement', 'knight', 'move_knight', 'relocate_knight'].includes(this.selectedAction.type) &&
           this.selectedAction.validIds &&
           this.selectedAction.validIds.has(v.id);
 
