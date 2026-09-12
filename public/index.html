@@ -117,14 +117,14 @@
             </select>
           </div>
 
-          <div class="form-group full-width" style="margin-top: 10px;">
-            <button type="submit" class="btn-glass btn-primary" style="width: 100%; padding: 14px; font-size: 16px;" data-i18n="CREATE_ROOM_BTN">Creează cameră</button>
+          <div class="form-group full-width">
+            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="CREATE_ROOM_BTN">Creează cameră</button>
           </div>
         </form>
       </div>
 
       <!-- Join Room Form -->
-      <div id="tab-content-join" class="lobby-panel lobby-tab-content" style="display: none;">
+      <div id="tab-content-join" class="lobby-panel lobby-tab-content is-hidden">
         <form id="form-join-room" class="form-grid">
           <div class="form-group">
             <label data-i18n="PLAYER_NAME_LABEL">Nume jucător</label>
@@ -133,17 +133,17 @@
 
           <div class="form-group">
             <label data-i18n="ROOM_CODE_LABEL">Cod cameră</label>
-            <input type="text" id="join-room-code" class="form-input" data-i18n-placeholder="ROOM_CODE_PLACEHOLDER" required maxlength="6" style="text-transform: uppercase; font-family: monospace; font-size: 18px; letter-spacing: 2px;">
+            <input type="text" id="join-room-code" class="form-input room-code-input" data-i18n-placeholder="ROOM_CODE_PLACEHOLDER" required maxlength="6">
           </div>
 
-          <div class="form-group full-width" style="margin-top: 10px;">
-            <button type="submit" class="btn-glass btn-primary" style="width: 100%; padding: 14px; font-size: 16px;" data-i18n="JOIN_ROOM_BTN">Intră în joc</button>
+          <div class="form-group full-width">
+            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="JOIN_ROOM_BTN">Intră în joc</button>
           </div>
         </form>
       </div>
 
       <!-- Public Rooms List -->
-      <div id="tab-content-public" class="lobby-panel lobby-tab-content" style="display: none;">
+      <div id="tab-content-public" class="lobby-panel lobby-tab-content is-hidden">
         <div id="public-rooms-list" class="room-list"></div>
       </div>
     </div>
@@ -156,10 +156,10 @@
     <div class="waiting-container">
       <div class="waiting-header">
         <div>
-          <span style="font-size: 12px; color: var(--text-secondary);" data-i18n="ROOM_CODE_BADGE">Cod cameră:</span>
+          <span class="muted-label" data-i18n="ROOM_CODE_BADGE">Cod cameră:</span>
           <div id="display-room-code" class="room-code-badge">-----</div>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div class="inline-actions">
           <button id="btn-share-link" class="btn-glass">
             <span class="btn-icon ico" data-icon="link"></span>
             <span data-i18n="SHARE_LINK_BTN">Copiază linkul</span>
@@ -171,11 +171,11 @@
       <div id="waiting-slots-grid" class="slots-grid"></div>
 
       <div class="waiting-actions">
-        <div style="display: flex; gap: 12px;">
+        <div class="inline-actions-wide">
           <button id="btn-toggle-ready" class="btn-glass btn-primary" data-i18n="TOGGLE_READY_BTN">Schimbă starea</button>
           <button id="btn-add-bot" class="btn-glass" data-i18n="ADD_BOT_BTN">+ Adaugă bot</button>
         </div>
-        <button id="btn-start-game" class="btn-glass btn-primary" style="font-size: 16px; padding: 12px 24px;" data-i18n="START_GAME_BTN">Începe jocul</button>
+        <button id="btn-start-game" class="btn-glass btn-primary btn-start-game" data-i18n="START_GAME_BTN">Începe jocul</button>
       </div>
     </div>
   </section>
@@ -209,10 +209,10 @@
             <div id="die-2" class="die">?</div>
             <div id="die-event" class="die die-event ck-hud-widget" aria-label="Event die">?</div>
           </div>
-          <div style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">
-            <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" style="color: var(--gold-primary); font-size: 15px;">-</span>
+          <div class="dice-sum-label">
+            <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" class="dice-sum-value">-</span>
           </div>
-          <button id="btn-roll-dice" class="btn-glass btn-primary" style="width: 100%;" data-i18n="ACTION_ROLL">Aruncă zarurile</button>
+          <button id="btn-roll-dice" class="btn-glass btn-primary btn-block" data-i18n="ACTION_ROLL">Aruncă zarurile</button>
         </div>
 
         <div id="barbarian-track" class="barbarian-track ck-hud-widget">
@@ -449,17 +449,17 @@
         <div class="bottom-action-buttons">
           <div class="vp-counter-badge">
             <span class="ico" data-icon="trophy"></span>
-            <span style="font-weight: 800; font-size: 15px; color: var(--gold-primary);"><span id="my-vp-count">0</span> <span data-i18n="VICTORY_POINTS_ABBR">PV</span></span>
+            <span class="vp-count-text"><span id="my-vp-count">0</span> <span data-i18n="VICTORY_POINTS_ABBR">PV</span></span>
           </div>
 
           <button id="btn-open-trade" class="btn-glass">
             <span class="btn-icon ico" data-icon="trade"></span>
             <span data-i18n="ACTION_TRADE_PLAYER">Comerț</span>
           </button>
-          <button id="btn-open-dev-cards" class="btn-glass" style="position: relative;">
+          <button id="btn-open-dev-cards" class="btn-glass btn-has-badge">
             <span class="btn-icon ico" data-icon="cards"></span>
             <span data-i18n="MY_DEV_CARDS">Cărți</span>
-            <span id="dev-card-badge" class="badge-count" style="display: none;">0</span>
+            <span id="dev-card-badge" class="badge-count is-hidden">0</span>
           </button>
         </div>
 
@@ -491,11 +491,11 @@
         </div>
 
         <!-- Chat Panel -->
-        <div id="panel-chat" class="tab-content" style="display: none;">
+        <div id="panel-chat" class="tab-content is-hidden">
           <div id="chat-messages" class="chat-messages"></div>
           <form id="chat-form" class="chat-input-bar">
-            <input type="text" id="chat-input" class="form-input" data-i18n-placeholder="CHAT_PLACEHOLDER" maxlength="120" style="padding: 8px 12px; font-size: 13px;">
-            <button type="submit" class="btn-glass btn-primary" style="padding: 8px 14px;" data-i18n="SEND_CHAT_BTN">Trimite</button>
+            <input type="text" id="chat-input" class="form-input chat-compact-input" data-i18n-placeholder="CHAT_PLACEHOLDER" maxlength="120">
+            <button type="submit" class="btn-glass btn-primary btn-chat-send" data-i18n="SEND_CHAT_BTN">Trimite</button>
           </form>
         </div>
       </aside>
@@ -509,29 +509,29 @@
    * ========================================================= -->
 
   <!-- Active Domestic Trade Banner (viewport level, above the board) -->
-  <div id="active-trade-banner" style="display: none;"></div>
+  <div id="active-trade-banner"></div>
 
   <!-- Trade Modal -->
   <div id="trade-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box trade-modal-box" style="max-width: 580px; width: 94%; box-sizing: border-box; overflow: hidden;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-        <h3 class="modal-title" style="margin: 0;" data-i18n="TRADE_TITLE">Comerț cu resurse</h3>
-        <button type="button" id="btn-close-trade" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+    <div class="modal-box trade-modal-box">
+      <div class="modal-header-row">
+        <h3 class="modal-title" data-i18n="TRADE_TITLE">Comerț cu resurse</h3>
+        <button type="button" id="btn-close-trade" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
 
       <!-- Segmented Sub-Tabs -->
-      <div class="segmented-tabs" style="display: flex; gap: 6px; background: rgba(0,0,0,0.25); padding: 4px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--border-subtle);">
-        <button type="button" id="tab-trade-player" class="segmented-tab active" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer;" data-i18n="TAB_TRADE_PLAYER">Comerț cu Jucători</button>
-        <button type="button" id="tab-trade-bank" class="segmented-tab" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer;" data-i18n="TAB_TRADE_BANK">Bancă & Port</button>
+      <div class="segmented-tabs trade-tabs">
+        <button type="button" id="tab-trade-player" class="segmented-tab active" data-i18n="TAB_TRADE_PLAYER">Comerț cu Jucători</button>
+        <button type="button" id="tab-trade-bank" class="segmented-tab" data-i18n="TAB_TRADE_BANK">Bancă & Port</button>
       </div>
       
       <!-- Domestic Player Trade Section -->
       <div id="trade-player-section" class="trade-tab-section">
-        <form id="form-propose-trade" style="display: flex; flex-direction: column; gap: 14px;">
+        <form id="form-propose-trade" class="form-stack">
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="TRADE_OFFER_GIVE">Oferi:</label>
-              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="TRADE_OFFER_GIVE_SUB">Din cărțile tale</span>
+            <div class="section-head">
+              <label class="section-head-label" data-i18n="TRADE_OFFER_GIVE">Oferi:</label>
+              <span class="section-head-hint" data-i18n="TRADE_OFFER_GIVE_SUB">Din cărțile tale</span>
             </div>
             <div class="trade-steppers-grid">
               <!-- Wood -->
@@ -647,9 +647,9 @@
           </div>
 
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="TRADE_OFFER_WANT">Ceri:</label>
-              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="TRADE_OFFER_WANT_SUB">De la adversari</span>
+            <div class="section-head">
+              <label class="section-head-label" data-i18n="TRADE_OFFER_WANT">Ceri:</label>
+              <span class="section-head-hint" data-i18n="TRADE_OFFER_WANT_SUB">De la adversari</span>
             </div>
             <div class="trade-steppers-grid">
               <!-- Wood -->
@@ -756,7 +756,7 @@
             </div>
           </div>
 
-          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+          <div class="modal-actions-end">
             <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Anulează</button>
             <button type="submit" id="btn-submit-propose-trade" class="btn-glass btn-primary" data-i18n="PROPOSE_TRADE_BTN">Propune schimb</button>
           </div>
@@ -764,21 +764,21 @@
       </div>
 
       <!-- Bank & Port Maritime Trade Section -->
-      <div id="trade-bank-section" class="trade-tab-section" style="display: none;">
-        <form id="form-bank-trade" style="display: flex; flex-direction: column; gap: 14px;">
-          <div class="bank-ratio-pill" id="bank-ratio-banner" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div id="trade-bank-section" class="trade-tab-section is-hidden">
+        <form id="form-bank-trade" class="form-stack">
+          <div class="bank-ratio-pill" id="bank-ratio-banner">
             <div>
-              <span style="font-size: 13px; font-weight: 700; color: var(--gold-primary);" id="bank-ratio-text" data-i18n="BANK_RATE_DEFAULT">Rată: 4:1</span>
-              <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;" id="bank-ratio-desc" data-i18n="BANK_STANDARD_RATIO">Bancă standard (fără port)</span>
+              <span class="bank-ratio-text" id="bank-ratio-text" data-i18n="BANK_RATE_DEFAULT">Rată: 4:1</span>
+              <span class="bank-ratio-desc" id="bank-ratio-desc" data-i18n="BANK_STANDARD_RATIO">Bancă standard (fără port)</span>
             </div>
-            <span style="font-size: 11px; color: var(--text-muted);" id="bank-harbors-status" data-i18n="BANK_NO_HARBORS">Niciun port deținut</span>
+            <span class="bank-harbors-status" id="bank-harbors-status" data-i18n="BANK_NO_HARBORS">Niciun port deținut</span>
           </div>
 
           <!-- Visual Give Selection -->
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="BANK_GIVE_LABEL">Dai:</label>
-              <span style="font-size: 11px; color: var(--text-secondary);" id="bank-give-needed-label" data-i18n="SELECT_GIVE">Alege resursa oferită</span>
+            <div class="section-head">
+              <label class="section-head-label" data-i18n="BANK_GIVE_LABEL">Dai:</label>
+              <span class="section-head-hint" id="bank-give-needed-label" data-i18n="SELECT_GIVE">Alege resursa oferită</span>
             </div>
             <div class="bank-res-grid" id="bank-give-grid"></div>
           </div>
@@ -792,14 +792,14 @@
 
           <!-- Visual Receive Selection -->
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="font-size: 12px; font-weight: 700; color: var(--gold-primary);" data-i18n="BANK_RECEIVE_LABEL">Primești:</label>
-              <span style="font-size: 11px; color: var(--text-secondary);" data-i18n="BANK_RECEIVE_SUB">1 carte la alegere</span>
+            <div class="section-head">
+              <label class="section-head-label" data-i18n="BANK_RECEIVE_LABEL">Primești:</label>
+              <span class="section-head-hint" data-i18n="BANK_RECEIVE_SUB">1 carte la alegere</span>
             </div>
             <div class="bank-res-grid" id="bank-want-grid"></div>
           </div>
 
-          <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+          <div class="modal-actions-end">
             <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Anulează</button>
             <button type="submit" id="btn-submit-bank-trade" class="btn-glass btn-primary" data-i18n="ACTION_TRADE_BANK">Schimbă cu banca</button>
           </div>
@@ -810,19 +810,19 @@
 
   <!-- Discard Cards Modal (Rolled 7) -->
   <div id="discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 560px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 class="modal-title" style="color: #f87171; margin: 0;" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
-        <span id="discard-timer-display" style="font-size: 13px; font-weight: 700; color: var(--gold-primary);"></span>
+    <div class="modal-box modal-xl">
+      <div class="modal-header-row tight">
+        <h3 class="modal-title danger" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
+        <span id="discard-timer-display" class="discard-timer"></span>
       </div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="DISCARD_INSTRUCTION">Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:</p>
+      <p class="modal-lede tight" data-i18n="DISCARD_INSTRUCTION">Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:</p>
       <p id="discard-threshold-hint" class="discard-threshold-hint"></p>
-      <div style="font-size: 13px; font-weight: 700; color: var(--gold-primary); margin-bottom: 12px; display: flex; justify-content: space-between;">
-        <span><span data-i18n="DISCARD_MUST_LABEL">Trebuie să decartezi:</span> <strong id="discard-needed-count" style="color: #f87171;">0</strong></span>
-        <span><span data-i18n="DISCARD_SELECTED_LABEL">Selectate:</span> <strong id="discard-current-count" style="color: #38bdf8;">0</strong></span>
+      <div class="discard-stats">
+        <span><span data-i18n="DISCARD_MUST_LABEL">Trebuie să decartezi:</span> <strong id="discard-needed-count" class="discard-needed">0</strong></span>
+        <span><span data-i18n="DISCARD_SELECTED_LABEL">Selectate:</span> <strong id="discard-current-count" class="discard-selected">0</strong></span>
       </div>
 
-      <form id="discard-form" style="display: flex; flex-direction: column; gap: 14px;">
+      <form id="discard-form" class="form-stack">
         <div class="trade-steppers-grid">
           <!-- Wood -->
           <div class="res-stepper-card res-wood">
@@ -933,21 +933,21 @@
 
   <!-- Robber Target Modal -->
   <div id="robber-target-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 420px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <h3 class="modal-title" style="margin: 0;" data-i18n="ROBBER_STEAL_TITLE">Alege jucătorul pentru furt</h3>
-        <button type="button" id="btn-close-robber-target" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+    <div class="modal-box modal-sm">
+      <div class="modal-header-row tight">
+        <h3 class="modal-title" data-i18n="ROBBER_STEAL_TITLE">Alege jucătorul pentru furt</h3>
+        <button type="button" id="btn-close-robber-target" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
-      <div id="robber-targets-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+      <div id="robber-targets-list" class="stack-list"></div>
     </div>
   </div>
 
   <div id="barbarian-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 440px; width: 94%;">
+    <div class="modal-box modal-md">
       <h3 class="modal-title" id="barbarian-modal-title" data-i18n="BARBARIAN_ATTACK_TITLE">Invazia barbarilor</h3>
       <p id="barbarian-modal-body" class="barbarian-modal-body"></p>
       <div id="barbarian-downgrade-list" class="barbarian-downgrade-list"></div>
-      <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+      <div class="barbarian-actions">
         <button type="button" id="btn-close-barbarian" class="btn-glass btn-primary" data-i18n="BARBARIAN_CONTINUE">Continuă</button>
       </div>
     </div>
@@ -955,33 +955,33 @@
 
   <!-- Dev Cards In Hand Modal -->
   <div id="dev-cards-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 480px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h3 class="modal-title" style="margin: 0;" data-i18n="MY_DEV_CARDS_TITLE">Cărți de dezvoltare</h3>
-        <button type="button" id="btn-close-dev-cards-x" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+    <div class="modal-box modal-lg">
+      <div class="modal-header-row loose">
+        <h3 class="modal-title" data-i18n="MY_DEV_CARDS_TITLE">Cărți de dezvoltare</h3>
+        <button type="button" id="btn-close-dev-cards-x" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
-      <div id="dev-cards-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; padding: 4px 0;"></div>
-      <button id="btn-close-dev-cards" class="btn-glass" style="margin-top: 8px; width: 100%;" data-i18n="CANCEL_ACTION">Închide</button>
+      <div id="dev-cards-list" class="dev-cards-list"></div>
+      <button id="btn-close-dev-cards" class="btn-glass btn-modal-close-block" data-i18n="CANCEL_ACTION">Închide</button>
     </div>
   </div>
 
   <div id="progress-card-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 440px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <h3 class="modal-title" id="progress-card-modal-title" style="margin: 0;">Card</h3>
+    <div class="modal-box modal-md">
+      <div class="modal-header-row mid">
+        <h3 class="modal-title" id="progress-card-modal-title">Card</h3>
         <button type="button" id="btn-close-progress-card" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
       <p id="progress-card-modal-desc" class="progress-card-modal-desc"></p>
       <div id="progress-card-target-ui" class="progress-card-target-ui"></div>
-      <div style="display: flex; gap: 8px; margin-top: 14px;">
-        <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary" style="flex: 1;" data-i18n="ACTION_PLAY_CARD">Joacă</button>
-        <button type="button" id="btn-cancel-progress-card" class="btn-glass" style="flex: 1;" data-i18n="CANCEL_ACTION">Anulează</button>
+      <div class="progress-card-actions">
+        <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary" data-i18n="ACTION_PLAY_CARD">Joacă</button>
+        <button type="button" id="btn-cancel-progress-card" class="btn-glass" data-i18n="CANCEL_ACTION">Anulează</button>
       </div>
     </div>
   </div>
 
   <div id="progress-discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 440px; width: 94%;">
+    <div class="modal-box modal-md">
       <h3 class="modal-title" data-i18n="PROGRESS_DISCARD_TITLE">Discard a progress card</h3>
       <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress cards. Discard one to continue.</p>
       <div id="progress-discard-list" class="progress-discard-list"></div>
@@ -990,15 +990,15 @@
 
   <!-- Monopoly Resource Selector Modal -->
   <div id="monopoly-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 420px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <h3 class="modal-title" style="margin: 0;" data-i18n="MONOPOLY_SELECT_TITLE">Monopol: Alege resursa</h3>
-        <button type="button" id="btn-close-monopoly" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+    <div class="modal-box modal-sm">
+      <div class="modal-header-row mid">
+        <h3 class="modal-title" data-i18n="MONOPOLY_SELECT_TITLE">Monopol: Alege resursa</h3>
+        <button type="button" id="btn-close-monopoly" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;" data-i18n="CARD_MONOPOLY_DESC">
+      <p class="modal-lede" data-i18n="CARD_MONOPOLY_DESC">
         Alege 1 resursă. Toți ceilalți jucători trebuie să-ți predea toate cărțile din acea resursă.
       </p>
-      <div class="modal-res-buttons-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
+      <div class="modal-res-buttons-grid">
         <button type="button" class="btn-glass res-choice-btn" data-res="wood" data-i18n="RES_WOOD">Lemn</button>
         <button type="button" class="btn-glass res-choice-btn" data-res="brick" data-i18n="RES_BRICK">Cărămidă</button>
         <button type="button" class="btn-glass res-choice-btn" data-res="wool" data-i18n="RES_WOOL">Lână</button>
@@ -1010,18 +1010,18 @@
 
   <!-- Year of Plenty Resource Selector Modal -->
   <div id="year-of-plenty-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 440px; width: 94%;">
-      <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <h3 class="modal-title" style="margin: 0;" data-i18n="YEAR_OF_PLENTY_SELECT_TITLE">Anul Abundenței: Alege 2 resurse</h3>
-        <button type="button" id="btn-close-yop" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
+    <div class="modal-box modal-md">
+      <div class="modal-header-row mid">
+        <h3 class="modal-title" data-i18n="YEAR_OF_PLENTY_SELECT_TITLE">Anul Abundenței: Alege 2 resurse</h3>
+        <button type="button" id="btn-close-yop" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;" data-i18n="CARD_YEAR_OF_PLENTY_DESC">
+      <p class="modal-lede" data-i18n="CARD_YEAR_OF_PLENTY_DESC">
         Ia oricare 2 cărți de resurse din rezerva băncii.
       </p>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+      <div class="yop-picks">
         <div>
-          <label for="yop-res-1" style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;" data-i18n="YEAR_OF_PLENTY_SLOT_1">Prima resursă</label>
-          <select id="yop-res-1" class="form-select" style="width: 100%;">
+          <label for="yop-res-1" class="field-label-sm" data-i18n="YEAR_OF_PLENTY_SLOT_1">Prima resursă</label>
+          <select id="yop-res-1" class="form-select full-width">
             <option value="wood" data-i18n="RES_WOOD">Lemn</option>
             <option value="brick" data-i18n="RES_BRICK">Cărămidă</option>
             <option value="wool" data-i18n="RES_WOOL">Lână</option>
@@ -1030,8 +1030,8 @@
           </select>
         </div>
         <div>
-          <label for="yop-res-2" style="font-size: 11px; font-weight: 700; color: var(--text-secondary); display: block; margin-bottom: 4px;" data-i18n="YEAR_OF_PLENTY_SLOT_2">A doua resursă</label>
-          <select id="yop-res-2" class="form-select" style="width: 100%;">
+          <label for="yop-res-2" class="field-label-sm" data-i18n="YEAR_OF_PLENTY_SLOT_2">A doua resursă</label>
+          <select id="yop-res-2" class="form-select full-width">
             <option value="wood" data-i18n="RES_WOOD">Lemn</option>
             <option value="brick" selected data-i18n="RES_BRICK">Cărămidă</option>
             <option value="wool" data-i18n="RES_WOOL">Lână</option>
@@ -1040,53 +1040,52 @@
           </select>
         </div>
       </div>
-      <button type="button" id="btn-confirm-yop" class="btn-glass btn-primary" style="width: 100%;" data-i18n="ACTION_PLAY_CARD">Joacă carte</button>
+      <button type="button" id="btn-confirm-yop" class="btn-glass btn-primary btn-block" data-i18n="ACTION_PLAY_CARD">Joacă carte</button>
     </div>
   </div>
 
   <!-- Rules Cheat Sheet Modal -->
   <div id="rules-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="max-width: 680px; max-height: 80vh; overflow-y: auto;">
+    <div class="modal-box modal-rules">
       <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
-      <div style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); display: flex; flex-direction: column; gap: 14px;">
+      <div class="rules-copy">
         <div>
-          <strong style="color: var(--text-primary);" data-i18n="RULES_RESOURCES_TITLE">Resurse:</strong>
+          <strong data-i18n="RULES_RESOURCES_TITLE">Resurse:</strong>
           <span data-i18n="RULES_RESOURCES_BODY">Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);" data-i18n="RULES_COSTS_TITLE">Costuri clădiri:</strong>
+          <strong data-i18n="RULES_COSTS_TITLE">Costuri clădiri:</strong>
           <span data-i18n="RULES_COSTS_BODY">Drum = 1 Lemn + 1 Cărămidă. Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV). Oraș = 3 Minereu + 2 Grâu (2 PV, înlocuiește o așezare existentă). Carte Dezvoltare = 1 Minereu + 1 Lână + 1 Grâu.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);" data-i18n="RULES_DISTANCE_TITLE">Regula distanței:</strong>
+          <strong data-i18n="RULES_DISTANCE_TITLE">Regula distanței:</strong>
           <span data-i18n="RULES_DISTANCE_BODY">Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);" data-i18n="RULES_ROBBER_TITLE">Zarul 7 &amp; Hoțul:</strong>
+          <strong data-i18n="RULES_ROBBER_TITLE">Zarul 7 &amp; Hoțul:</strong>
           <span data-i18n="RULES_ROBBER_BODY">Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.</span>
         </div>
         <div>
-          <strong style="color: var(--text-primary);" data-i18n="RULES_TITLES_TITLE">Titluri speciale:</strong>
+          <strong data-i18n="RULES_TITLES_TITLE">Titluri speciale:</strong>
           <span data-i18n="RULES_TITLES_BODY">Cel mai lung drum (minim 5 segmente continue) = +2 PV. Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV.</span>
         </div>
       </div>
       <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite &amp; Lorc.</p>
-      <button id="btn-close-rules" class="btn-glass btn-primary" style="margin-top: 12px;" data-i18n="CANCEL_ACTION">Închide</button>
+      <button id="btn-close-rules" class="btn-glass btn-primary btn-after-copy" data-i18n="CANCEL_ACTION">Închide</button>
     </div>
   </div>
 
   <!-- Victory Celebration Modal -->
   <div id="victory-modal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal-box" style="text-align: center; align-items: center;">
-      <div class="victory-icon-badge" style="margin-bottom: 8px;">
+    <div class="modal-box victory-box">
+      <div class="victory-icon-badge">
         <span class="ico" data-icon="trophy"></span>
       </div>
       <h2 class="modal-title" data-i18n="VICTORY_TITLE">Victorie!</h2>
-      <p style="font-size: 18px; margin: 12px 0;">
-        <strong id="victory-winner-name" style="color: var(--gold-primary);">---</strong>
+      <p class="victory-message">
+        <strong id="victory-winner-name" class="victory-winner-name">---</strong>
         <span data-i18n="VICTORY_MESSAGE">a câștigat jocul!</span>
       </p>
-      <button onclick="window.location.reload()" class="btn-glass btn-primary" style="padding: 14px 28px; font-size: 16px; margin: 0 auto;" data-i18n="PLAY_AGAIN_BTN">Înapoi la meniu</button>
     </div>
   </div>
 
