@@ -23,6 +23,7 @@ export class CatanAIAgent {
     color = null,
     turnDelay = 600,
     autoReady = true,
+    spawnedAgent = false,
     log = console.log
   }) {
     this.serverUrl = serverUrl;
@@ -39,6 +40,7 @@ export class CatanAIAgent {
     this.currentRoom = null;
     this.isActing = false;
     this.hasJoined = false;
+    this.spawnedAgent = spawnedAgent;
   }
 
   async connect() {
@@ -89,7 +91,8 @@ export class CatanAIAgent {
         code: this.roomCode,
         roomCode: this.roomCode,
         playerName: this.name,
-        color: this.color
+        color: this.color,
+        isSpawnedAgent: this.spawnedAgent
       }, async (res) => {
         if (res && res.success) {
           this.myPlayerId = res.playerId;
@@ -598,7 +601,7 @@ export async function runCliAgent() {
     process.exit(1);
   }
 
-  const agent = new CatanAIAgent({ serverUrl, roomCode, name, color });
+  const agent = new CatanAIAgent({ serverUrl, roomCode, name, color, spawnedAgent: args.includes('--spawned-agent') });
   try {
     await agent.connect();
     await agent.joinRoom(roomCode);

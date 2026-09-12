@@ -19,6 +19,10 @@ import {
 import { TurnTimerUI } from './turnTimer.js';
 import { confetti } from './confetti.js';
 
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+}
+
 export function renderVictoryStatsHtml(winner, s) {
   const turns = s?.turnNumber || 1;
   const vp = winner?.victoryPoints || s?.vpTarget || 10;
@@ -83,9 +87,7 @@ class CatanApp {
     this.deferredProductionToasts = [];
     this.progressPlay = null;
     this.seenProgressDrawKeys = new Set();
-    this.myPlayerId = localStorage.getItem('catan_player_id') || `p_${Math.random().toString(36).substring(2, 8)}`;
-    localStorage.setItem('catan_player_id', this.myPlayerId);
-    network.currentPlayerId = this.myPlayerId;
+    this.myPlayerId = null;
 
     this.init();
   }
@@ -404,8 +406,8 @@ class CatanApp {
         card.className = 'room-card';
         card.innerHTML = `
           <div>
-            <h4 style="font-size: 16px; font-weight: 700;">${r.name}</h4>
-            <span style="font-size: 12px; color: var(--text-secondary);">${i18n.t('HOST_LABEL')}: ${r.hostName} • ${r.playersCount}/${r.maxPlayers} ${i18n.t('PLAYERS_LABEL')}</span>
+            <h4 style="font-size: 16px; font-weight: 700;">${escapeHtml(r.name)}</h4>
+            <span style="font-size: 12px; color: var(--text-secondary);">${i18n.t('HOST_LABEL')}: ${escapeHtml(r.hostName)} • ${r.playersCount}/${r.maxPlayers} ${i18n.t('PLAYERS_LABEL')}</span>
           </div>
           <button class="btn-glass btn-primary btn-join-direct" data-code="${r.code}">${i18n.t('JOIN_ROOM_BTN')}</button>
         `;
@@ -506,7 +508,7 @@ class CatanApp {
       card.innerHTML = `
         <div class="player-slot-header">
           <div class="player-slot-name" style="display: flex; align-items: center; gap: 6px;">
-            ${p.name}
+            ${escapeHtml(p.name)}
             ${p.id === lobbyData.hostId ? '<span class="player-badge host-badge">Host</span>' : ''}
             ${p.isBot ? '<span class="player-badge bot-badge">Bot</span>' : ''}
           </div>
@@ -1609,7 +1611,7 @@ class CatanApp {
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: ${opponent.color}; box-shadow: 0 0 6px ${opponent.color}99;"></span>
           <div>
-            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">${opponent.name}</div>
+            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">${escapeHtml(opponent.name)}</div>
             <div style="font-size: 12px; color: var(--text-secondary);">${cardCount} ${i18n.t('CARDS_LABEL')}</div>
           </div>
         </div>
@@ -2804,7 +2806,7 @@ class CatanApp {
       card.innerHTML = `
         <div class="opponent-identity">
           <span class="opponent-swatch" style="background: ${p.color};"></span>
-          <span class="opponent-name">${p.name}${you}</span>
+          <span class="opponent-name">${escapeHtml(p.name)}${you}</span>
         </div>
         <div class="opponent-card-meta">
           <span class="opponent-phase">${i18n.t(stateKey)}</span>
@@ -3028,8 +3030,8 @@ class CatanApp {
     const el = document.createElement('div');
     el.style.marginBottom = '6px';
     el.innerHTML = `
-      <span style="color: ${msg.color || '#f59e0b'}; font-weight: 700;">${msg.senderName}:</span>
-      <span style="color: var(--text-primary);">${msg.text}</span>
+      <span style="color: ${msg.color || '#f59e0b'}; font-weight: 700;">${escapeHtml(msg.senderName)}:</span>
+      <span style="color: var(--text-primary);">${escapeHtml(msg.text)}</span>
     `;
     container.appendChild(el);
     container.scrollTop = container.scrollHeight;
