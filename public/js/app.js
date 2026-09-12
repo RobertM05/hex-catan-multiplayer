@@ -17,12 +17,62 @@ import {
   revealedProgressCards
 } from './progressCards.js';
 import { TurnTimerUI } from './turnTimer.js';
+import { confetti } from './confetti.js';
+
+export function renderVictoryStatsHtml(winner, s) {
+  const turns = s?.turnNumber || 1;
+  const vp = winner?.victoryPoints || s?.vpTarget || 10;
+  const hasLongestRoad = s?.longestRoad?.playerId === winner?.id;
+  const hasLargestArmy = s?.largestArmy?.playerId === winner?.id;
+  const metropolisesCount = Object.values(s?.metropolises || {}).filter(m => m?.playerId === winner?.id).length;
+
+  let cardsHtml = `
+    <div class="victory-stat-card">
+      <span class="victory-stat-val">${vp}</span>
+      <span class="victory-stat-lbl">${i18n.t('VICTORY_POINTS_LABEL')}</span>
+    </div>
+    <div class="victory-stat-card">
+      <span class="victory-stat-val">${turns}</span>
+      <span class="victory-stat-lbl">${i18n.t('TURNS_PLAYED_LABEL')}</span>
+    </div>
+  `;
+
+  if (hasLongestRoad && s?.longestRoad?.length) {
+    cardsHtml += `
+      <div class="victory-stat-card">
+        <span class="victory-stat-val">🛣️ ${s.longestRoad.length}</span>
+        <span class="victory-stat-lbl">${i18n.t('AWARD_LONGEST_ROAD')}</span>
+      </div>
+    `;
+  }
+
+  if (hasLargestArmy && s?.largestArmy?.count) {
+    cardsHtml += `
+      <div class="victory-stat-card">
+        <span class="victory-stat-val">⚔️ ${s.largestArmy.count}</span>
+        <span class="victory-stat-lbl">${i18n.t('AWARD_LARGEST_ARMY')}</span>
+      </div>
+    `;
+  }
+
+  if (metropolisesCount > 0) {
+    cardsHtml += `
+      <div class="victory-stat-card">
+        <span class="victory-stat-val">🏛️ ${metropolisesCount}</span>
+        <span class="victory-stat-lbl">${i18n.t('AWARD_METROPOLIS')}</span>
+      </div>
+    `;
+  }
+
+  return cardsHtml;
+}
 
 class CatanApp {
   constructor() {
     this.boardRenderer = null;
     this.turnTimerUI = new TurnTimerUI({ audio });
     this.currentRoom = null;
+    this.victoryCelebrated = false;
     this.gameState = null;
     this.selectedAction = null; // { type: 'settlement'|'road'|'city'|'robber', validIds: Set }
     this.bankTrade = { give: null, receive: null };
@@ -163,9 +213,11 @@ class CatanApp {
 
   setupSoundToggle() {
     const soundBtn = document.getElementById('btn-sound-toggle');
+    if (!soundBtn) return;
     const updateIcon = () => {
-      const iconMarkup = ico(audio.enabled ? 'speakerHigh' : 'speakerSlash', 'btn-icon');
-      soundBtn.innerHTML = `${iconMarkup} <span>${i18n.t('SOUND_TOGGLE')}</span>`;
+      const isMuted = audio.isMuted();
+      const iconMarkup = ico(isMuted ? 'speakerSlash' : 'speakerHigh', 'btn-icon');
+      soundBtn.innerHTML = `${iconMarkup} <span class="sound-label">${i18n.t('SOUND_TOGGLE')}</span>`;
       soundBtn.setAttribute('aria-label', i18n.t('SOUND_TOGGLE'));
       soundBtn.setAttribute('title', i18n.t('SOUND_TOGGLE'));
     };
@@ -178,12 +230,22 @@ class CatanApp {
 
   setupRulesModal() {
     const modal = document.getElementById('rules-modal');
-    document.getElementById('btn-rules').addEventListener('click', () => {
-      modal.classList.add('active');
+    document.getElementById('btn-rules')?.addEventListener('click', () => {
+      modal?.classList.add('active');
     });
-    document.getElementById('btn-close-rules').addEventListener('click', () => {
-      modal.classList.remove('active');
+    document.getElementById('btn-close-rules')?.addEventListener('click', () => {
+      modal?.classList.remove('active');
     });
+
+    const victoryLobbyBtn = document.getElementById('btn-victory-lobby');
+    if (victoryLobbyBtn) {
+      victoryLobbyBtn.addEventListener('click', () => {
+        confetti.stop();
+        const vModal = document.getElementById('victory-modal');
+        if (vModal) vModal.classList.remove('active');
+        window.location.reload();
+      });
+    }
   }
 
   setupModalAccessibility() {
@@ -2751,11 +2813,24 @@ class CatanApp {
 
     // Check Victory
     if (s.phase === 'GAME_OVER') {
-      const winner = s.players.find(p => p.victoryPoints >= s.vpTarget) || curPlayer;
-      document.getElementById('victory-winner-name').textContent = winner.name;
-      document.getElementById('victory-modal').classList.add('active');
-      audio.playVictory();
+      const winner = s.players?.find(p => p.victoryPoints >= (s.vpTarget || 10)) || curPlayer;
+      const winnerEl = document.getElementById('victory-winner-name');
+      if (winnerEl) winnerEl.textContent = winner?.name || '---';
+      this.renderVictoryStats(winner, s);
+      const victoryModal = document.getElementById('victory-modal');
+      if (victoryModal) victoryModal.classList.add('active');
+      if (!this.victoryCelebrated) {
+        this.victoryCelebrated = true;
+        audio.playFanfare();
+        confetti.start();
+      }
     }
+  }
+
+  renderVictoryStats(winner, s) {
+    const statsEl = document.getElementById('victory-stats');
+    if (!statsEl) return;
+    statsEl.innerHTML = renderVictoryStatsHtml(winner, s);
   }
 
   updateBoardHint() {
@@ -3105,6 +3180,8 @@ class CatanApp {
 }
 
 // Instantiate and start app on DOMContentLoaded
-window.addEventListener('DOMContentLoaded', () => {
-  new CatanApp();
-});
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('DOMContentLoaded', () => {
+    new CatanApp();
+  });
+}

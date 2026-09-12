@@ -7,11 +7,13 @@
 class SoundEffects {
   constructor() {
     this.ctx = null;
-    this.enabled = localStorage.getItem('catan_sound') !== 'false';
+    const sfxMuted = typeof localStorage !== 'undefined' && localStorage.getItem('catan_sfx_muted') === 'true';
+    const soundEnabled = typeof localStorage === 'undefined' || localStorage.getItem('catan_sound') !== 'false';
+    this.enabled = !sfxMuted && soundEnabled;
   }
 
   init() {
-    if (!this.ctx) {
+    if (!this.ctx && typeof window !== 'undefined') {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (AudioContext) {
         this.ctx = new AudioContext();
@@ -22,10 +24,21 @@ class SoundEffects {
     }
   }
 
-  toggle() {
-    this.enabled = !this.enabled;
-    localStorage.setItem('catan_sound', this.enabled ? 'true' : 'false');
+  isMuted() {
+    return !this.enabled;
+  }
+
+  setMuted(muted) {
+    this.enabled = !muted;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('catan_sfx_muted', muted ? 'true' : 'false');
+      localStorage.setItem('catan_sound', this.enabled ? 'true' : 'false');
+    }
     return this.enabled;
+  }
+
+  toggle() {
+    return this.setMuted(this.enabled);
   }
 
   playDiceRoll() {
@@ -193,6 +206,10 @@ class SoundEffects {
       osc.start(now + item.t);
       osc.stop(now + item.t + item.d);
     });
+  }
+
+  playFanfare() {
+    return this.playVictory();
   }
 }
 

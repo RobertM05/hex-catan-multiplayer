@@ -378,6 +378,11 @@ export const TRANSLATIONS = {
     VICTORY_TITLE: "Victory!",
     VICTORY_MESSAGE: "has won the game!",
     PLAY_AGAIN_BTN: "Back to Lobby",
+    VICTORY_POINTS_LABEL: "Victory Points",
+    TURNS_PLAYED_LABEL: "Turns Played",
+    AWARD_LONGEST_ROAD: "Longest Road",
+    AWARD_LARGEST_ARMY: "Largest Army",
+    AWARD_METROPOLIS: "Metropolises",
 
     // Errors & Tips
     ERROR_NOT_YOUR_TURN: "It is not your turn.",
@@ -859,6 +864,11 @@ export const TRANSLATIONS = {
     VICTORY_TITLE: "Victorie!",
     VICTORY_MESSAGE: "a câștigat jocul!",
     PLAY_AGAIN_BTN: "Înapoi la meniu",
+    VICTORY_POINTS_LABEL: "Puncte de victorie",
+    TURNS_PLAYED_LABEL: "Ture jucate",
+    AWARD_LONGEST_ROAD: "Cel mai lung drum",
+    AWARD_LARGEST_ARMY: "Cea mai mare armată",
+    AWARD_METROPOLIS: "Metropole",
 
     // Errors & Tips
     ERROR_NOT_YOUR_TURN: "Nu este tura ta.",
@@ -970,7 +980,7 @@ export const TRANSLATIONS = {
 
 class I18nService {
   constructor() {
-    this.currentLang = localStorage.getItem('catan_lang') || 'ro'; // Default Romanian, user preference respected
+    this.currentLang = (typeof localStorage !== 'undefined' && localStorage.getItem('catan_lang')) || 'ro'; // Default Romanian, user preference respected
   }
 
   getLang() {
@@ -980,9 +990,13 @@ class I18nService {
   setLang(lang) {
     if (TRANSLATIONS[lang]) {
       this.currentLang = lang;
-      localStorage.setItem('catan_lang', lang);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('catan_lang', lang);
+      }
       this.updateDOM();
-      window.dispatchEvent(new CustomEvent('language_changed', { detail: { lang } }));
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('language_changed', { detail: { lang } }));
+      }
     }
   }
 
@@ -997,7 +1011,8 @@ class I18nService {
   }
 
   updateDOM() {
-    if (typeof document !== 'undefined' && document.documentElement) {
+    if (typeof document === 'undefined') return;
+    if (document.documentElement) {
       document.documentElement.lang = this.currentLang;
     }
     document.querySelectorAll('[data-i18n]').forEach(el => {
