@@ -23,10 +23,7 @@
   <header class="app-header">
     <div class="brand-section">
       <span class="brand-logo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 21 7.2 21 16.8 12 22 3 16.8 3 7.2" fill="#2d3748" stroke="#d97706" stroke-width="2"/>
-          <path d="M12 7l5 4v6H7v-6l5-4z" fill="#d97706" stroke="#f8fafc" stroke-width="1.2"/>
-        </svg>
+        <span class="ico" data-icon="hexagon"></span>
       </span>
       <h1 class="brand-title" data-i18n="APP_TITLE">HexSettlers Online</h1>
     </div>
@@ -40,19 +37,13 @@
 
       <!-- Sound Toggle -->
       <button id="btn-sound-toggle" class="btn-glass" title="Sound">
-        <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-        </svg>
+        <span class="btn-icon ico" data-icon="speakerHigh"></span>
         <span class="sound-label" data-i18n="SOUND_TOGGLE">Sunet</span>
       </button>
 
       <!-- Rules Button -->
       <button id="btn-rules" class="btn-glass">
-        <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
+        <span class="btn-icon ico" data-icon="bookOpen"></span>
         <span data-i18n="RULES_BUTTON">Reguli</span>
       </button>
     </div>
@@ -170,10 +161,7 @@
         </div>
         <div style="display: flex; gap: 10px;">
           <button id="btn-share-link" class="btn-glass">
-            <svg class="btn-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-            </svg>
+            <span class="btn-icon ico" data-icon="link"></span>
             <span data-i18n="SHARE_LINK_BTN">Copiază linkul</span>
           </button>
           <button id="btn-leave-waiting" class="btn-glass btn-danger" data-i18n="LEAVE_ROOM">Părăsește camera</button>
@@ -204,10 +192,7 @@
           <div class="turn-title"><span data-i18n="ROUND_LABEL">Runda</span> <span id="round-number-display">1</span></div>
           <div id="turn-commander-name" class="turn-commander">---</div>
           <div class="turn-timer-bar">
-            <svg class="timer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
+            <span class="timer-icon ico" data-icon="clock"></span>
             <span id="turn-timer-display">60s</span>
           </div>
         </div>
@@ -217,6 +202,7 @@
           <div class="dice-cubes">
             <div id="die-1" class="die">?</div>
             <div id="die-2" class="die">?</div>
+            <div id="die-event" class="die die-event ck-hud-widget" aria-label="Event die">?</div>
           </div>
           <div style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">
             <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" style="color: var(--gold-primary); font-size: 15px;">-</span>
@@ -224,65 +210,122 @@
           <button id="btn-roll-dice" class="btn-glass btn-primary" style="width: 100%;" data-i18n="ACTION_ROLL">Aruncă zarurile</button>
         </div>
 
+        <div id="barbarian-track" class="barbarian-track ck-hud-widget">
+          <div class="barbarian-track-label">
+            <span data-i18n="BARBARIAN_TRACK">Barbari</span>
+            <span id="barbarian-track-count">0/7</span>
+          </div>
+          <div class="barbarian-track-pips" id="barbarian-track-pips"></div>
+        </div>
+
+        <div id="city-improvements-panel" class="ck-improvements-panel ck-hud-widget">
+          <button type="button" id="btn-toggle-improvements" class="ck-panel-title" data-i18n="IMPROVEMENTS_TITLE">Îmbunătățiri oraș</button>
+          <div class="improvement-track" data-track="trade">
+            <div class="track-head">
+              <span class="track-label track-trade" data-i18n="TRACK_TRADE">Comerț</span>
+              <span class="track-level" id="improve-level-trade">0/5</span>
+            </div>
+            <div class="track-progress"><div class="track-fill track-fill-trade" id="improve-fill-trade"></div></div>
+            <button type="button" class="btn-glass btn-improve" data-improve-track="trade" id="btn-improve-trade">
+              <span data-i18n="IMPROVE_BTN">Îmbunătățește</span>
+              <span class="improve-cost" id="improve-cost-trade">1</span>
+            </button>
+          </div>
+          <div class="improvement-track" data-track="politics">
+            <div class="track-head">
+              <span class="track-label track-politics" data-i18n="TRACK_POLITICS">Politică</span>
+              <span class="track-level" id="improve-level-politics">0/5</span>
+            </div>
+            <div class="track-progress"><div class="track-fill track-fill-politics" id="improve-fill-politics"></div></div>
+            <button type="button" class="btn-glass btn-improve" data-improve-track="politics" id="btn-improve-politics">
+              <span data-i18n="IMPROVE_BTN">Îmbunătățește</span>
+              <span class="improve-cost" id="improve-cost-politics">1</span>
+            </button>
+          </div>
+          <div class="improvement-track" data-track="science">
+            <div class="track-head">
+              <span class="track-label track-science" data-i18n="TRACK_SCIENCE">Știință</span>
+              <span class="track-level" id="improve-level-science">0/5</span>
+            </div>
+            <div class="track-progress"><div class="track-fill track-fill-science" id="improve-fill-science"></div></div>
+            <button type="button" class="btn-glass btn-improve" data-improve-track="science" id="btn-improve-science">
+              <span data-i18n="IMPROVE_BTN">Îmbunătățește</span>
+              <span class="improve-cost" id="improve-cost-science">1</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Building Actions List -->
         <div class="build-actions-list">
           <!-- Road -->
           <button id="btn-build-road" class="btn-build-action">
-            <span data-i18n="BUILD_ROAD">Drum</span>
+            <span class="build-action-label">
+              <span class="ico" data-icon="path"></span>
+              <span data-i18n="BUILD_ROAD">Drum</span>
+            </span>
             <div class="build-cost-pills">
               <span class="cost-pill pill-wood" title="Lemn">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg> 1
+                <span class="ico" data-icon="wood"></span> 1
               </span>
               <span class="cost-pill pill-brick" title="Cărămidă">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="12" y1="12" x2="12" y2="20"/></svg> 1
+                <span class="ico" data-icon="brick"></span> 1
               </span>
             </div>
           </button>
 
           <!-- Settlement -->
           <button id="btn-build-settlement" class="btn-build-action">
-            <span data-i18n="BUILD_SETTLEMENT">Așezare</span>
+            <span class="build-action-label">
+              <span class="ico" data-icon="house"></span>
+              <span data-i18n="BUILD_SETTLEMENT">Așezare</span>
+            </span>
             <div class="build-cost-pills">
               <span class="cost-pill pill-wood" title="Lemn">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg> 1
+                <span class="ico" data-icon="wood"></span> 1
               </span>
               <span class="cost-pill pill-brick" title="Cărămidă">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="12"/><line x1="12" y1="12" x2="12" y2="20"/></svg> 1
+                <span class="ico" data-icon="brick"></span> 1
               </span>
               <span class="cost-pill pill-wool" title="Lână">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> 1
+                <span class="ico" data-icon="wool"></span> 1
               </span>
               <span class="cost-pill pill-wheat" title="Grâu">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 1
+                <span class="ico" data-icon="wheat"></span> 1
               </span>
             </div>
           </button>
 
           <!-- City -->
           <button id="btn-build-city" class="btn-build-action">
-            <span data-i18n="BUILD_CITY">Oraș</span>
+            <span class="build-action-label">
+              <span class="ico" data-icon="city"></span>
+              <span data-i18n="BUILD_CITY">Oraș</span>
+            </span>
             <div class="build-cost-pills">
               <span class="cost-pill pill-ore" title="Minereu">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 4 21 19 3 19"/></svg> 3
+                <span class="ico" data-icon="ore"></span> 3
               </span>
               <span class="cost-pill pill-wheat" title="Grâu">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 2
+                <span class="ico" data-icon="wheat"></span> 2
               </span>
             </div>
           </button>
 
           <!-- Dev Card -->
           <button id="btn-buy-dev-card" class="btn-build-action">
-            <span data-i18n="BUY_DEV_CARD">Carte dezv.</span>
+            <span class="build-action-label">
+              <span class="ico" data-icon="cards"></span>
+              <span data-i18n="BUY_DEV_CARD">Carte dezv.</span>
+            </span>
             <div class="build-cost-pills">
               <span class="cost-pill pill-ore" title="Minereu">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 4 21 19 3 19"/></svg> 1
+                <span class="ico" data-icon="ore"></span> 1
               </span>
               <span class="cost-pill pill-wool" title="Lână">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> 1
+                <span class="ico" data-icon="wool"></span> 1
               </span>
               <span class="cost-pill pill-wheat" title="Grâu">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M12 7c2-2 4-1 4 1s-2 2-4 2"/><path d="M12 7c-2-2-4-1-4 1s2 2 4 2"/></svg> 1
+                <span class="ico" data-icon="wheat"></span> 1
               </span>
             </div>
           </button>
@@ -304,21 +347,13 @@
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
           <button id="btn-zoom-in" class="board-control-btn" title="Zoom In">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
+            <span class="ico" data-icon="plus"></span>
           </button>
           <button id="btn-zoom-out" class="board-control-btn" title="Zoom Out">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
+            <span class="ico" data-icon="minus"></span>
           </button>
           <button id="btn-zoom-reset" class="board-control-btn" title="Reset View">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/>
-              <circle cx="12" cy="12" r="3" fill="currentColor"/>
-            </svg>
+            <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
 
@@ -330,58 +365,58 @@
       <footer class="hud-bottom">
         <!-- Resource Cards -->
         <div class="resource-cards-deck">
-          <div class="res-card wood" title="Lemn">
+          <div class="res-card wood" data-i18n-title="RES_WOOD" title="Lemn">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg>
+              <span class="ico" data-icon="wood"></span>
             </span>
             <span class="res-card-label" data-i18n="RES_WOOD">Lemn</span>
             <span id="count-wood" class="res-card-count">0</span>
           </div>
-          <div class="res-card brick" title="Cărămidă">
+          <div class="res-card brick" data-i18n-title="RES_BRICK" title="Cărămidă">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg>
+              <span class="ico" data-icon="brick"></span>
             </span>
             <span class="res-card-label" data-i18n="RES_BRICK">Cărămidă</span>
             <span id="count-brick" class="res-card-count">0</span>
           </div>
-          <div class="res-card wool" title="Lână">
+          <div class="res-card wool" data-i18n-title="RES_WOOL" title="Lână">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg>
+              <span class="ico" data-icon="wool"></span>
             </span>
             <span class="res-card-label" data-i18n="RES_WOOL">Lână</span>
             <span id="count-wool" class="res-card-count">0</span>
           </div>
-          <div class="res-card wheat" title="Grâu">
+          <div class="res-card wheat" data-i18n-title="RES_WHEAT" title="Grâu">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg>
+              <span class="ico" data-icon="wheat"></span>
             </span>
             <span class="res-card-label" data-i18n="RES_WHEAT">Grâu</span>
             <span id="count-wheat" class="res-card-count">0</span>
           </div>
-          <div class="res-card ore" title="Minereu">
+          <div class="res-card ore" data-i18n-title="RES_ORE" title="Minereu">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg>
+              <span class="ico" data-icon="ore"></span>
             </span>
             <span class="res-card-label" data-i18n="RES_ORE">Minereu</span>
             <span id="count-ore" class="res-card-count">0</span>
           </div>
-          <div class="res-card cloth ck-only" title="Pânză">
+          <div class="res-card cloth ck-only" data-i18n-title="COMM_CLOTH" title="Pânză">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7"/><path d="M9 11h6M9 15h4"/></svg>
+              <span class="ico" data-icon="cloth"></span>
             </span>
             <span class="res-card-label" data-i18n="COMM_CLOTH">Pânză</span>
             <span id="count-cloth" class="res-card-count">0</span>
           </div>
-          <div class="res-card coin ck-only" title="Monedă">
+          <div class="res-card coin ck-only" data-i18n-title="COMM_COIN" title="Monedă">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5c.5-1 2-1.5 2.5-1.5s2 .6 2 1.8c0 2.2-4 1.4-4 3.4 0 1 .8 1.8 2.2 1.8 1.2 0 2-.5 2.4-1.2"/></svg>
+              <span class="ico" data-icon="coin"></span>
             </span>
             <span class="res-card-label" data-i18n="COMM_COIN">Monedă</span>
             <span id="count-coin" class="res-card-count">0</span>
           </div>
-          <div class="res-card paper ck-only" title="Hârtie">
+          <div class="res-card paper ck-only" data-i18n-title="COMM_PAPER" title="Hârtie">
             <span class="res-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l5 5v13H7z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg>
+              <span class="ico" data-icon="paper"></span>
             </span>
             <span class="res-card-label" data-i18n="COMM_PAPER">Hârtie</span>
             <span id="count-paper" class="res-card-count">0</span>
@@ -391,30 +426,16 @@
         <!-- VP & Action Buttons -->
         <div class="bottom-action-buttons">
           <div class="vp-counter-badge">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
-              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
-              <path d="M4 22h16"/>
-              <path d="M10 14.66V17c0 .55-.45 1-1 1H8c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1h-1c-.55 0-1-.45-1-1v-2.34"/>
-              <path d="M6 4h12v5a6 6 0 0 1-12 0V4z"/>
-            </svg>
+            <span class="ico" data-icon="trophy"></span>
             <span style="font-weight: 800; font-size: 15px; color: var(--gold-primary);"><span id="my-vp-count">0</span> <span data-i18n="VICTORY_POINTS_ABBR">PV</span></span>
           </div>
 
           <button id="btn-open-trade" class="btn-glass">
-            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="17 1 21 5 17 9"/>
-              <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-              <polyline points="7 23 3 19 7 15"/>
-              <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-            </svg>
+            <span class="btn-icon ico" data-icon="trade"></span>
             <span data-i18n="ACTION_TRADE_PLAYER">Comerț</span>
           </button>
           <button id="btn-open-dev-cards" class="btn-glass" style="position: relative;">
-            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="4" width="14" height="17" rx="2"/>
-              <path d="M8 2h10a2 2 0 0 1 2 2v14"/>
-            </svg>
+            <span class="btn-icon ico" data-icon="cards"></span>
             <span data-i18n="MY_DEV_CARDS">Cărți</span>
             <span id="dev-card-badge" class="badge-count" style="display: none;">0</span>
           </button>
@@ -427,7 +448,10 @@
 
         <div class="sidebar-tabs">
           <button id="tab-btn-log" class="sidebar-tab-btn active" data-i18n="LOG_TAB">Istoric</button>
-          <button id="tab-btn-chat" class="sidebar-tab-btn" data-i18n="CHAT_TAB">Chat</button>
+          <button id="tab-btn-chat" class="sidebar-tab-btn">
+            <span class="ico" data-icon="chat"></span>
+            <span data-i18n="CHAT_TAB">Chat</span>
+          </button>
         </div>
 
         <!-- Log Panel -->
@@ -477,7 +501,7 @@
             <div class="trade-steppers-grid">
               <!-- Wood -->
               <div class="res-stepper-card res-wood">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wood"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
                   <span class="res-available" id="trade-avail-wood">(0)</span>
@@ -491,7 +515,7 @@
               </div>
               <!-- Brick -->
               <div class="res-stepper-card res-brick">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg></span>
+                <span class="stepper-icon ico" data-icon="brick"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
                   <span class="res-available" id="trade-avail-brick">(0)</span>
@@ -505,7 +529,7 @@
               </div>
               <!-- Wool -->
               <div class="res-stepper-card res-wool">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wool"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WOOL">Lână</span>
                   <span class="res-available" id="trade-avail-wool">(0)</span>
@@ -519,7 +543,7 @@
               </div>
               <!-- Wheat -->
               <div class="res-stepper-card res-wheat">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wheat"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
                   <span class="res-available" id="trade-avail-wheat">(0)</span>
@@ -533,7 +557,7 @@
               </div>
               <!-- Ore -->
               <div class="res-stepper-card res-ore">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg></span>
+                <span class="stepper-icon ico" data-icon="ore"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_ORE">Minereu</span>
                   <span class="res-available" id="trade-avail-ore">(0)</span>
@@ -544,6 +568,45 @@
                   <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-ore">+</button>
                 </div>
                 <input type="hidden" id="trade-give-ore" value="0">
+              </div>
+              <div class="res-stepper-card res-cloth ck-only">
+                <span class="stepper-icon ico" data-icon="cloth"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_CLOTH">Pânză</span>
+                  <span class="res-available" id="trade-avail-cloth">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-cloth">-</button>
+                  <span class="stepper-val" id="val-trade-give-cloth">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-cloth">+</button>
+                </div>
+                <input type="hidden" id="trade-give-cloth" value="0">
+              </div>
+              <div class="res-stepper-card res-coin ck-only">
+                <span class="stepper-icon ico" data-icon="coin"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_COIN">Monedă</span>
+                  <span class="res-available" id="trade-avail-coin">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-coin">-</button>
+                  <span class="stepper-val" id="val-trade-give-coin">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-coin">+</button>
+                </div>
+                <input type="hidden" id="trade-give-coin" value="0">
+              </div>
+              <div class="res-stepper-card res-paper ck-only">
+                <span class="stepper-icon ico" data-icon="paper"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_PAPER">Hârtie</span>
+                  <span class="res-available" id="trade-avail-paper">(0)</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-give-paper">-</button>
+                  <span class="stepper-val" id="val-trade-give-paper">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-give-paper">+</button>
+                </div>
+                <input type="hidden" id="trade-give-paper" value="0">
               </div>
             </div>
           </div>
@@ -556,7 +619,7 @@
             <div class="trade-steppers-grid">
               <!-- Wood -->
               <div class="res-stepper-card res-wood">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wood"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
                 </div>
@@ -569,7 +632,7 @@
               </div>
               <!-- Brick -->
               <div class="res-stepper-card res-brick">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg></span>
+                <span class="stepper-icon ico" data-icon="brick"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
                 </div>
@@ -582,7 +645,7 @@
               </div>
               <!-- Wool -->
               <div class="res-stepper-card res-wool">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wool"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WOOL">Lână</span>
                 </div>
@@ -595,7 +658,7 @@
               </div>
               <!-- Wheat -->
               <div class="res-stepper-card res-wheat">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg></span>
+                <span class="stepper-icon ico" data-icon="wheat"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
                 </div>
@@ -608,7 +671,7 @@
               </div>
               <!-- Ore -->
               <div class="res-stepper-card res-ore">
-                <span class="stepper-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg></span>
+                <span class="stepper-icon ico" data-icon="ore"></span>
                 <div class="stepper-label">
                   <span class="res-name" data-i18n="RES_ORE">Minereu</span>
                 </div>
@@ -618,6 +681,42 @@
                   <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-ore">+</button>
                 </div>
                 <input type="hidden" id="trade-want-ore" value="0">
+              </div>
+              <div class="res-stepper-card res-cloth ck-only">
+                <span class="stepper-icon ico" data-icon="cloth"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_CLOTH">Pânză</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-cloth">-</button>
+                  <span class="stepper-val" id="val-trade-want-cloth">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-cloth">+</button>
+                </div>
+                <input type="hidden" id="trade-want-cloth" value="0">
+              </div>
+              <div class="res-stepper-card res-coin ck-only">
+                <span class="stepper-icon ico" data-icon="coin"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_COIN">Monedă</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-coin">-</button>
+                  <span class="stepper-val" id="val-trade-want-coin">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-coin">+</button>
+                </div>
+                <input type="hidden" id="trade-want-coin" value="0">
+              </div>
+              <div class="res-stepper-card res-paper ck-only">
+                <span class="stepper-icon ico" data-icon="paper"></span>
+                <div class="stepper-label">
+                  <span class="res-name" data-i18n="COMM_PAPER">Hârtie</span>
+                </div>
+                <div class="stepper-controls">
+                  <button type="button" class="btn-stepper btn-stepper-sub" data-target="trade-want-paper">-</button>
+                  <span class="stepper-val" id="val-trade-want-paper">0</span>
+                  <button type="button" class="btn-stepper btn-stepper-add" data-target="trade-want-paper">+</button>
+                </div>
+                <input type="hidden" id="trade-want-paper" value="0">
               </div>
             </div>
           </div>
@@ -652,10 +751,7 @@
           <!-- Exchange Indicator Arrow -->
           <div class="bank-exchange-arrow" id="bank-exchange-indicator">
             <span id="bank-give-summary">4x Lemn</span>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
+            <span class="ico" data-icon="trade"></span>
             <span id="bank-want-summary">1x Cărămidă</span>
           </div>
 
@@ -684,6 +780,7 @@
         <h3 class="modal-title" style="color: #f87171; margin: 0;" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
       </div>
       <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="DISCARD_INSTRUCTION">Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:</p>
+      <p id="discard-threshold-hint" class="discard-threshold-hint"></p>
       <div style="font-size: 13px; font-weight: 700; color: var(--gold-primary); margin-bottom: 12px; display: flex; justify-content: space-between;">
         <span><span data-i18n="DISCARD_MUST_LABEL">Trebuie să decartezi:</span> <strong id="discard-needed-count" style="color: #f87171;">0</strong></span>
         <span><span data-i18n="DISCARD_SELECTED_LABEL">Selectate:</span> <strong id="discard-current-count" style="color: #38bdf8;">0</strong></span>
@@ -693,6 +790,7 @@
         <div class="trade-steppers-grid">
           <!-- Wood -->
           <div class="res-stepper-card res-wood">
+            <span class="stepper-icon ico" data-icon="wood"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="RES_WOOD">Lemn</span>
               <span class="res-available" id="discard-avail-wood">(0)</span>
@@ -705,6 +803,7 @@
           </div>
           <!-- Brick -->
           <div class="res-stepper-card res-brick">
+            <span class="stepper-icon ico" data-icon="brick"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="RES_BRICK">Cărămidă</span>
               <span class="res-available" id="discard-avail-brick">(0)</span>
@@ -717,6 +816,7 @@
           </div>
           <!-- Wool -->
           <div class="res-stepper-card res-wool">
+            <span class="stepper-icon ico" data-icon="wool"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="RES_WOOL">Lână</span>
               <span class="res-available" id="discard-avail-wool">(0)</span>
@@ -729,6 +829,7 @@
           </div>
           <!-- Wheat -->
           <div class="res-stepper-card res-wheat">
+            <span class="stepper-icon ico" data-icon="wheat"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="RES_WHEAT">Grâu</span>
               <span class="res-available" id="discard-avail-wheat">(0)</span>
@@ -741,6 +842,7 @@
           </div>
           <!-- Ore -->
           <div class="res-stepper-card res-ore">
+            <span class="stepper-icon ico" data-icon="ore"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="RES_ORE">Minereu</span>
               <span class="res-available" id="discard-avail-ore">(0)</span>
@@ -752,6 +854,7 @@
             </div>
           </div>
           <div class="res-stepper-card res-cloth ck-only">
+            <span class="stepper-icon ico" data-icon="cloth"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="COMM_CLOTH">Pânză</span>
               <span class="res-available" id="discard-avail-cloth">(0)</span>
@@ -763,6 +866,7 @@
             </div>
           </div>
           <div class="res-stepper-card res-coin ck-only">
+            <span class="stepper-icon ico" data-icon="coin"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="COMM_COIN">Monedă</span>
               <span class="res-available" id="discard-avail-coin">(0)</span>
@@ -774,6 +878,7 @@
             </div>
           </div>
           <div class="res-stepper-card res-paper ck-only">
+            <span class="stepper-icon ico" data-icon="paper"></span>
             <div class="stepper-label">
               <span class="res-name" data-i18n="COMM_PAPER">Hârtie</span>
               <span class="res-available" id="discard-avail-paper">(0)</span>
@@ -798,6 +903,17 @@
         <button type="button" id="btn-close-robber-target" class="modal-close-btn" aria-label="Close" style="background: none; border: none; font-size: 22px; color: var(--text-secondary); cursor: pointer; line-height: 1; padding: 4px 8px;">&times;</button>
       </div>
       <div id="robber-targets-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <div id="barbarian-modal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 440px; width: 94%;">
+      <h3 class="modal-title" id="barbarian-modal-title" data-i18n="BARBARIAN_ATTACK_TITLE">Invazia barbarilor</h3>
+      <p id="barbarian-modal-body" class="barbarian-modal-body"></p>
+      <div id="barbarian-downgrade-list" class="barbarian-downgrade-list"></div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+        <button type="button" id="btn-close-barbarian" class="btn-glass btn-primary" data-i18n="BARBARIAN_CONTINUE">Continuă</button>
+      </div>
     </div>
   </div>
 
@@ -896,6 +1012,7 @@
           • Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV
         </div>
       </div>
+      <p class="icon-credit">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite &amp; Lorc.</p>
       <button id="btn-close-rules" class="btn-glass btn-primary" style="margin-top: 12px;" data-i18n="CANCEL_ACTION">Închide</button>
     </div>
   </div>
@@ -904,10 +1021,7 @@
   <div id="victory-modal" class="modal-overlay">
     <div class="modal-box" style="text-align: center; align-items: center;">
       <div class="victory-icon-badge" style="margin-bottom: 8px;">
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8" r="6" fill="rgba(217, 119, 6, 0.15)"/>
-          <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>
-        </svg>
+        <span class="ico" data-icon="trophy"></span>
       </div>
       <h2 class="modal-title" data-i18n="VICTORY_TITLE">Victorie!</h2>
       <p style="font-size: 18px; margin: 12px 0;">

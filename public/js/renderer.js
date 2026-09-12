@@ -5,6 +5,16 @@
  * interactive vertex/edge selection, robber placement, and pan/zoom.
  */
 
+import { ICONS, svgIconGroup } from './icons.js';
+
+const TERRAIN_ICON_FILL = {
+  wood: '#d8f3dc',
+  brick: '#ffe4e6',
+  wool: '#14532d',
+  wheat: '#6b3a10',
+  ore: '#f1f5f9',
+};
+
 export class BoardRenderer {
   constructor(svgContainer, options = {}) {
     this.container = svgContainer;
@@ -325,11 +335,15 @@ export class BoardRenderer {
         pier2.setAttribute('opacity', '0.75');
         g.appendChild(pier2);
 
-        // Badge container
+        const isGeneric = edge.harbor.type === 'generic';
+        const iconName = isGeneric ? 'trade' : edge.harbor.type;
+        const hasIcon = Boolean(ICONS[iconName]);
+        const badgeW = hasIcon ? 46 : 50;
+
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', badgeX - 25);
+        rect.setAttribute('x', badgeX - badgeW / 2);
         rect.setAttribute('y', badgeY - 11);
-        rect.setAttribute('width', '50');
+        rect.setAttribute('width', String(badgeW));
         rect.setAttribute('height', '22');
         rect.setAttribute('rx', '8');
         rect.setAttribute('fill', '#181e2b');
@@ -338,8 +352,25 @@ export class BoardRenderer {
         rect.setAttribute('filter', 'url(#shadow-building)');
         g.appendChild(rect);
 
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = isGeneric ? '3:1' : `2:1 ${this.getHarborLabel(edge.harbor.type)}`;
+        g.appendChild(title);
+
+        if (hasIcon) {
+          const icon = svgIconGroup(iconName, {
+            x: badgeX - 9,
+            y: badgeY,
+            size: 13,
+            fill: '#fef3c7',
+          });
+          if (icon) {
+            icon.setAttribute('class', 'harbor-badge-icon');
+            g.appendChild(icon);
+          }
+        }
+
         const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        txt.setAttribute('x', badgeX);
+        txt.setAttribute('x', hasIcon ? badgeX + 8 : badgeX);
         txt.setAttribute('y', badgeY);
         txt.setAttribute('text-anchor', 'middle');
         txt.setAttribute('dominant-baseline', 'central');
@@ -347,7 +378,7 @@ export class BoardRenderer {
         txt.setAttribute('font-size', '10');
         txt.setAttribute('font-weight', 'bold');
         txt.setAttribute('letter-spacing', '0.5');
-        txt.textContent = edge.harbor.type === 'generic' ? '3:1 ?' : `2:1 ${this.getHarborLabel(edge.harbor.type)}`;
+        txt.textContent = isGeneric ? '3:1' : '2:1';
         g.appendChild(txt);
 
         this.harborLayer.appendChild(g);
@@ -582,26 +613,24 @@ export class BoardRenderer {
     const { x, y } = hex.center;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'robber-figure');
-    g.setAttribute('transform', `translate(${x}, ${y - 12})`);
+    g.setAttribute('transform', `translate(${x}, ${y - 4})`);
 
-    // Wooden robber pawn silhouette
-    const robberPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    robberPath.setAttribute('d', `
-      M 0 -15
-      C -4.5 -15 -7 -12 -7 -7
-      C -7 -3 -4 -1 0 -1
-      C 4 -1 7 -3 7 -7
-      C 7 -12 4.5 -15 0 -15 Z
-      M -5 1
-      C -7 5 -8 11 -9 17
-      L 9 17
-      C 8 11 7 5 5 1 Z
-    `);
-    robberPath.setAttribute('fill', '#1e293b');
-    robberPath.setAttribute('stroke', '#475569');
-    robberPath.setAttribute('stroke-width', '1.5');
-    robberPath.setAttribute('filter', 'url(#shadow-building)');
-    g.appendChild(robberPath);
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = 'Robber';
+    g.appendChild(title);
+
+    const disc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    disc.setAttribute('cx', '0');
+    disc.setAttribute('cy', '0');
+    disc.setAttribute('r', '16');
+    disc.setAttribute('fill', '#0f172a');
+    disc.setAttribute('stroke', '#d97706');
+    disc.setAttribute('stroke-width', '1.75');
+    disc.setAttribute('filter', 'url(#shadow-building)');
+    g.appendChild(disc);
+
+    const icon = svgIconGroup('bandit', { x: 0, y: 0, size: 22, fill: '#fef3c7' });
+    if (icon) g.appendChild(icon);
 
     this.robberLayer.appendChild(g);
   }
@@ -609,48 +638,20 @@ export class BoardRenderer {
   createTerrainEmblem(res, x, y) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('transform', `translate(${x}, ${y})`);
-    g.setAttribute('class', 'hex-terrain-icon');
+    g.setAttribute('class', `hex-terrain-icon hex-icon-${res}`);
 
-    if (res === 'wood') {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M 0 -10 L 6 -2 L 3 -2 L 8 6 L 2 6 L 2 10 L -2 10 L -2 6 L -8 6 L -3 -2 L -6 -2 Z');
-      path.setAttribute('fill', '#40916c');
-      path.setAttribute('stroke', '#1b4332');
-      path.setAttribute('stroke-width', '1');
-      g.appendChild(path);
-    } else if (res === 'brick') {
-      const b1 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      b1.setAttribute('x', '-9'); b1.setAttribute('y', '-7'); b1.setAttribute('width', '8'); b1.setAttribute('height', '5'); b1.setAttribute('rx', '1');
-      b1.setAttribute('fill', '#e63946'); b1.setAttribute('stroke', '#5f0f40'); b1.setAttribute('stroke-width', '1');
-      const b2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      b2.setAttribute('x', '1'); b2.setAttribute('y', '-7'); b2.setAttribute('width', '8'); b2.setAttribute('height', '5'); b2.setAttribute('rx', '1');
-      b2.setAttribute('fill', '#e63946'); b2.setAttribute('stroke', '#5f0f40'); b2.setAttribute('stroke-width', '1');
-      const b3 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      b3.setAttribute('x', '-5'); b3.setAttribute('y', '0'); b3.setAttribute('width', '10'); b3.setAttribute('height', '5'); b3.setAttribute('rx', '1');
-      b3.setAttribute('fill', '#e63946'); b3.setAttribute('stroke', '#5f0f40'); b3.setAttribute('stroke-width', '1');
-      g.appendChild(b1); g.appendChild(b2); g.appendChild(b3);
-    } else if (res === 'wool') {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M -6 4 C -9 4 -10 2 -10 0 C -10 -2 -8 -3 -6 -3 C -5 -6 -1 -7 2 -5 C 5 -7 8 -5 8 -2 C 10 -1 11 1 10 3 C 11 5 8 6 6 6 L -6 6 Z');
-      path.setAttribute('fill', '#95d5b2');
-      path.setAttribute('stroke', '#2d6a4f');
-      path.setAttribute('stroke-width', '1');
-      g.appendChild(path);
-    } else if (res === 'wheat') {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M 0 9 L 0 -7 M -3 -3 C -3 -6 0 -8 0 -8 C 0 -8 3 -6 3 -3 C 3 0 0 1 0 1 C 0 1 -3 0 -3 -3 Z M -4 2 C -4 -1 0 -2 0 -2 C 0 -2 4 -1 4 2 C 4 4 0 5 0 5 C 0 5 -4 4 -4 2 Z');
-      path.setAttribute('fill', '#e09f3e');
-      path.setAttribute('stroke', '#9e2a2b');
-      path.setAttribute('stroke-width', '1');
-      g.appendChild(path);
-    } else if (res === 'ore') {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M -10 8 L -3 -5 L 1 2 L 5 -2 L 10 8 Z');
-      path.setAttribute('fill', '#adb5bd');
-      path.setAttribute('stroke', '#343a40');
-      path.setAttribute('stroke-width', '1.2');
-      g.appendChild(path);
-    } else if (res === 'desert') {
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = this.getTerrainEmoji(res);
+    g.appendChild(title);
+
+    const fill = TERRAIN_ICON_FILL[res] || '#fef3c7';
+    const icon = svgIconGroup(res, { x: 0, y: 0, size: 28, fill });
+    if (icon) {
+      g.appendChild(icon);
+      return g;
+    }
+
+    if (res === 'desert') {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', 'M -10 2 Q -5 -3 0 2 T 10 2');
       path.setAttribute('stroke', '#c49a6c');
