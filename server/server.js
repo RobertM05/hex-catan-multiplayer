@@ -328,23 +328,28 @@ io.on('connection', (socket) => {
   };
 
   socket.on('place_setup_settlement', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
+  });
+
+  socket.on('place_setup_city', (data, cb) => {
+    handleGameAction(data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('place_setup_road', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.placeSetupRoad(currentPlayerId, data.edgeId), cb);
+    handleGameAction(data?.code, (engine) => engine.placeSetupRoad(currentPlayerId, data?.edgeId), cb);
   });
 
   socket.on('roll_dice', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.rollDice(currentPlayerId), cb);
+    handleGameAction(data?.code, (engine) => engine.rollDice(currentPlayerId), cb);
   });
 
   socket.on('discard_cards', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.discardCards(currentPlayerId, data.discarded), cb);
+    const discardedCards = data?.discarded || { ...(data?.resources || {}), ...(data?.commodities || {}) };
+    handleGameAction(data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb);
   });
 
   socket.on('move_robber', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.moveRobber(currentPlayerId, data.hexId, data.targetPlayerId), cb);
+    handleGameAction(data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb);
   });
 
   socket.on('build_road', (data, cb) => {
@@ -356,43 +361,51 @@ io.on('connection', (socket) => {
   });
 
   socket.on('build_city', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.buildCity(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
+  });
+
+  socket.on('upgrade_city', (data, cb) => {
+    handleGameAction(data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('build_city_wall', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.buildCityWall(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.buildCityWall(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('improve_city', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.improveCityTrack(currentPlayerId, data.track), cb);
+    handleGameAction(data?.code, (engine) => engine.improveCityTrack(currentPlayerId, data?.track), cb);
   });
 
   socket.on('claim_aqueduct_resource', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.claimAqueductResource(currentPlayerId, data.resource), cb);
+    handleGameAction(data?.code, (engine) => engine.claimAqueductResource(currentPlayerId, data?.resource), cb);
   });
 
   socket.on('choose_metropolis', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.chooseMetropolis(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.chooseMetropolis(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('place_knight', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.placeKnight(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.placeKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('activate_knight', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.activateKnight(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.activateKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('promote_knight', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.promoteKnight(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.promoteKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('move_knight', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.moveKnight(currentPlayerId, data.fromVertexId, data.toVertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.moveKnight(currentPlayerId, data?.fromVertexId, data?.toVertexId), cb);
   });
 
   socket.on('relocate_displaced_knight', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data.vertexId), cb);
+    handleGameAction(data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
+  });
+
+  socket.on('relocate_knight', (data, cb) => {
+    handleGameAction(data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('chase_robber', (data, cb) => {
