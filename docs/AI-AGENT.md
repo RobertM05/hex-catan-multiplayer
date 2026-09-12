@@ -76,7 +76,8 @@ Authorization: Bearer <host-reconnect-token>
 
 ### 3.2 Socket.IO Summon Event
 ```javascript
-socket.emit('spawn_ai_agent', { roomCode: 'ABCD', name: 'ClaudeSettler' }, (response) => {
+// Only the room host may invoke this event.
+socket.emit('spawn_ai_agent', { roomCode: 'ABCD2', name: 'ClaudeSettler' }, (response) => {
   console.log(response); // { success: true, name: 'ClaudeSettler', pid: 48292 }
 });
 ```
