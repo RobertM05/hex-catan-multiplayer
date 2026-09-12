@@ -379,6 +379,8 @@ export class RoomManager {
             engine.downgradeCity(pId, p.citiesBuilt[0]);
           }
         }
+      } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
+        engine.autoResolveKnightRelocation();
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }
@@ -434,6 +436,25 @@ export class RoomManager {
             }
           }, 800);
         }
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
+      const pending = engine.pendingKnightRelocation;
+      const chooser = pending && engine.players.find(p => p.id === pending.playerId);
+      if (chooser && chooser.isBot) {
+        setTimeout(() => {
+          if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
+            try {
+              engine.autoResolveKnightRelocation();
+              this.broadcastState(room);
+              this.checkAndTriggerBotTurn(room);
+            } catch (err) {
+              console.error('Bot knight relocate error:', err);
+            }
+          }
+        }, 800);
       }
       return;
     }

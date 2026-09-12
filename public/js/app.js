@@ -520,6 +520,10 @@ class CatanApp {
           this.clearActiveAction();
         } else if (this.selectedAction && this.selectedAction.type === 'move_knight') {
           await this.confirmAndMoveKnight(this.selectedAction.fromVertexId, vertexId);
+        } else if (this.gameState.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' || (this.selectedAction && this.selectedAction.type === 'relocate_knight')) {
+          await network.sendAction('relocate_displaced_knight', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -849,7 +853,9 @@ class CatanApp {
     try {
       const res = await network.sendAction('move_knight', { fromVertexId, toVertexId });
       audio.playBuild();
-      if (res?.displaced?.removed) {
+      if (res?.displaced?.pending) {
+        this.showToast(i18n.t('KNIGHT_DISPLACE_WAIT'));
+      } else if (res?.displaced?.removed) {
         this.showToast(i18n.t('KNIGHT_DISPLACED_REMOVED'));
       } else if (res?.displaced?.vertexId) {
         this.showToast(i18n.t('KNIGHT_DISPLACED_MOVED'));
@@ -1904,6 +1910,15 @@ class CatanApp {
       } else {
         this.boardRenderer.render(s.grid, null);
       }
+    } else if (s.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE') {
+      const pending = s.pendingKnightRelocation;
+      if (pending && pending.playerId === this.myPlayerId) {
+        const validIds = new Set(pending.options || []);
+        this.selectedAction = { type: 'relocate_knight', validIds };
+        this.boardRenderer.render(s.grid, { type: 'knight', validIds }, null, s.players);
+      } else {
+        this.boardRenderer.render(s.grid, null, null, s.players);
+      }
     } else if (s.phase === 'TURN_ROBBER' && s.players[s.currentTurnPlayerIndex].id === this.myPlayerId) {
       // Robber target highlight
       this.boardRenderer.render(s.grid, { type: 'robber' });
@@ -2066,6 +2081,15 @@ class CatanApp {
         hintText = i18n.t('ACTION_HINT_ROBBER');
       } else if (curPlayer) {
         hintText = i18n.t('SETUP_HINT_WAITING', { playerName: curPlayer.name });
+      }
+    } else if (s.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE') {
+      const pending = s.pendingKnightRelocation;
+      const chooser = pending && s.players.find(p => p.id === pending.playerId);
+      if (pending && pending.playerId === this.myPlayerId) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_KNIGHT_RELOCATE');
+      } else if (chooser) {
+        hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
       }
     } else if (s.phase === 'TURN_ROLL') {
       if (isMyTurn) {

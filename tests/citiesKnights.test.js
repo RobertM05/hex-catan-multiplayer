@@ -775,4 +775,30 @@ describe('CK-11: Knight State in UI', () => {
     assert.equal(asOpponent.knightsAvailable, undefined);
     assert.ok(Array.isArray(self.knightsPlaced));
   });
+
+  it('lets the displaced player choose a relocation vertex', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    const dest = engine.grid.vertices.get(otherVertexId);
+    const escapeEdgeId = dest.adjacentEdges.find((eid) => {
+      const e = engine.grid.edges.get(eid);
+      return !e.road;
+    });
+    const escapeEdge = engine.grid.edges.get(escapeEdgeId);
+    escapeEdge.road = { playerId: 'p2', color: '#457b9d' };
+    engine.players[1].roadsBuilt.push(escapeEdgeId);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'strong', active: true });
+    plantKnight(engine, 'p2', otherVertexId, { rank: 'basic', active: true });
+    const result = engine.moveKnight('p1', vertex.id, otherVertexId);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE);
+    assert.equal(result.displaced.pending, true);
+    assert.ok(result.displaced.options.length > 0);
+    const pick = result.displaced.options[0];
+    engine.relocateDisplacedKnight('p2', pick);
+    assert.equal(engine.grid.vertices.get(pick).knight.playerId, 'p2');
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.getStateForPlayer('p1').pendingKnightRelocation, null);
+  });
 });
