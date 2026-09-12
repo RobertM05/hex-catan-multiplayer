@@ -16,10 +16,12 @@ import {
   unplayedProgressCards,
   revealedProgressCards
 } from './progressCards.js';
+import { TurnTimerUI } from './turnTimer.js';
 
 class CatanApp {
   constructor() {
     this.boardRenderer = null;
+    this.turnTimerUI = new TurnTimerUI({ audio });
     this.currentRoom = null;
     this.gameState = null;
     this.selectedAction = null; // { type: 'settlement'|'road'|'city'|'robber', validIds: Set }
@@ -2459,10 +2461,16 @@ class CatanApp {
     };
 
     network.onTimerTick = (data) => {
-      const timerEl = document.getElementById('turn-timer-display');
-      if (timerEl) {
-        timerEl.textContent = `${data.remaining}s`;
-        timerEl.style.color = data.remaining <= 10 ? '#ef4444' : '#38bdf8';
+      const s = this.gameState;
+      const isMyTurn = s && s.players && s.players[s.currentTurnPlayerIndex]?.id === this.myPlayerId;
+      if (s && s.phase === 'TURN_DISCARD' && s.discardDeadline) {
+        this.turnTimerUI.syncDiscard({ discardDeadline: s.discardDeadline, isMyTurn });
+      } else {
+        this.turnTimerUI.update({
+          remaining: data.remaining,
+          duration: data.duration,
+          isMyTurn
+        });
       }
     };
 
@@ -2579,6 +2587,17 @@ class CatanApp {
     document.getElementById('turn-commander-name').textContent = curPlayer.name;
     document.getElementById('turn-commander-name').style.color = curPlayer.color;
     document.getElementById('round-number-display').textContent = s.turnNumber;
+
+    // Synchronize Turn Timer immediately (zero-flicker on state refresh / reconnect)
+    if (s.phase === 'TURN_DISCARD' && s.discardDeadline) {
+      this.turnTimerUI.syncDiscard({ discardDeadline: s.discardDeadline, isMyTurn });
+    } else if (this.currentRoom) {
+      this.turnTimerUI.update({
+        remaining: this.currentRoom.turnTimeRemaining,
+        duration: this.currentRoom.turnDuration,
+        isMyTurn
+      });
+    }
 
     const statusEl = document.getElementById('turn-phase-status');
     if (statusEl) {

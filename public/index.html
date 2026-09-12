@@ -196,9 +196,14 @@
             <span id="turn-commander-name" class="turn-commander">---</span>
           </div>
           <div id="turn-phase-status" class="turn-phase-status"></div>
-          <div class="turn-timer-bar">
-            <span class="timer-icon ico" data-icon="clock"></span>
-            <span id="turn-timer-display">60s</span>
+          <div class="turn-timer-bar timer-normal" id="turn-timer-wrapper">
+            <div class="timer-header">
+              <span class="timer-icon ico" data-icon="clock"></span>
+              <span id="turn-timer-display">--</span>
+            </div>
+            <div class="timer-progress-track" id="turn-timer-track">
+              <div class="timer-progress-fill" id="turn-timer-fill"></div>
+            </div>
           </div>
         </div>
 
