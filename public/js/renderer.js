@@ -272,7 +272,7 @@ export class BoardRenderer {
         g.appendChild(tokenG);
       }
 
-      // If interactive action is robber move, allow click
+      // If interactive action is robber move or a progress-card hex pick
       if (this.selectedAction && this.selectedAction.type === 'robber' && hex.id !== this.grid.robberHexId) {
         g.classList.add('hex-robber-target');
         poly.setAttribute('stroke', '#ffb703');
@@ -282,6 +282,18 @@ export class BoardRenderer {
           e.stopPropagation();
           if (this.onHexClick) this.onHexClick(hex.id);
         });
+      } else if (this.selectedAction && this.selectedAction.type === 'progress_hex') {
+        const allowed = !this.selectedAction.validIds || this.selectedAction.validIds.has(hex.id);
+        if (allowed) {
+          g.classList.add('hex-progress-target');
+          poly.setAttribute('stroke', '#90e0ef');
+          poly.setAttribute('stroke-width', '4');
+          g.style.cursor = 'pointer';
+          g.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.onHexClick) this.onHexClick(hex.id);
+          });
+        }
       }
 
       this.hexLayer.appendChild(g);
@@ -429,6 +441,17 @@ export class BoardRenderer {
         innerLine.setAttribute('stroke-width', '2');
         innerLine.setAttribute('stroke-linecap', 'round');
         g.appendChild(innerLine);
+
+        if (this.selectedAction && this.selectedAction.type === 'progress_road'
+          && this.selectedAction.validIds && this.selectedAction.validIds.has(edge.id)) {
+          g.style.cursor = 'pointer';
+          g.classList.add('valid-progress-road');
+          line.setAttribute('stroke-width', '11');
+          g.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.onEdgeClick) this.onEdgeClick(edge.id);
+          });
+        }
       } else {
         // If interactive road build action is active and valid
         const isInteractive = this.selectedAction &&
@@ -608,6 +631,25 @@ export class BoardRenderer {
           });
           g.appendChild(targetG);
         }
+      }
+
+      if (this.selectedAction && this.selectedAction.type === 'progress_vertex'
+        && this.selectedAction.validIds && this.selectedAction.validIds.has(v.id)) {
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('cx', v.x);
+        ring.setAttribute('cy', v.y);
+        ring.setAttribute('r', '18');
+        ring.setAttribute('class', 'interactive-node valid-progress-vertex');
+        ring.setAttribute('fill', 'rgba(144, 224, 239, 0.2)');
+        ring.setAttribute('stroke', '#90e0ef');
+        ring.setAttribute('stroke-width', '2.5');
+        ring.setAttribute('stroke-dasharray', '4,3');
+        ring.style.cursor = 'pointer';
+        ring.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.onVertexClick) this.onVertexClick(v.id);
+        });
+        g.appendChild(ring);
       }
 
       this.vertexLayer.appendChild(g);

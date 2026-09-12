@@ -600,6 +600,16 @@
   z-index: 25;
 }
 
+body.mode-cities-knights .hud-bottom {
+  height: auto;
+  min-height: 96px;
+  max-height: 220px;
+  padding: 8px 18px 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .resource-cards-deck {
   display: flex;
   gap: 10px;
@@ -1567,4 +1577,124 @@ input[type="number"] {
 .barbarian-city-btn {
   width: 100%;
   text-align: left;
+}
+
+.progress-cards-panel {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  flex: 1 1 100%;
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
+  display: flex !important;
+}
+
+.progress-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.progress-cards-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-primary);
+}
+.progress-limit-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.progress-cards-panel.at-limit .progress-limit-hint {
+  color: #f59e0b;
+  font-weight: 700;
+}
+.progress-card-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.progress-card {
+  width: 70px;
+  height: 100px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  color: #fff;
+  text-align: center;
+  transition: transform 0.2s;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+.progress-card:hover { transform: translateY(-8px); }
+.progress-card.playing { animation: progress-card-play 0.35s ease forwards; }
+@keyframes progress-card-play {
+  to { transform: translateX(80px); opacity: 0; }
+}
+.progress-card .card-icon { font-size: 22px; line-height: 1; }
+.progress-card .card-name { font-size: 10px; font-weight: 700; line-height: 1.2; }
+.card-trade { background: linear-gradient(135deg, #FFB703, #FB8500); }
+.card-politics { background: linear-gradient(135deg, #219EBC, #023047); }
+.card-science { background: linear-gradient(135deg, #52B788, #2D6A4F); }
+.progress-special-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.progress-special-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid #facc15;
+  color: #facc15;
+}
+.progress-card-modal-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+}
+.progress-card-target-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-target-btn, .progress-discard-item {
+  width: 100%;
+  text-align: left;
+}
+.progress-discard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.alchemist-dice-row {
+  display: flex;
+  gap: 10px;
+}
+.alchemist-dice-row label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.alchemist-dice-row select {
+  width: 100%;
+  margin-top: 4px;
+}
+.progress-card-reveal {
+  animation: progress-card-reveal 0.45s ease;
+}
+@keyframes progress-card-reveal {
+  from { transform: scale(0.6) rotateY(90deg); opacity: 0; }
+  to { transform: scale(1) rotateY(0); opacity: 1; }
 }
