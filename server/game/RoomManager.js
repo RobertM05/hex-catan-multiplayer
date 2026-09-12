@@ -3,7 +3,7 @@
  * Manages multiplayer game rooms, lobby state, bot lifecycle, and turn timers.
  */
 
-import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode } from './GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 
 export class RoomManager {
@@ -45,6 +45,7 @@ export class RoomManager {
       players: [], // { id, name, color, isReady, isBot, socketId }
       engine,
       turnTimerInterval: null,
+      discardTimer: null,
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: []
     };
@@ -286,6 +287,51 @@ export class RoomManager {
     room.turnTimeRemaining = room.turnDuration;
   }
 
+  // Schedule the auto discard timeout for humans who must discard after a 7.
+  // Bots are handled by checkAndTriggerBotTurn; this covers real players only.
+  checkDiscardTimer(room) {
+    const engine = room.engine;
+    if (engine.phase !== GAME_PHASES.TURN_DISCARD) {
+      if (room.discardTimer) {
+        clearTimeout(room.discardTimer);
+        room.discardTimer = null;
+      }
+      return;
+    }
+    if (room.discardTimer) return; // already scheduled
+
+    const humansPending = Array.from(engine.pendingDiscards).filter(id => {
+      const p = engine.players.find(x => x.id === id);
+      return p && !p.isBot;
+    });
+    if (humansPending.length === 0) return;
+
+    const waitMs = Math.max(0, (engine.discardDeadline || (Date.now() + DISCARD_TIMEOUT_MS)) - Date.now());
+    room.discardTimer = setTimeout(() => {
+      room.discardTimer = null;
+      try {
+        if (room.engine.phase !== GAME_PHASES.TURN_DISCARD) return;
+        for (const id of Array.from(room.engine.pendingDiscards)) {
+          const p = room.engine.players.find(x => x.id === id);
+          if (p && !p.isBot) {
+            try {
+              room.engine.autoDiscardCards(id);
+            } catch (err) {
+              console.error('Auto discard error:', err);
+            }
+          }
+        }
+        this.broadcastState(room);
+        this.checkAndTriggerBotTurn(room);
+      } catch (err) {
+        console.error('Discard timer error:', err);
+      }
+    }, waitMs);
+    if (typeof room.discardTimer.unref === 'function') {
+      room.discardTimer.unref();
+    }
+  }
+
   handleTurnTimeout(room) {
     if (!room || !room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) return;
 
@@ -507,8 +553,9 @@ export class RoomManager {
 
   destroyRoom(code) {
     const room = this.rooms.get(code);
-    if (room && room.turnTimerInterval) {
-      clearInterval(room.turnTimerInterval);
+    if (room) {
+      if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
+      if (room.discardTimer) clearTimeout(room.discardTimer);
     }
     this.rooms.delete(code);
   }

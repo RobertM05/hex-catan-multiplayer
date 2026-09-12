@@ -787,8 +787,36 @@ class CatanApp {
       }
 
       modal.classList.add('active');
+      this.startDiscardCountdown();
     } else {
       modal.classList.remove('active');
+      this.stopDiscardCountdown();
+    }
+  }
+
+  startDiscardCountdown() {
+    this.stopDiscardCountdown();
+    const el = document.getElementById('discard-timer-display');
+    if (!el) return;
+
+    const tick = () => {
+      const deadline = this.gameState?.discardDeadline;
+      if (!deadline) {
+        el.textContent = '';
+        return;
+      }
+      const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      el.textContent = `${secs}s`;
+      el.style.color = secs <= 10 ? '#ef4444' : 'var(--gold-primary)';
+    };
+    tick();
+    this.discardTimerInterval = setInterval(tick, 500);
+  }
+
+  stopDiscardCountdown() {
+    if (this.discardTimerInterval) {
+      clearInterval(this.discardTimerInterval);
+      this.discardTimerInterval = null;
     }
   }
 
@@ -1681,13 +1709,27 @@ class CatanApp {
 
   renderActiveTradeBanner(activeTrade) {
     const banner = document.getElementById('active-trade-banner');
+    if (!banner) return;
     if (!activeTrade) {
       banner.style.display = 'none';
+      this.lastTradeKey = null;
       return;
     }
 
     const isMine = activeTrade.fromPlayerId === this.myPlayerId;
     banner.style.display = 'flex';
+
+    // Notify receivers once per new incoming offer
+    if (!isMine) {
+      const key = `${activeTrade.fromPlayerId}:${JSON.stringify(activeTrade.give)}:${JSON.stringify(activeTrade.want)}`;
+      if (key !== this.lastTradeKey) {
+        const from = this.gameState.players.find(p => p.id === activeTrade.fromPlayerId);
+        this.showToast(i18n.t('TRADE_OFFER_FROM', { name: from ? from.name : '?' }));
+        this.lastTradeKey = key;
+      }
+    } else {
+      this.lastTradeKey = null;
+    }
 
     const giveStr = Object.entries(activeTrade.give).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');
     const wantStr = Object.entries(activeTrade.want).filter(([_, c]) => c > 0).map(([r, c]) => `${c} ${i18n.t(`RES_${r.toUpperCase()}`)}`).join(', ');

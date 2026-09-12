@@ -322,8 +322,6 @@
           </button>
         </div>
 
-        <!-- Active Domestic Trade Floating Banner -->
-        <div id="active-trade-banner" style="display: none; position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: var(--bg-surface-elevated); border: 1px solid var(--border-focus); border-radius: 10px; padding: 10px 18px; box-shadow: var(--shadow-lg); z-index: 30; align-items: center; gap: 16px;"></div>
       </div>
 
       <!-- Bottom Player Hand Dock -->
@@ -451,6 +449,9 @@
   <!-- =========================================================
    * MODALS (Trade, Discard, Robber, Dev Cards, Rules, Victory)
    * ========================================================= -->
+
+  <!-- Active Domestic Trade Banner (viewport level, above the board) -->
+  <div id="active-trade-banner" style="display: none; position: fixed; top: 72px; left: 50%; transform: translateX(-50%); background: var(--bg-surface-elevated); border: 1px solid var(--border-focus); border-radius: 10px; padding: 10px 18px; box-shadow: var(--shadow-lg); z-index: 950; align-items: center; gap: 16px; max-width: 94%;"></div>
 
   <!-- Trade Modal -->
   <div id="trade-modal" class="modal-overlay">
@@ -682,6 +683,7 @@
     <div class="modal-box" style="max-width: 560px; width: 94%;">
       <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h3 class="modal-title" style="color: #f87171; margin: 0;" data-i18n="DISCARD_TITLE">Decartare cărți (Zar 7)</h3>
+        <span id="discard-timer-display" style="font-size: 13px; font-weight: 700; color: var(--gold-primary);"></span>
       </div>
       <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="DISCARD_INSTRUCTION">Ai mai mult de 7 cărți în mână. Selectează jumătate din ele pentru decartare:</p>
       <div style="font-size: 13px; font-weight: 700; color: var(--gold-primary); margin-bottom: 12px; display: flex; justify-content: space-between;">

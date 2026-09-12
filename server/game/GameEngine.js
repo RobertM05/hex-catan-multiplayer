@@ -70,6 +70,9 @@ export const DEV_CARD_TYPES = {
   MONOPOLY: 'monopoly'
 };
 
+// How long players have to choose discard cards after a 7 before auto discard kicks in
+export const DISCARD_TIMEOUT_MS = 30000;
+
 export class GameEngine {
   constructor(options = {}) {
     this.roomId = options.roomId || 'default-room';
@@ -94,6 +97,7 @@ export class GameEngine {
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
+    this.discardDeadline = null; // timestamp by which pending players must discard
 
     // Trade state
     this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
@@ -540,6 +544,7 @@ export class GameEngine {
 
       if (this.pendingDiscards.size > 0) {
         this.phase = GAME_PHASES.TURN_DISCARD;
+        this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
         this.logEvent({
           type: 'DISCARD_REQUIRED',
           messageKey: 'LOG_DISCARD_REQUIRED',
@@ -547,6 +552,7 @@ export class GameEngine {
         });
       } else {
         this.phase = GAME_PHASES.TURN_ROBBER;
+        this.discardDeadline = null;
       }
       return { dice: this.dice, sum: rollSum, produces: {}, robber: true };
     }
@@ -662,9 +668,44 @@ export class GameEngine {
 
     if (this.pendingDiscards.size === 0) {
       this.phase = GAME_PHASES.TURN_ROBBER;
+      this.discardDeadline = null;
     }
 
     return { remainingPending: Array.from(this.pendingDiscards) };
+  }
+
+  // Discard half of the player's cards automatically, largest stacks first.
+  // Used when the discard timer expires. Reuses discardCards for validation.
+  autoDiscardCards(playerId) {
+    if (this.phase !== GAME_PHASES.TURN_DISCARD) throw new Error('NOT_IN_DISCARD_PHASE');
+    if (!this.pendingDiscards.has(playerId)) throw new Error('NO_DISCARD_NEEDED');
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+
+    const need = Math.floor(this.countTotalCards(player) / 2);
+    const discarded = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0, cloth: 0, coin: 0, paper: 0 };
+    let left = need;
+    while (left > 0) {
+      let maxKey = null;
+      let maxCount = -1;
+      const pickMax = (entries) => {
+        for (const [key, count] of Object.entries(entries)) {
+          const remaining = count - (discarded[key] || 0);
+          if (remaining > maxCount && remaining > 0) {
+            maxCount = remaining;
+            maxKey = key;
+          }
+        }
+      };
+      pickMax(player.resources || {});
+      if (this.isCitiesKnights()) pickMax(player.commodities || {});
+      if (!maxKey) break;
+      discarded[maxKey]++;
+      left--;
+    }
+
+    this.discardCards(playerId, discarded);
+    return { playerId, discarded, auto: true };
   }
 
   moveRobber(playerId, hexId, targetPlayerId = null) {
@@ -1436,6 +1477,7 @@ export class GameEngine {
       hasRolledDice: this.hasRolledDice,
       grid: this.grid ? this.grid.toJSON() : null,
       pendingDiscards: Array.from(this.pendingDiscards),
+      discardDeadline: this.discardDeadline,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
         acceptedBy: Array.from(this.activeTrade.acceptedBy)

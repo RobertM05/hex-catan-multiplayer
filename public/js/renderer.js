@@ -365,6 +365,17 @@ export class BoardRenderer {
       g.setAttribute('data-edge-id', edge.id);
 
       if (edge.road) {
+        // Dark casing under the road so it stands out on any terrain color
+        const casing = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        casing.setAttribute('x1', edge.x1);
+        casing.setAttribute('y1', edge.y1);
+        casing.setAttribute('x2', edge.x2);
+        casing.setAttribute('y2', edge.y2);
+        casing.setAttribute('stroke', 'rgba(0,0,0,0.45)');
+        casing.setAttribute('stroke-width', '12');
+        casing.setAttribute('stroke-linecap', 'round');
+        g.appendChild(casing);
+
         // Built road: stylized thick wooden beam
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line.setAttribute('x1', edge.x1);

@@ -23,7 +23,12 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager(io);
 
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, {
+  setHeaders: (res) => {
+    // Prevent stale clients after deploys: always revalidate HTML and JS
+    res.setHeader('Cache-Control', 'no-store');
+  }
+}));
 app.use(express.json());
 
 // API: List public rooms
@@ -190,6 +195,7 @@ io.on('connection', (socket) => {
       roomManager.resetTurnTimer(room);
       roomManager.broadcastState(room);
       roomManager.checkAndTriggerBotTurn(room);
+      roomManager.checkDiscardTimer(room);
       if (callback) callback({ success: true, ...result });
     } catch (err) {
       if (callback) callback({ success: false, error: err.message });

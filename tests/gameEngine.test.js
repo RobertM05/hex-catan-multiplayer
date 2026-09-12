@@ -190,3 +190,103 @@ describe('RoomManager lifecycle', () => {
     roomManager.destroyRoom(room.code);
   });
 });
+
+describe('Discard timer on 7 roll', () => {
+  function makeEngine() {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    return engine;
+  }
+
+  function forceSevenRoll(engine) {
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const originalRandom = Math.random;
+    let call = 0;
+    Math.random = () => {
+      call += 1;
+      // First call 2/6 -> die 3, second call 3/6 -> die 4, sum 7
+      return call % 2 === 1 ? 2 / 6 : 3 / 6;
+    };
+    try {
+      engine.rollDice('p1');
+    } finally {
+      Math.random = originalRandom;
+    }
+  }
+
+  it('sets discardDeadline when a 7 forces discards', () => {
+    const engine = makeEngine();
+    engine.players[0].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 4 };
+    const before = Date.now();
+    forceSevenRoll(engine);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.discardDeadline >= before + 29000, 'deadline must be roughly 30s out');
+    assert.ok(engine.discardDeadline <= before + 31000);
+    assert.ok(engine.pendingDiscards.has('p1'));
+  });
+
+  it('autoDiscardCards discards half from largest stacks and clears deadline', () => {
+    const engine = makeEngine();
+    engine.players[0].resources = { wood: 4, brick: 0, wool: 0, wheat: 2, ore: 2 };
+    forceSevenRoll(engine);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+
+    const result = engine.autoDiscardCards('p1');
+    assert.equal(result.auto, true);
+    assert.equal(engine.pendingDiscards.size, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.discardDeadline, null);
+    const total = engine.countTotalCards(engine.players[0]);
+    assert.equal(total, 4, 'half of 8 cards remain');
+  });
+
+  it('serializes discardDeadline in state', () => {
+    const engine = makeEngine();
+    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    forceSevenRoll(engine);
+    const state = engine.getStateForPlayer('p1');
+    assert.ok(state.discardDeadline > 0);
+    const stateP2 = engine.getStateForPlayer('p2');
+    assert.ok(stateP2.discardDeadline > 0, 'deadline is visible to all players');
+  });
+
+  it('RoomManager auto discards humans when the timer expires', async () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'h1', name: 'Host1', socketId: 's1' });
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.startGame(room.code, 'h1');
+
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_DISCARD;
+    engine.pendingDiscards.add('h1');
+    engine.players[0].resources = { wood: 6, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.discardDeadline = Date.now() + 200;
+
+    roomManager.checkDiscardTimer(room);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    assert.equal(engine.pendingDiscards.size, 0, 'human should be auto discarded');
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.players[0].resources.wood, 3, 'half of 6 cards remain');
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('autoDiscardCards handles commodity only hands in C&K mode', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_DISCARD;
+    engine.pendingDiscards.add('p1');
+    engine.players[0].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[0].commodities = { cloth: 4, coin: 0, paper: 0 };
+
+    engine.autoDiscardCards('p1');
+    assert.equal(engine.players[0].commodities.cloth, 2, 'half of 4 cloth discarded');
+    assert.equal(engine.pendingDiscards.size, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+  });
+});
