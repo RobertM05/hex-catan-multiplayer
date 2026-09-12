@@ -9,6 +9,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { fork } from 'child_process';
 import { RoomManager } from './game/RoomManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,6 +23,35 @@ const io = new Server(server, {
 });
 
 const roomManager = new RoomManager(io);
+const spawnedAgents = new Map(); // roomCode -> childProcess[]
+
+export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
+  const code = roomCode.toUpperCase();
+  const scriptPath = path.join(__dirname, '..', 'scripts', 'aiAgentClient.js');
+  const addr = server.address();
+  const port = (addr && typeof addr === 'object' && addr.port) ? addr.port : (process.env.PORT || 3000);
+  const child = fork(scriptPath, [
+    '--server', `http://localhost:${port}`,
+    '--room', code,
+    '--name', agentName
+  ], {
+    detached: false
+  });
+
+  if (!spawnedAgents.has(code)) {
+    spawnedAgents.set(code, []);
+  }
+  spawnedAgents.get(code).push(child);
+
+  child.on('exit', () => {
+    const list = spawnedAgents.get(code) || [];
+    const filtered = list.filter(c => c !== child);
+    if (filtered.length > 0) spawnedAgents.set(code, filtered);
+    else spawnedAgents.delete(code);
+  });
+
+  return child;
+}
 
 app.use(express.static(publicDir, {
   setHeaders: (res) => {
@@ -34,6 +64,23 @@ app.use(express.json());
 // API: List public rooms
 app.get('/api/rooms', (req, res) => {
   res.json(roomManager.getPublicRooms());
+});
+
+// API: Spawn external AI agent into a room
+app.post('/api/rooms/:code/spawn-agent', (req, res) => {
+  try {
+    const roomCode = req.params.code.toUpperCase();
+    const room = roomManager.getRoom(roomCode);
+    if (!room) return res.status(404).json({ success: false, error: 'ROOM_NOT_FOUND' });
+    if (room.isStarted) return res.status(400).json({ success: false, error: 'GAME_ALREADY_STARTED' });
+    if (room.players.length >= room.maxPlayers) return res.status(400).json({ success: false, error: 'ROOM_FULL' });
+
+    const name = req.body?.name || `Agent-${Math.floor(1000 + Math.random() * 9000)}`;
+    const child = spawnAgentProcess(roomCode, name);
+    res.json({ success: true, roomCode, name, pid: child?.pid });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Socket.IO event handler
@@ -70,7 +117,8 @@ io.on('connection', (socket) => {
   socket.on('join_room', (data, callback) => {
     try {
       const playerId = data.playerId || `p_${socket.id.substring(0, 6)}`;
-      const result = roomManager.joinRoom(data.code, {
+      const roomCode = data.code || data.roomCode;
+      const result = roomManager.joinRoom(roomCode, {
         id: playerId,
         name: data.playerName,
         socketId: socket.id
@@ -111,6 +159,26 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('spawn_ai_agent', (data, callback) => {
+    try {
+      const roomCode = (data && (data.code || data.roomCode)) || currentRoomCode;
+      if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
+      const room = roomManager.getRoom(roomCode);
+      if (!room) throw new Error('ROOM_NOT_FOUND');
+      if (room.isStarted) throw new Error('GAME_ALREADY_STARTED');
+      if (room.players.length >= room.maxPlayers) throw new Error('ROOM_FULL');
+
+      const agentNames = ['AlphaSettler', 'DeepHex', 'ClaudeBot', 'GeminiKnight', 'SnighiBot', 'HexMaster'];
+      const existingNames = room.players.map(p => p.name);
+      const name = (data && data.name) || agentNames.find(n => !existingNames.includes(n)) || `Agent-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const child = spawnAgentProcess(roomCode, name);
+      if (callback) callback({ success: true, name, pid: child?.pid });
+    } catch (err) {
+      if (callback) callback({ success: false, error: err.message });
+    }
+  });
+
   socket.on('remove_player', (data, callback) => {
     try {
       const room = roomManager.getRoom(data.code);
@@ -127,11 +195,15 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('set_ready', (data) => {
-    const ok = roomManager.setPlayerReady(data.code, currentPlayerId, data.isReady);
+  socket.on('set_ready', (data, callback) => {
+    const code = (data && (data.code || data.roomCode));
+    const ok = roomManager.setPlayerReady(code, currentPlayerId, data.isReady);
     if (ok) {
-      const room = roomManager.getRoom(data.code);
+      const room = roomManager.getRoom(code);
       roomManager.broadcastLobbyState(room);
+      if (callback) callback({ success: true });
+    } else {
+      if (callback) callback({ success: false });
     }
   });
 
@@ -371,6 +443,10 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
-});
+if (process.argv[1] && process.argv[1].endsWith('server.js')) {
+  server.listen(PORT, () => {
+    console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
+  });
+}
+
+export { app, server, io, roomManager };

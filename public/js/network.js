@@ -85,6 +85,15 @@ export class NetworkClient {
     });
   }
 
+  spawnAiAgent(name = null) {
+    return new Promise((resolve, reject) => {
+      this.socket.emit('spawn_ai_agent', { code: this.currentRoomCode, name }, (res) => {
+        if (res && res.success) resolve(res);
+        else reject(new Error(res ? res.error : 'Failed to spawn AI agent'));
+      });
+    });
+  }
+
   removePlayer(id) {
     return new Promise((resolve, reject) => {
       this.socket.emit('remove_player', { code: this.currentRoomCode, id }, (res) => {
