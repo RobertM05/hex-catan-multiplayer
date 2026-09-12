@@ -9,7 +9,11 @@
   height: 100%;
   flex: 1;
   overflow: hidden;
-  background: #0b111e;
+  background:
+    radial-gradient(900px 520px at 50% 42%, oklch(0.28 0.04 230 / 0.28), transparent 62%),
+    radial-gradient(oklch(1 0 0 / 0.03) 1px, transparent 1px),
+    oklch(0.12 0.02 250);
+  background-size: auto, 22px 22px, auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -40,7 +44,17 @@
 }
 
 .hex-terrain-icon {
-  opacity: 0.75;
+  opacity: 0.92;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+.hex-icon-wool,
+.hex-icon-wheat {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.45)) drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+
+.harbor-badge-icon {
   pointer-events: none;
 }
 
@@ -149,6 +163,7 @@
 /* Robber Figure */
 .robber-figure {
   pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
 /* Board Floating Hint Banner */
@@ -218,6 +233,10 @@
   font-size: 16px;
   box-shadow: var(--shadow-sm);
   transition: all var(--transition-fast);
+}
+
+.board-control-btn .ico {
+  font-size: 16px;
 }
 
 .board-control-btn:hover {

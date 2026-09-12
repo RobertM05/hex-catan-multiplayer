@@ -228,6 +228,7 @@ export class HexGrid {
             adjacentVertices: new Set(),
             adjacentEdges: new Set(),
             building: null, // { type: 'settlement'|'city', playerId, color }
+            knight: null, // { playerId, rank, active, strength, vertexId }
             harbor: null
           });
         }
