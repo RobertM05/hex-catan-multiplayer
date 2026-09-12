@@ -192,12 +192,12 @@ class CatanApp {
 
   switchLobbyTab(tab) {
     document.querySelectorAll('.lobby-tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.lobby-tab-content').forEach(c => c.style.display = 'none');
+    document.querySelectorAll('.lobby-tab-content').forEach(c => c.classList.add('is-hidden'));
 
     const activeBtn = document.getElementById(`tab-btn-${tab}`);
     const activeContent = document.getElementById(`tab-content-${tab}`);
     if (activeBtn) activeBtn.classList.add('active');
-    if (activeContent) activeContent.style.display = 'block';
+    if (activeContent) activeContent.classList.remove('is-hidden');
 
     if (tab === 'public') {
       this.refreshPublicRooms();
@@ -341,8 +341,8 @@ class CatanApp {
     slotsContainer.innerHTML = '';
 
     const isHost = lobbyData.hostId === this.myPlayerId;
-    document.getElementById('btn-start-game').style.display = isHost ? 'block' : 'none';
-    document.getElementById('btn-add-bot').style.display = isHost && lobbyData.players.length < lobbyData.maxPlayers ? 'block' : 'none';
+    document.getElementById('btn-start-game').classList.toggle('is-hidden', !isHost);
+    document.getElementById('btn-add-bot').classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
 
     lobbyData.players.forEach(p => {
       const card = document.createElement('div');
@@ -493,15 +493,15 @@ class CatanApp {
     document.getElementById('tab-btn-log').addEventListener('click', () => {
       document.getElementById('tab-btn-log').classList.add('active');
       document.getElementById('tab-btn-chat').classList.remove('active');
-      document.getElementById('panel-log').style.display = 'flex';
-      document.getElementById('panel-chat').style.display = 'none';
+      document.getElementById('panel-log').classList.remove('is-hidden');
+      document.getElementById('panel-chat').classList.add('is-hidden');
     });
 
     document.getElementById('tab-btn-chat').addEventListener('click', () => {
       document.getElementById('tab-btn-chat').classList.add('active');
       document.getElementById('tab-btn-log').classList.remove('active');
-      document.getElementById('panel-chat').style.display = 'flex';
-      document.getElementById('panel-log').style.display = 'none';
+      document.getElementById('panel-chat').classList.remove('is-hidden');
+      document.getElementById('panel-log').classList.add('is-hidden');
     });
 
     // Chat submit
@@ -1659,8 +1659,8 @@ class CatanApp {
       if (tabPlayer && tabBank && sectionPlayer && sectionBank) {
         tabPlayer.classList.add('active');
         tabBank.classList.remove('active');
-        sectionPlayer.style.display = 'block';
-        sectionBank.style.display = 'none';
+        sectionPlayer.classList.remove('is-hidden');
+        sectionBank.classList.add('is-hidden');
       }
       tradeModal.classList.add('active');
     });
@@ -1677,15 +1677,15 @@ class CatanApp {
       tabPlayer.addEventListener('click', () => {
         tabPlayer.classList.add('active');
         tabBank.classList.remove('active');
-        sectionPlayer.style.display = 'block';
-        sectionBank.style.display = 'none';
+        sectionPlayer.classList.remove('is-hidden');
+        sectionBank.classList.add('is-hidden');
       });
 
       tabBank.addEventListener('click', () => {
         tabBank.classList.add('active');
         tabPlayer.classList.remove('active');
-        sectionBank.style.display = 'block';
-        sectionPlayer.style.display = 'none';
+        sectionBank.classList.remove('is-hidden');
+        sectionPlayer.classList.add('is-hidden');
         this.renderBankTradeUI();
       });
     }
@@ -1988,7 +1988,7 @@ class CatanApp {
     const badge = document.getElementById('dev-card-badge');
     if (badge) {
       badge.textContent = cards.length;
-      badge.style.display = cards.length > 0 ? 'inline-flex' : 'none';
+      badge.classList.toggle('is-hidden', cards.length === 0);
     }
   }
 
@@ -2388,15 +2388,11 @@ class CatanApp {
       }
       const devBadge = document.getElementById('dev-card-badge');
       if (devBadge) {
-        if (this.isCitiesKnights()) {
-          const unplayed = unplayedProgressCards(me.progressCards);
-          devBadge.textContent = unplayed.length;
-          devBadge.style.display = unplayed.length > 0 ? 'inline-flex' : 'none';
-        } else {
-          const unplayed = (me.devCards || []).filter(c => !c.played);
-          devBadge.textContent = unplayed.length;
-          devBadge.style.display = unplayed.length > 0 ? 'inline-flex' : 'none';
-        }
+        const unplayed = this.isCitiesKnights()
+          ? unplayedProgressCards(me.progressCards)
+          : (me.devCards || []).filter(c => !c.played);
+        devBadge.textContent = unplayed.length;
+        devBadge.classList.toggle('is-hidden', unplayed.length === 0);
       }
     }
 
@@ -2611,13 +2607,13 @@ class CatanApp {
     const banner = document.getElementById('active-trade-banner');
     if (!banner) return;
     if (!activeTrade) {
-      banner.style.display = 'none';
+      banner.classList.remove('is-visible');
       this.lastTradeKey = null;
       return;
     }
 
     const isMine = activeTrade.fromPlayerId === this.myPlayerId;
-    banner.style.display = 'flex';
+    banner.classList.add('is-visible');
 
     const from = this.gameState ? this.gameState.players.find(p => p.id === activeTrade.fromPlayerId) : null;
     const fromName = from ? from.name : '?';
