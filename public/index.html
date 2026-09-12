@@ -1100,6 +1100,7 @@
 
   <!-- Victory Celebration Modal -->
   <div id="victory-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
     <div class="modal-box victory-box">
       <div class="victory-icon-badge">
         <span class="ico" data-icon="trophy"></span>
@@ -1109,6 +1110,10 @@
         <strong id="victory-winner-name" class="victory-winner-name">---</strong>
         <span data-i18n="VICTORY_MESSAGE">a câștigat jocul!</span>
       </p>
+      <div id="victory-stats" class="victory-stats-grid"></div>
+      <div class="victory-actions">
+        <button id="btn-victory-lobby" class="btn btn-primary btn-play-again" data-i18n="PLAY_AGAIN_BTN">Înapoi la meniu</button>
+      </div>
     </div>
   </div>
 

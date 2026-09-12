@@ -71,7 +71,7 @@ export class TurnTimerUI {
     this.currentTimerState = state;
 
     // Audio warning on 5s down to 1s
-    if (state.isLowTime && isMyTurn && this.audio && typeof this.audio.playTimerWarning === 'function') {
+    if (state.isLowTime && isMyTurn && this.audio && !this.audio.isMuted?.() && typeof this.audio.playTimerWarning === 'function') {
       if (this.lastAlertedSec !== state.remaining) {
         this.lastAlertedSec = state.remaining;
         this.audio.playTimerWarning();
