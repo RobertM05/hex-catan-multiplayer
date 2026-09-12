@@ -301,3 +301,118 @@
   padding: 8px 10px;
   letter-spacing: 0.02em;
 }
+
+/* Road Network Hover & Tooltip */
+.edge-group.built-road {
+  cursor: pointer;
+}
+
+.edge-group.built-road .road-hit-area {
+  stroke: transparent;
+  stroke-width: 20;
+  stroke-linecap: round;
+  cursor: pointer;
+}
+
+.edge-group.built-road.road-hover-highlight > line:nth-child(2) {
+  stroke-width: 11 !important;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85)) drop-shadow(0 0 12px currentColor) !important;
+  transition: stroke-width 0.15s ease, filter 0.15s ease;
+}
+
+.edge-group.built-road.road-hover-active > line:nth-child(2) {
+  stroke-width: 13 !important;
+  filter: drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 16px currentColor) !important;
+}
+
+.edge-group.built-road.road-hover-highlight > line:first-child {
+  stroke: rgba(255, 255, 255, 0.6) !important;
+  stroke-width: 15 !important;
+}
+
+/* Floating Road Length Tooltip */
+.road-length-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65), 0 0 14px rgba(217, 119, 6, 0.25);
+  backdrop-filter: blur(10px);
+  color: #f8fafc;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  transform: translate(-50%, -100%) translateY(-14px);
+  transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.road-length-tooltip.hidden {
+  opacity: 0;
+  transform: translate(-50%, -100%) translateY(-6px);
+  pointer-events: none;
+}
+
+.road-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.road-tooltip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.road-tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #cbd5e1;
+}
+
+.road-tooltip-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.road-tooltip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.road-tooltip-badge.badge-holder {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.road-tooltip-badge.badge-tied {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.road-tooltip-badge.badge-contender {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+

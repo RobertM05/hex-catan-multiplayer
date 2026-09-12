@@ -6,6 +6,8 @@
  */
 
 import { ICONS, svgIconGroup } from './icons.js';
+import { formatRoadTooltipData } from './roadInspection.js';
+import { i18n } from './i18n.js';
 
 const TERRAIN_ICON_FILL = {
   wood: '#d8f3dc',
@@ -34,6 +36,9 @@ export class BoardRenderer {
     this.onHexClick = null;
     this.onKnightClick = null;
     this.currentPlayerId = null;
+    this.roadTooltip = null;
+    this.longestRoadHolder = null;
+    this.activeHoveredEdgeId = null;
 
     // Pan & Zoom state
     this.viewBox = { x: -400, y: -350, width: 800, height: 700 };
@@ -244,12 +249,15 @@ export class BoardRenderer {
     this.updateViewBox();
   }
 
-  render(gridData, interactiveAction = null, rollSum = null, players = null) {
+  render(gridData, interactiveAction = null, rollSum = null, players = null, longestRoadHolder = null) {
     if (!gridData) return;
     this.grid = gridData;
     this.selectedAction = interactiveAction;
     this.lastRollSum = rollSum;
     if (players) this.gameStatePlayers = players;
+    if (longestRoadHolder !== null && longestRoadHolder !== undefined) {
+      this.longestRoadHolder = longestRoadHolder;
+    }
 
     this.renderHexes();
     this.renderHarbors();
@@ -466,6 +474,7 @@ export class BoardRenderer {
   }
 
   renderEdges() {
+    this.handleRoadMouseLeave();
     this.edgeLayer.innerHTML = '';
     const edges = Object.values(this.grid.edges);
 
@@ -475,6 +484,8 @@ export class BoardRenderer {
       g.setAttribute('data-edge-id', edge.id);
 
       if (edge.road) {
+        g.classList.add('built-road');
+
         // Dark casing under the road so it stands out on any terrain color
         const casing = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         casing.setAttribute('x1', edge.x1);
@@ -508,6 +519,20 @@ export class BoardRenderer {
         innerLine.setAttribute('stroke-width', '2');
         innerLine.setAttribute('stroke-linecap', 'round');
         g.appendChild(innerLine);
+
+        // Generous transparent hit area for hover inspection
+        const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        hitArea.setAttribute('x1', edge.x1);
+        hitArea.setAttribute('y1', edge.y1);
+        hitArea.setAttribute('x2', edge.x2);
+        hitArea.setAttribute('y2', edge.y2);
+        hitArea.setAttribute('class', 'road-hit-area');
+        g.appendChild(hitArea);
+
+        // Road hover listeners for length inspection & network highlighting
+        g.addEventListener('mouseenter', (e) => this.handleRoadMouseEnter(edge.id, e));
+        g.addEventListener('mousemove', (e) => this.handleRoadMouseMove(e));
+        g.addEventListener('mouseleave', () => this.handleRoadMouseLeave());
 
         if (this.selectedAction && this.selectedAction.type === 'progress_road'
           && this.selectedAction.validIds && this.selectedAction.validIds.has(edge.id)) {
@@ -924,6 +949,101 @@ export class BoardRenderer {
       case 5: case 9: return 4;
       case 6: case 8: return 5;
       default: return 0;
+    }
+  }
+
+  initRoadTooltip() {
+    if (this.roadTooltip || !this.container) return;
+    this.roadTooltip = document.createElement('div');
+    this.roadTooltip.className = 'road-length-tooltip hidden';
+    this.container.appendChild(this.roadTooltip);
+  }
+
+  handleRoadMouseEnter(edgeId, event) {
+    if (!this.grid) return;
+    this.initRoadTooltip();
+    this.activeHoveredEdgeId = edgeId;
+
+    const data = formatRoadTooltipData({
+      grid: this.grid,
+      edgeId,
+      players: this.gameStatePlayers || [],
+      longestRoadHolder: this.longestRoadHolder,
+      i18n
+    });
+
+    if (!data) return;
+
+    // Highlight all connected edges in the player's contiguous road network
+    if (this.edgeLayer) {
+      const allEdgeGroups = this.edgeLayer.querySelectorAll('.edge-group');
+      const connectedSet = new Set(data.connectedEdgeIds);
+      allEdgeGroups.forEach(el => {
+        const eid = el.getAttribute('data-edge-id');
+        if (eid === edgeId) {
+          el.classList.add('road-hover-active', 'road-hover-highlight');
+        } else if (connectedSet.has(eid)) {
+          el.classList.add('road-hover-highlight');
+        } else {
+          el.classList.remove('road-hover-active', 'road-hover-highlight');
+        }
+      });
+    }
+
+    // Populate tooltip HTML
+    if (this.roadTooltip) {
+      let badgeHtml = '';
+      if (data.longestRoadStatus) {
+        badgeHtml = `<div class="road-tooltip-badge badge-${data.longestRoadStatus.type}">${data.longestRoadStatus.text}</div>`;
+      }
+
+      this.roadTooltip.innerHTML = `
+        <div class="road-tooltip-header">
+          <span class="road-tooltip-dot" style="background:${data.ownerColor}"></span>
+          <span>${data.ownerName}</span>
+        </div>
+        <div class="road-tooltip-body">
+          <div class="road-tooltip-stat">
+            <span>${data.continuousText}</span>
+          </div>
+          ${data.networkSize > data.continuousLength ? `
+          <div class="road-tooltip-stat">
+            <span style="opacity:0.8">${data.networkText}</span>
+          </div>` : ''}
+          ${badgeHtml}
+        </div>
+      `;
+
+      this.positionRoadTooltip(event);
+      this.roadTooltip.classList.remove('hidden');
+    }
+  }
+
+  handleRoadMouseMove(event) {
+    if (this.activeHoveredEdgeId && this.roadTooltip) {
+      this.positionRoadTooltip(event);
+    }
+  }
+
+  positionRoadTooltip(event) {
+    if (!this.roadTooltip || !this.container) return;
+    const rect = this.container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const safeX = Math.max(80, Math.min(rect.width - 80, x));
+    const safeY = Math.max(50, y);
+    this.roadTooltip.style.left = `${safeX}px`;
+    this.roadTooltip.style.top = `${safeY}px`;
+  }
+
+  handleRoadMouseLeave() {
+    this.activeHoveredEdgeId = null;
+    if (this.roadTooltip) {
+      this.roadTooltip.classList.add('hidden');
+    }
+    if (this.edgeLayer) {
+      const highlighted = this.edgeLayer.querySelectorAll('.road-hover-highlight, .road-hover-active');
+      highlighted.forEach(el => el.classList.remove('road-hover-highlight', 'road-hover-active'));
     }
   }
 }
