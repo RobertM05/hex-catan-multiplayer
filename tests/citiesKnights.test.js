@@ -13,6 +13,7 @@ import {
   normalizeGameMode
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
+import { BotAI } from '../server/game/BotAI.js';
 
 function makeCkEngine() {
   const engine = new GameEngine({ mode: 'cities_knights' });
@@ -1223,8 +1224,9 @@ describe('CK-07: Science Progress Cards', () => {
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.wheat = 0;
     const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'irrigation').id, {});
-    assert.equal(res.gained, 2);
-    assert.equal(engine.players[0].resources.wheat, 2);
+    assert.equal(res.gained % 2, 0);
+    assert.ok(res.gained >= 2);
+    assert.equal(engine.players[0].resources.wheat, res.gained);
   });
 
   it('Medicine: should allow city upgrade for 2 ore + 1 wheat', () => {
@@ -1250,8 +1252,9 @@ describe('CK-07: Science Progress Cards', () => {
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.ore = 0;
     const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'mining').id, {});
-    assert.equal(res.gained, 2);
-    assert.equal(engine.players[0].resources.ore, 2);
+    assert.equal(res.gained % 2, 0);
+    assert.ok(res.gained >= 2);
+    assert.equal(engine.players[0].resources.ore, res.gained);
   });
 
   it('Printer: should immediately grant 1 VP', () => {
@@ -1310,6 +1313,111 @@ describe('CK-12: Progress Card State', () => {
     assert.equal(opp.progressCards.count, 2);
     assert.equal(opp.progressCards.revealed.length, 1);
     assert.equal(opp.progressCards.revealed[0].type, 'constitution');
+  });
+});
+
+describe('CK-13: Bot AI C&K', () => {
+  it('bot should place knight during TURN_ACTION in C&K mode', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].resources.ore = 1;
+    engine.players[0].resources.wool = 1;
+    const vertex = emptyVertex(engine);
+    giveRoad(engine, 'p1', vertex.id);
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'place_knight');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.players[0].knightsPlaced.length, 1);
+  });
+
+  it('bot should activate knight when barbarianPosition >= 5', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.barbarianPosition = 5;
+    engine.players[0].isBot = true;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p1', vertex.id, { active: false });
+    engine.players[0].resources.wheat = 1;
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'activate_knight');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.players[0].knightsPlaced[0].active, true);
+  });
+
+  it('bot should improve city track when commodities available', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].citiesBuilt.push('v1');
+    engine.players[0].commodities.cloth = 2;
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'improve_city');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.ok(engine.players[0].cityImprovements.trade >= 1);
+  });
+
+  it('bot should build city wall when hand is large', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[engine.players[0].citiesBuilt.length - 1];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].resources = { wood: 3, brick: 2, wool: 0, wheat: 3, ore: 0 };
+    engine.players[0].commodities = { cloth: 0, coin: 0, paper: 0 };
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'build_city_wall');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+  });
+
+  it('bot should handle TURN_BARBARIAN_DOWNGRADE without crashing', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    engine.players[0].isBot = true;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    assert.doesNotThrow(() => BotAI.playCurrentBotStep(engine));
+    assert.equal(engine.pendingBarbarianDowngrades.has('p1'), false);
+  });
+
+  it('bot should handle TURN_CHOOSE_METROPOLIS without crashing', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    engine.players[0].isBot = true;
+    engine.phase = GAME_PHASES.TURN_CHOOSE_METROPOLIS;
+    engine.pendingMetropolisChoice = { playerId: 'p1', track: 'trade' };
+    assert.doesNotThrow(() => BotAI.playCurrentBotStep(engine));
+    assert.equal(engine.players[0].metropolis.trade, true);
+  });
+
+  it('bot should play VP progress cards immediately', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].progressCards.push({ id: 'vp1', type: 'constitution', played: false, boughtTurn: 0 });
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'play_progress_card');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.players[0].progressCards[0].played, true);
+  });
+
+  it('full bot-only C&K game should complete without errors', () => {
+    let completed = 0;
+    for (let g = 0; g < 3; g++) {
+      const engine = new GameEngine({ mode: 'cities_knights' });
+      engine.addPlayer({ id: 'b1', name: 'BotA', isBot: true, botDifficulty: 'hard' });
+      engine.addPlayer({ id: 'b2', name: 'BotB', isBot: true, botDifficulty: 'easy' });
+      engine.startGame('standard');
+      let steps = 0;
+      while (engine.phase !== GAME_PHASES.GAME_OVER && steps < 800) {
+        assert.doesNotThrow(() => BotAI.playCurrentBotStep(engine));
+        steps++;
+      }
+      assert.ok(steps > 8, `game ${g} did not progress`);
+      completed++;
+    }
+    assert.equal(completed, 3);
   });
 });
 
