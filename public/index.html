@@ -103,7 +103,7 @@
             <label data-i18n="GAME_MODE_LABEL">Mod de joc</label>
             <select id="create-game-mode" class="form-select">
               <option value="base" selected data-i18n="MODE_BASE">Joc de bază (10 PV)</option>
-              <option value="advanced" data-i18n="MODE_ADVANCED">Mod extins (Orașe & Cavaleri - 13 PV)</option>
+              <option value="cities_knights" data-i18n="MODE_CITIES_KNIGHTS">Orașe & Cavaleri (13 PV)</option>
             </select>
           </div>
 
@@ -364,6 +364,27 @@
             </span>
             <span class="res-card-label" data-i18n="RES_ORE">Minereu</span>
             <span id="count-ore" class="res-card-count">0</span>
+          </div>
+          <div class="res-card cloth ck-only" title="Pânză">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7"/><path d="M9 11h6M9 15h4"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="COMM_CLOTH">Pânză</span>
+            <span id="count-cloth" class="res-card-count">0</span>
+          </div>
+          <div class="res-card coin ck-only" title="Monedă">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5c.5-1 2-1.5 2.5-1.5s2 .6 2 1.8c0 2.2-4 1.4-4 3.4 0 1 .8 1.8 2.2 1.8 1.2 0 2-.5 2.4-1.2"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="COMM_COIN">Monedă</span>
+            <span id="count-coin" class="res-card-count">0</span>
+          </div>
+          <div class="res-card paper ck-only" title="Hârtie">
+            <span class="res-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l5 5v13H7z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg>
+            </span>
+            <span class="res-card-label" data-i18n="COMM_PAPER">Hârtie</span>
+            <span id="count-paper" class="res-card-count">0</span>
           </div>
         </div>
 
@@ -728,6 +749,39 @@
               <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-ore">&minus;</button>
               <input type="number" id="discard-ore" class="stepper-val-input" min="0" value="0" readonly>
               <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-ore">&plus;</button>
+            </div>
+          </div>
+          <div class="res-stepper-card res-cloth ck-only">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="COMM_CLOTH">Pânză</span>
+              <span class="res-available" id="discard-avail-cloth">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-cloth">&minus;</button>
+              <input type="number" id="discard-cloth" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-cloth">&plus;</button>
+            </div>
+          </div>
+          <div class="res-stepper-card res-coin ck-only">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="COMM_COIN">Monedă</span>
+              <span class="res-available" id="discard-avail-coin">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-coin">&minus;</button>
+              <input type="number" id="discard-coin" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-coin">&plus;</button>
+            </div>
+          </div>
+          <div class="res-stepper-card res-paper ck-only">
+            <div class="stepper-label">
+              <span class="res-name" data-i18n="COMM_PAPER">Hârtie</span>
+              <span class="res-available" id="discard-avail-paper">(0)</span>
+            </div>
+            <div class="stepper-controls">
+              <button type="button" class="btn-stepper btn-stepper-dec" data-target="discard-paper">&minus;</button>
+              <input type="number" id="discard-paper" class="stepper-val-input" min="0" value="0" readonly>
+              <button type="button" class="btn-stepper btn-stepper-inc" data-target="discard-paper">&plus;</button>
             </div>
           </div>
         </div>

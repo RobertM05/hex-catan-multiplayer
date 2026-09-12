@@ -5,6 +5,45 @@
 
 import { HexGrid, RESOURCE_TYPES } from './HexGrid.js';
 
+export const GAME_MODES = {
+  BASE: 'base',
+  CITIES_KNIGHTS: 'cities_knights'
+};
+
+export const COMMODITY_TYPES = {
+  CLOTH: 'cloth',
+  COIN: 'coin',
+  PAPER: 'paper'
+};
+
+export const RESOURCE_TO_COMMODITY = {
+  [RESOURCE_TYPES.WOOL]: COMMODITY_TYPES.CLOTH,
+  [RESOURCE_TYPES.ORE]: COMMODITY_TYPES.COIN,
+  [RESOURCE_TYPES.WHEAT]: COMMODITY_TYPES.PAPER
+};
+
+export const COMMODITY_VALUES = Object.values(COMMODITY_TYPES);
+export const RESOURCE_VALUES = [
+  RESOURCE_TYPES.WOOD,
+  RESOURCE_TYPES.BRICK,
+  RESOURCE_TYPES.WOOL,
+  RESOURCE_TYPES.WHEAT,
+  RESOURCE_TYPES.ORE
+];
+
+export const IMPROVEMENT_TRACKS = {
+  trade: COMMODITY_TYPES.CLOTH,
+  politics: COMMODITY_TYPES.COIN,
+  science: COMMODITY_TYPES.PAPER
+};
+
+export function normalizeGameMode(mode) {
+  if (mode === GAME_MODES.CITIES_KNIGHTS || mode === 'advanced') {
+    return GAME_MODES.CITIES_KNIGHTS;
+  }
+  return GAME_MODES.BASE;
+}
+
 export const GAME_PHASES = {
   LOBBY: 'LOBBY',
   SETUP_ROUND_1: 'SETUP_ROUND_1',
@@ -34,8 +73,8 @@ export const DEV_CARD_TYPES = {
 export class GameEngine {
   constructor(options = {}) {
     this.roomId = options.roomId || 'default-room';
-    this.mode = options.mode || 'base'; // 'base' or 'advanced'
-    this.vpTarget = options.vpTarget || (this.mode === 'advanced' ? 13 : 10);
+    this.mode = normalizeGameMode(options.mode);
+    this.vpTarget = options.vpTarget || (this.mode === GAME_MODES.CITIES_KNIGHTS ? 13 : 10);
     this.turnDuration = options.turnDuration || 60; // seconds
 
     this.players = []; // array of player objects
@@ -45,8 +84,13 @@ export class GameEngine {
     this.grid = null;
 
     this.dice = [1, 1];
+    this.eventDie = null;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
+
+    // Cities & Knights shared state (serialized even in base mode as empty/defaults)
+    this.barbarianPosition = 0;
+    this.defenderOfCatan = null;
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -98,6 +142,13 @@ export class GameEngine {
       isBot: Boolean(player.isBot),
       botDifficulty: player.botDifficulty || 'medium',
       resources: { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 },
+      commodities: { cloth: 0, coin: 0, paper: 0 },
+      cityImprovements: { trade: 0, politics: 0, science: 0 },
+      knightsAvailable: { basic: 2, strong: 2, mighty: 1 },
+      knightsPlaced: [],
+      cityWalls: [],
+      metropolis: { trade: false, politics: false, science: false },
+      progressCards: [],
       devCards: [], // { type, boughtTurn, played }
       playedKnights: 0,
       settlementsRemaining: 5,
@@ -343,8 +394,18 @@ export class GameEngine {
     }
   }
 
+  isCitiesKnights() {
+    return this.mode === GAME_MODES.CITIES_KNIGHTS;
+  }
+
+  countCommodities(player) {
+    if (!player.commodities) return 0;
+    return Object.values(player.commodities).reduce((sum, count) => sum + count, 0);
+  }
+
   countTotalCards(player) {
-    return Object.values(player.resources).reduce((sum, count) => sum + count, 0);
+    const resources = Object.values(player.resources || {}).reduce((sum, count) => sum + count, 0);
+    return resources + this.countCommodities(player);
   }
 
   /* =========================================================
@@ -496,16 +557,11 @@ export class GameEngine {
 
     for (const hex of this.grid.hexes.values()) {
       if (hex.token === rollSum && hex.id !== this.grid.robberHexId && hex.resource !== RESOURCE_TYPES.DESERT) {
-        // Hex produces
-        for (const vKey of this.grid.vertices.keys()) {
-          const vertex = this.grid.vertices.get(vKey);
+        for (const vertex of this.grid.vertices.values()) {
           if (vertex.hexes.includes(hex.id) && vertex.building) {
-            const b = vertex.building;
-            const amount = b.type === 'city' ? 2 : 1;
-            const bPlayer = this.players.find(p => p.id === b.playerId);
+            const bPlayer = this.players.find(p => p.id === vertex.building.playerId);
             if (bPlayer) {
-              bPlayer.resources[hex.resource] = (bPlayer.resources[hex.resource] || 0) + amount;
-              production[b.playerId][hex.resource] = (production[b.playerId][hex.resource] || 0) + amount;
+              this.applyHexProduction(bPlayer, hex.resource, vertex.building.type, production);
             }
           }
         }
@@ -544,22 +600,43 @@ export class GameEngine {
     return { dice: this.dice, sum: rollSum, produces: production, robber: false };
   }
 
+  applyHexProduction(player, hexResource, buildingType, production) {
+    const isCity = buildingType === 'city';
+    const commodity = this.isCitiesKnights() ? RESOURCE_TO_COMMODITY[hexResource] : null;
+
+    if (isCity && commodity) {
+      player.resources[hexResource] = (player.resources[hexResource] || 0) + 1;
+      player.commodities[commodity] = (player.commodities[commodity] || 0) + 1;
+      production[player.id][hexResource] = (production[player.id][hexResource] || 0) + 1;
+      production[player.id][commodity] = (production[player.id][commodity] || 0) + 1;
+      return;
+    }
+
+    const amount = isCity ? 2 : 1;
+    player.resources[hexResource] = (player.resources[hexResource] || 0) + amount;
+    production[player.id][hexResource] = (production[player.id][hexResource] || 0) + amount;
+  }
+
   discardCards(playerId, discarded) {
     if (this.phase !== GAME_PHASES.TURN_DISCARD) throw new Error('NOT_IN_DISCARD_PHASE');
     if (!this.pendingDiscards.has(playerId)) throw new Error('NO_DISCARD_NEEDED');
     if (!discarded || typeof discarded !== 'object') throw new Error('INVALID_DISCARD_DATA');
 
-    const validResources = [RESOURCE_TYPES.WOOD, RESOURCE_TYPES.BRICK, RESOURCE_TYPES.WOOL, RESOURCE_TYPES.WHEAT, RESOURCE_TYPES.ORE];
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
     const totalBefore = this.countTotalCards(player);
     const requiredDiscard = Math.floor(totalBefore / 2);
 
     let discardedCount = 0;
-    for (const [res, count] of Object.entries(discarded)) {
-      if (!validResources.includes(res)) throw new Error(`INVALID_RESOURCE_${res}`);
+    for (const [cardType, count] of Object.entries(discarded)) {
+      if (!RESOURCE_VALUES.includes(cardType) && !COMMODITY_VALUES.includes(cardType)) {
+        throw new Error(`INVALID_RESOURCE_${cardType}`);
+      }
       if (!Number.isInteger(count) || count < 0) throw new Error('DISCARD_COUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      if ((player.resources[res] || 0) < count) throw new Error('NOT_ENOUGH_CARDS_OF_TYPE');
+      const owned = COMMODITY_VALUES.includes(cardType)
+        ? (player.commodities[cardType] || 0)
+        : (player.resources[cardType] || 0);
+      if (owned < count) throw new Error('NOT_ENOUGH_CARDS_OF_TYPE');
       discardedCount += count;
     }
 
@@ -567,9 +644,13 @@ export class GameEngine {
       throw new Error(`MUST_DISCARD_EXACTLY_${requiredDiscard}`);
     }
 
-    // Deduct
-    for (const [res, count] of Object.entries(discarded)) {
-      player.resources[res] -= count;
+    for (const [cardType, count] of Object.entries(discarded)) {
+      if (!count) continue;
+      if (COMMODITY_VALUES.includes(cardType)) {
+        player.commodities[cardType] -= count;
+      } else {
+        player.resources[cardType] -= count;
+      }
     }
 
     this.pendingDiscards.delete(playerId);
@@ -606,16 +687,23 @@ export class GameEngine {
         );
 
         if (isAdjacent && this.countTotalCards(target) > 0) {
-          // Pick random resource from target
           const pool = [];
-          for (const [res, count] of Object.entries(target.resources)) {
-            for (let i = 0; i < count; i++) pool.push(res);
+          for (const [res, count] of Object.entries(target.resources || {})) {
+            for (let i = 0; i < count; i++) pool.push({ bag: 'resources', type: res });
+          }
+          for (const [com, count] of Object.entries(target.commodities || {})) {
+            for (let i = 0; i < count; i++) pool.push({ bag: 'commodities', type: com });
           }
           if (pool.length > 0) {
             const picked = pool[Math.floor(Math.random() * pool.length)];
-            target.resources[picked]--;
-            player.resources[picked] = (player.resources[picked] || 0) + 1;
-            stolenResource = picked;
+            if (picked.bag === 'commodities') {
+              target.commodities[picked.type]--;
+              player.commodities[picked.type] = (player.commodities[picked.type] || 0) + 1;
+            } else {
+              target.resources[picked.type]--;
+              player.resources[picked.type] = (player.resources[picked.type] || 0) + 1;
+            }
+            stolenResource = picked.type;
 
             this.logEvent({
               type: 'ROBBER_STOLE',
@@ -731,6 +819,33 @@ export class GameEngine {
     });
 
     return { vertexId };
+  }
+
+  improveCityTrack(playerId, track) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    const player = this.getCurrentPlayer();
+    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    if (!IMPROVEMENT_TRACKS[track]) throw new Error('INVALID_IMPROVEMENT_TRACK');
+    if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
+
+    const currentLevel = player.cityImprovements[track] || 0;
+    if (currentLevel >= 5) throw new Error('IMPROVEMENT_MAX_LEVEL');
+
+    const cost = currentLevel + 1;
+    const commodity = IMPROVEMENT_TRACKS[track];
+    if ((player.commodities[commodity] || 0) < cost) throw new Error('NOT_ENOUGH_COMMODITIES');
+
+    player.commodities[commodity] -= cost;
+    player.cityImprovements[track] = currentLevel + 1;
+
+    this.logEvent({
+      type: 'CITY_IMPROVED',
+      messageKey: 'LOG_CITY_IMPROVED',
+      args: { playerName: player.name, track, level: player.cityImprovements[track] }
+    });
+
+    return { track, level: player.cityImprovements[track], cost };
   }
 
   buyDevCard(playerId) {
@@ -1315,6 +1430,9 @@ export class GameEngine {
       currentTurnPlayerIndex: this.currentTurnPlayerIndex,
       turnNumber: this.turnNumber,
       dice: this.dice,
+      eventDie: this.eventDie,
+      barbarianPosition: this.barbarianPosition,
+      defenderOfCatan: this.defenderOfCatan,
       hasRolledDice: this.hasRolledDice,
       grid: this.grid ? this.grid.toJSON() : null,
       pendingDiscards: Array.from(this.pendingDiscards),
@@ -1337,6 +1455,13 @@ export class GameEngine {
           botDifficulty: p.botDifficulty,
           // If self, reveal resources and hidden dev cards; if opponent, reveal only count
           resources: isSelf ? p.resources : { total: this.countTotalCards(p) },
+          commodities: isSelf ? p.commodities : { total: this.countCommodities(p) },
+          cityImprovements: p.cityImprovements,
+          knightsAvailable: isSelf ? p.knightsAvailable : undefined,
+          knightsPlaced: p.knightsPlaced,
+          cityWalls: p.cityWalls,
+          metropolis: p.metropolis,
+          progressCards: isSelf ? p.progressCards : { count: (p.progressCards || []).length },
           devCards: isSelf ? p.devCards : { count: p.devCards.filter(c => !c.played).length },
           playedKnights: p.playedKnights,
           settlementsRemaining: p.settlementsRemaining,
