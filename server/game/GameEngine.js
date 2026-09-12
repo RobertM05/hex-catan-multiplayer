@@ -37,6 +37,20 @@ export const IMPROVEMENT_TRACKS = {
   science: COMMODITY_TYPES.PAPER
 };
 
+export const PROGRESS_CARD_DECKS = {
+  trade: [
+    { type: 'commercial_harbor', count: 2 },
+    { type: 'master_merchant', count: 2 },
+    { type: 'merchant', count: 2 },
+    { type: 'merchant_fleet', count: 2 },
+    { type: 'resource_monopoly', count: 1 }
+  ],
+  politics: [],
+  science: []
+};
+
+export const PROGRESS_CARD_HAND_LIMIT = 4;
+
 export function normalizeGameMode(mode) {
   if (mode === GAME_MODES.CITIES_KNIGHTS || mode === 'advanced') {
     return GAME_MODES.CITIES_KNIGHTS;
@@ -115,6 +129,9 @@ export class GameEngine {
     this.lastBarbarianResult = null;
     this.postBarbarianPhase = null;
     this.progressDecks = { trade: [], politics: [], science: [] };
+    this.merchantHolder = null;
+    this.merchantHexId = null;
+    this.pendingProgressDiscard = new Set();
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -176,6 +193,7 @@ export class GameEngine {
       cityWalls: CITY_WALL_SUPPLY, // remaining walls in supply (CK-01 / CK-08 count model)
       metropolis: { trade: false, politics: false, science: false },
       progressCards: [],
+      merchantFleetActive: false,
       devCards: [], // { type, boughtTurn, played }
       playedKnights: 0,
       settlementsRemaining: 5,
@@ -258,6 +276,8 @@ export class GameEngine {
       messageKey: 'LOG_GAME_STARTED',
       args: { playersCount: this.players.length }
     });
+
+    if (this.isCitiesKnights()) this.initProgressCardDecks();
 
     return true;
   }
@@ -506,6 +526,30 @@ export class GameEngine {
 
   getProgressCardEligiblePlayers(track, dieNumber) {
     return this.players.filter(p => (p.cityImprovements?.[track] || 0) >= dieNumber);
+  }
+
+  shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  initProgressCardDecks() {
+    this.progressDecks = { trade: [], politics: [], science: [] };
+    for (const [deck, cards] of Object.entries(PROGRESS_CARD_DECKS)) {
+      for (const card of cards) {
+        for (let i = 0; i < card.count; i++) {
+          this.progressDecks[deck].push({ type: card.type, id: `${deck}-${card.type}-${i}` });
+        }
+      }
+      this.shuffle(this.progressDecks[deck]);
+    }
+  }
+
+  countUnplayedProgressCards(player) {
+    return (player.progressCards || []).filter(c => !c.played).length;
   }
 
   getActiveKnightStrength(player) {
@@ -788,14 +832,37 @@ export class GameEngine {
   drawProgressCard(player, track) {
     const deck = this.progressDecks?.[track];
     if (!deck || deck.length === 0) return null;
-    const cardType = deck.pop();
+    const card = deck.pop();
+    const type = card.type || card;
     player.progressCards.push({
-      id: `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      type: cardType,
+      id: card.id || `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type,
       track,
+      played: false,
       boughtTurn: this.turnNumber
     });
-    return cardType;
+    if (this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
+      this.pendingProgressDiscard.add(player.id);
+    }
+    if (['constitution', 'printer'].includes(type)) {
+      const drawn = player.progressCards[player.progressCards.length - 1];
+      drawn.played = true;
+      this.recalculateVictoryPoints();
+    }
+    return type;
+  }
+
+  discardProgressCard(playerId, cardId) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+    if (!this.pendingProgressDiscard.has(playerId)) throw new Error('NO_PROGRESS_DISCARD_NEEDED');
+    const idx = player.progressCards.findIndex(c => c.id === cardId && !c.played);
+    if (idx === -1) throw new Error('CARD_NOT_FOUND');
+    player.progressCards.splice(idx, 1);
+    if (this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
+      this.pendingProgressDiscard.delete(playerId);
+    }
+    return { remaining: this.countUnplayedProgressCards(player) };
   }
 
   applyHexProduction(player, hexResource, buildingType, production) {
@@ -1507,6 +1574,100 @@ export class GameEngine {
     return { cardType: card.type };
   }
 
+  playProgressCard(playerId, cardId, options = {}) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    const player = this.getCurrentPlayer();
+    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+
+    const card = player.progressCards.find(c => c.id === cardId && !c.played);
+    if (!card) throw new Error('CARD_NOT_FOUND');
+
+    let result = { cardType: card.type };
+    switch (card.type) {
+      case 'resource_monopoly': {
+        const resource = options.resource;
+        if (!resource || !RESOURCE_VALUES.includes(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
+        let stolen = 0;
+        for (const other of this.players) {
+          if (other.id === playerId) continue;
+          const take = Math.min(2, other.resources[resource] || 0);
+          if (take > 0) {
+            other.resources[resource] -= take;
+            stolen += take;
+          }
+        }
+        player.resources[resource] = (player.resources[resource] || 0) + stolen;
+        result.stolen = stolen;
+        break;
+      }
+      case 'merchant_fleet':
+        player.merchantFleetActive = true;
+        break;
+      case 'merchant': {
+        const hexId = options.hexId;
+        if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
+        if (!this.playerBuildingTouchesHex(player, hexId)) throw new Error('HEX_NOT_ADJACENT_TO_BUILDING');
+        this.merchantHolder = playerId;
+        this.merchantHexId = hexId;
+        this.recalculateVictoryPoints();
+        this.checkVictory();
+        result.hexId = hexId;
+        break;
+      }
+      case 'master_merchant': {
+        const target = this.players.find(p => p.id === options.targetPlayerId);
+        if (!target || target.id === playerId) throw new Error('INVALID_TARGET');
+        const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
+        if (steal.length !== 2) throw new Error('STEAL_TWO_CARDS');
+        const taken = [];
+        for (const type of steal) {
+          if (this.getPlayerCardCount(target, type) < 1) throw new Error('TARGET_MISSING_CARDS');
+          this.adjustPlayerCard(target, type, -1);
+          this.adjustPlayerCard(player, type, 1);
+          taken.push(type);
+        }
+        result.targetPlayerId = target.id;
+        result.stolen = taken;
+        result.revealedHand = {
+          resources: { ...target.resources },
+          commodities: { ...target.commodities }
+        };
+        break;
+      }
+      case 'commercial_harbor': {
+        const resource = options.resource;
+        const commodities = options.commodities || {};
+        if (!resource || !RESOURCE_VALUES.includes(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
+        const exchanges = [];
+        for (const other of this.players) {
+          if (other.id === playerId) continue;
+          const commodity = commodities[other.id];
+          if (!COMMODITY_VALUES.includes(commodity)) continue;
+          if (this.getPlayerCardCount(player, resource) < 1) break;
+          if (this.getPlayerCardCount(other, commodity) < 1) continue;
+          this.adjustPlayerCard(player, resource, -1);
+          this.adjustPlayerCard(other, resource, 1);
+          this.adjustPlayerCard(other, commodity, -1);
+          this.adjustPlayerCard(player, commodity, 1);
+          exchanges.push({ playerId: other.id, commodity });
+        }
+        result.exchanges = exchanges;
+        break;
+      }
+      default:
+        throw new Error('UNKNOWN_PROGRESS_CARD');
+    }
+
+    card.played = true;
+    this.logEvent({
+      type: 'PROGRESS_CARD_PLAYED',
+      messageKey: 'LOG_PROGRESS_CARD_PLAYED',
+      args: { playerName: player.name, card: card.type }
+    });
+    return result;
+  }
+
   /* =========================================================
    * TRADING
    * ========================================================= */
@@ -1525,7 +1686,13 @@ export class GameEngine {
 
     // Determine player's best available trade ratio for giveRes
     let bestRatio = 4;
-    if (RESOURCE_VALUES.includes(giveRes)) {
+    if (player.merchantFleetActive) {
+      bestRatio = 2;
+    } else if (this.merchantHolder === playerId && this.merchantHexId) {
+      const hex = this.grid.hexes.get(this.merchantHexId);
+      if (hex && hex.resource === giveRes) bestRatio = 2;
+    }
+    if (bestRatio > 2 && RESOURCE_VALUES.includes(giveRes)) {
       for (const vKey of player.settlementsBuilt.concat(player.citiesBuilt)) {
         const v = this.grid.vertices.get(vKey);
         if (v && v.harbor) {
@@ -1683,6 +1850,7 @@ export class GameEngine {
     this.freeRoadsRemaining = 0;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
+    player.merchantFleetActive = false;
 
     // Check victory
     if (this.checkVictory()) {
@@ -1961,6 +2129,10 @@ export class GameEngine {
         publicPoints += 1;
       }
 
+      if (this.merchantHolder === player.id) {
+        publicPoints += 1;
+      }
+
       // Dev card victory points (1 each)
       for (const card of player.devCards) {
         if (card.type === DEV_CARD_TYPES.VICTORY_POINT) {
@@ -1995,6 +2167,9 @@ export class GameEngine {
       discardDeadline: this.discardDeadline,
       pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
       lastBarbarianResult: this.lastBarbarianResult,
+      merchantHolder: this.merchantHolder,
+      merchantHexId: this.merchantHexId,
+      pendingProgressDiscard: Array.from(this.pendingProgressDiscard),
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,

@@ -415,7 +415,8 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     assert.deepEqual(eligible, ['p1']);
     assert.equal(result.progressDraws.length, 1);
     assert.equal(result.progressDraws[0].playerId, 'p1');
-    assert.equal(result.progressDraws[0].drawn, false);
+    assert.equal(result.progressDraws[0].drawn, true);
+    assert.ok(result.progressDraws[0].cardType);
   });
 });
 
@@ -750,5 +751,128 @@ describe('PR #22 review follow-up', () => {
     assert.equal(engine.players[0].citiesBuilt.length, 0);
     assert.equal(engine.grid.vertices.get(cityId).building, null);
     assert.equal(engine.players[0].settlementsBuilt.includes(cityId), false);
+  });
+});
+
+describe('CK-05: Trade Progress Cards', () => {
+  function giveCard(player, type) {
+    const card = { id: `c-${type}-${player.progressCards.length}`, type, played: false, boughtTurn: 0 };
+    player.progressCards.push(card);
+    return card;
+  }
+
+  it('should initialize trade deck with 9 cards (2+2+2+2+1)', () => {
+    const engine = makeCkEngine();
+    assert.equal(engine.progressDecks.trade.length, 9);
+    const types = engine.progressDecks.trade.map(c => c.type);
+    assert.equal(types.filter(t => t === 'commercial_harbor').length, 2);
+    assert.equal(types.filter(t => t === 'master_merchant').length, 2);
+    assert.equal(types.filter(t => t === 'merchant').length, 2);
+    assert.equal(types.filter(t => t === 'merchant_fleet').length, 2);
+    assert.equal(types.filter(t => t === 'resource_monopoly').length, 1);
+  });
+
+  it('should draw from trade deck and add to player hand', () => {
+    const engine = makeCkEngine();
+    const before = engine.progressDecks.trade.length;
+    const type = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.ok(type);
+    assert.equal(engine.progressDecks.trade.length, before - 1);
+    assert.equal(engine.players[0].progressCards[0].type, type);
+  });
+
+  it('should enforce 4-card hand limit', () => {
+    const engine = makeCkEngine();
+    for (let i = 0; i < 4; i++) engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(engine.players[0].progressCards.length, 5);
+    assert.equal(engine.pendingProgressDiscard.has('p1'), true);
+    engine.discardProgressCard('p1', engine.players[0].progressCards[0].id);
+    assert.equal(engine.players[0].progressCards.length, 4);
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+  });
+
+  it('should execute Resource Monopoly: steal 2 of named resource from each player', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[1].resources.wool = 3;
+    const card = giveCard(engine.players[0], 'resource_monopoly');
+    const res = engine.playProgressCard('p1', card.id, { resource: 'wool' });
+    assert.equal(res.stolen, 2);
+    assert.equal(engine.players[1].resources.wool, 1);
+    assert.equal(engine.players[0].resources.wool, 2);
+  });
+
+  it('should execute Merchant Fleet: enable 2:1 bank trades for rest of turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 2;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    engine.playProgressCard('p1', card.id, {});
+    const trade = engine.tradeWithBank('p1', 'wood', 'brick', 2);
+    assert.equal(trade.ratio, 2);
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[0].resources.brick, 1);
+  });
+
+  it('should execute Merchant: place on hex, grant 2:1 and 1 VP', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.recalculateVictoryPoints();
+    const before = engine.players[0].victoryPoints;
+    engine.players[0].resources.wood = 2;
+    const card = giveCard(engine.players[0], 'merchant');
+    engine.playProgressCard('p1', card.id, { hexId: hex.id });
+    assert.equal(engine.merchantHolder, 'p1');
+    assert.equal(engine.merchantHexId, hex.id);
+    assert.equal(engine.players[0].victoryPoints, before + 1);
+    const trade = engine.tradeWithBank('p1', 'wood', 'brick', 2);
+    assert.equal(trade.ratio, 2);
+  });
+
+  it('should transfer Merchant when another player plays Merchant card', () => {
+    const engine = makeCkEngine();
+    const hex1 = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const hex2 = attachBuilding(engine, 'p2', RESOURCE_TYPES.BRICK, 'city');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'merchant').id, { hexId: hex1.id });
+    engine.currentTurnPlayerIndex = 1;
+    engine.playProgressCard('p2', giveCard(engine.players[1], 'merchant').id, { hexId: hex2.id });
+    assert.equal(engine.merchantHolder, 'p2');
+    assert.equal(engine.merchantHexId, hex2.id);
+  });
+
+  it('should execute Master Merchant: steal 2 chosen cards from target', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    const card = giveCard(engine.players[0], 'master_merchant');
+    const res = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
+    assert.deepEqual(res.stolen, ['wool', 'cloth']);
+    assert.equal(engine.players[0].resources.wool, 1);
+    assert.equal(engine.players[0].commodities.cloth, 1);
+    assert.equal(engine.players[1].resources.wool, 0);
+    assert.equal(engine.players[1].commodities.cloth, 0);
+  });
+
+  it('should reject playing progress card on wrong phase', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    assert.throws(() => engine.playProgressCard('p1', card.id, {}), /NOT_IN_ACTION_PHASE/);
+  });
+
+  it('should not include progress cards in base mode', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    assert.equal(engine.progressDecks.trade.length, 0);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].progressCards.push({ id: 'x', type: 'merchant_fleet', played: false });
+    assert.throws(() => engine.playProgressCard('p1', 'x', {}), /NOT_CITIES_KNIGHTS_MODE/);
   });
 });

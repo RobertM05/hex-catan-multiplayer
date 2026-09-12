@@ -270,6 +270,14 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb);
   });
 
+  socket.on('play_progress_card', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb);
+  });
+
+  socket.on('discard_progress_card', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb);
+  });
+
   socket.on('bank_trade', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb);
   });
