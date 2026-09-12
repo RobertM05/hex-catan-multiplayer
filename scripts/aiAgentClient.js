@@ -287,13 +287,8 @@ export class CatanAIAgent {
       }
 
       if (bestVId) {
-        if (buildingType === 'city') {
-          this.log(`[AI-Agent] Setup: Placing city at vertex ${bestVId}`);
-          await this.sendAction('place_setup_city', { vertexId: bestVId });
-        } else {
-          this.log(`[AI-Agent] Setup: Placing settlement at vertex ${bestVId}`);
-          await this.sendAction('place_setup_settlement', { vertexId: bestVId });
-        }
+        this.log(`[AI-Agent] Setup: Placing ${buildingType} at vertex ${bestVId}`);
+        await this.sendAction('place_setup_settlement', { vertexId: bestVId });
       }
     } else {
       // Place road adjacent to last placed settlement/city
@@ -302,12 +297,16 @@ export class CatanAIAgent {
         || me.settlementsBuilt?.[me.settlementsBuilt.length - 1];
 
       if (lastVId && grid.vertices[lastVId]) {
-        const candidateEdges = grid.vertices[lastVId].adjacentEdges.filter(eId => !grid.edges[eId]?.road);
+        const candidateEdges = (grid.vertices[lastVId].adjacentEdges || []).filter(eId => !grid.edges[eId]?.road);
         if (candidateEdges.length > 0) {
           const chosenEdge = candidateEdges[0];
           this.log(`[AI-Agent] Setup: Placing road at edge ${chosenEdge}`);
           await this.sendAction('place_setup_road', { edgeId: chosenEdge });
+        } else {
+          this.log(`[AI-Agent] Setup warning: No open adjacent edges at vertex ${lastVId}`);
         }
+      } else {
+        this.log('[AI-Agent] Setup warning: Could not identify last placed setup building vertex');
       }
     }
   }
@@ -344,8 +343,10 @@ export class CatanAIAgent {
       pool.sort((a, b) => b.count - a.count);
     }
 
+    const discardedCombined = { ...discardedResources, ...discardedCommodities };
     this.log(`[AI-Agent] Discarding ${discardTarget} cards on 7-roll`);
     await this.sendAction('discard_cards', {
+      discarded: discardedCombined,
       resources: discardedResources,
       commodities: discardedCommodities
     });
@@ -416,10 +417,14 @@ export class CatanAIAgent {
         const curLvl = me.cityImprovements?.[item.track] || 0;
         const cost = curLvl + 1;
         if (curLvl < 5 && (com[item.comType] || 0) >= cost) {
-          this.log(`[AI-Agent] Improving city track ${item.track} to level ${curLvl + 1}`);
-          await this.sendAction('improve_city', { track: item.track });
-          await this.sleep(this.turnDelay);
-          return;
+          try {
+            this.log(`[AI-Agent] Improving city track ${item.track} to level ${curLvl + 1}`);
+            await this.sendAction('improve_city', { track: item.track });
+            await this.sleep(this.turnDelay);
+            return;
+          } catch (err) {
+            this.log(`[AI-Agent] Action improve_city failed: ${err.message}`);
+          }
         }
       }
     }
@@ -427,20 +432,28 @@ export class CatanAIAgent {
     // 2. City Upgrade: 3 Ore + 2 Wheat
     if (res.ore >= 3 && res.wheat >= 2 && (me.citiesRemaining || 0) > 0 && me.settlementsBuilt?.length > 0) {
       const targetSettlement = me.settlementsBuilt[0];
-      this.log(`[AI-Agent] Upgrading settlement ${targetSettlement} to city`);
-      await this.sendAction('upgrade_city', { vertexId: targetSettlement });
-      await this.sleep(this.turnDelay);
-      return;
+      try {
+        this.log(`[AI-Agent] Upgrading settlement ${targetSettlement} to city`);
+        await this.sendAction('build_city', { vertexId: targetSettlement });
+        await this.sleep(this.turnDelay);
+        return;
+      } catch (err) {
+        this.log(`[AI-Agent] Action build_city failed: ${err.message}`);
+      }
     }
 
     // 3. Settlement: 1 Wood, 1 Brick, 1 Wool, 1 Wheat
     if (res.wood >= 1 && res.brick >= 1 && res.wool >= 1 && res.wheat >= 1 && (me.settlementsRemaining || 0) > 0) {
       const candidateVId = this.findBuildableSettlementVertex(state.grid, me);
       if (candidateVId) {
-        this.log(`[AI-Agent] Building settlement at vertex ${candidateVId}`);
-        await this.sendAction('build_settlement', { vertexId: candidateVId });
-        await this.sleep(this.turnDelay);
-        return;
+        try {
+          this.log(`[AI-Agent] Building settlement at vertex ${candidateVId}`);
+          await this.sendAction('build_settlement', { vertexId: candidateVId });
+          await this.sleep(this.turnDelay);
+          return;
+        } catch (err) {
+          this.log(`[AI-Agent] Action build_settlement failed: ${err.message}`);
+        }
       }
     }
 
@@ -448,10 +461,14 @@ export class CatanAIAgent {
     if (isCk && res.brick >= 2 && (me.cityWalls || 0) > 0 && me.citiesBuilt?.length > 0) {
       const targetCity = me.citiesBuilt.find(cId => !state.grid.vertices[cId]?.hasCityWall);
       if (targetCity) {
-        this.log(`[AI-Agent] Building city wall at ${targetCity}`);
-        await this.sendAction('build_city_wall', { vertexId: targetCity });
-        await this.sleep(this.turnDelay);
-        return;
+        try {
+          this.log(`[AI-Agent] Building city wall at ${targetCity}`);
+          await this.sendAction('build_city_wall', { vertexId: targetCity });
+          await this.sleep(this.turnDelay);
+          return;
+        } catch (err) {
+          this.log(`[AI-Agent] Action build_city_wall failed: ${err.message}`);
+        }
       }
     }
 
@@ -459,10 +476,14 @@ export class CatanAIAgent {
     if (isCk && res.wheat >= 1) {
       const inactiveKnightVertex = (me.knightsPlaced || []).find(k => !k.active)?.vertexId;
       if (inactiveKnightVertex) {
-        this.log(`[AI-Agent] Activating knight at vertex ${inactiveKnightVertex}`);
-        await this.sendAction('activate_knight', { vertexId: inactiveKnightVertex });
-        await this.sleep(this.turnDelay);
-        return;
+        try {
+          this.log(`[AI-Agent] Activating knight at vertex ${inactiveKnightVertex}`);
+          await this.sendAction('activate_knight', { vertexId: inactiveKnightVertex });
+          await this.sleep(this.turnDelay);
+          return;
+        } catch (err) {
+          this.log(`[AI-Agent] Action activate_knight failed: ${err.message}`);
+        }
       }
     }
 
@@ -470,24 +491,36 @@ export class CatanAIAgent {
     if (res.wood >= 1 && res.brick >= 1 && (me.roadsRemaining || 0) > 0) {
       const candidateEdgeId = this.findBuildableRoadEdge(state.grid, me);
       if (candidateEdgeId) {
-        this.log(`[AI-Agent] Building road at edge ${candidateEdgeId}`);
-        await this.sendAction('build_road', { edgeId: candidateEdgeId });
-        await this.sleep(this.turnDelay);
-        return;
+        try {
+          this.log(`[AI-Agent] Building road at edge ${candidateEdgeId}`);
+          await this.sendAction('build_road', { edgeId: candidateEdgeId });
+          await this.sleep(this.turnDelay);
+          return;
+        } catch (err) {
+          this.log(`[AI-Agent] Action build_road failed: ${err.message}`);
+        }
       }
     }
 
     // 7. Base Game: Buy Dev Card (1 Ore, 1 Wool, 1 Wheat)
     if (!isCk && res.ore >= 1 && res.wool >= 1 && res.wheat >= 1 && (state.devCardsRemaining || 0) > 0) {
-      this.log('[AI-Agent] Buying development card');
-      await this.sendAction('buy_dev_card', {});
-      await this.sleep(this.turnDelay);
-      return;
+      try {
+        this.log('[AI-Agent] Buying development card');
+        await this.sendAction('buy_dev_card', {});
+        await this.sleep(this.turnDelay);
+        return;
+      } catch (err) {
+        this.log(`[AI-Agent] Action buy_dev_card failed: ${err.message}`);
+      }
     }
 
     // Done with actions: End turn
-    this.log('[AI-Agent] Ending turn');
-    await this.sendAction('end_turn', {});
+    try {
+      this.log('[AI-Agent] Ending turn');
+      await this.sendAction('end_turn', {});
+    } catch (err) {
+      this.log(`[AI-Agent] End turn error: ${err.message}`);
+    }
   }
 
   async handleMetropolis(state, me) {
@@ -503,7 +536,7 @@ export class CatanAIAgent {
     const options = state.pendingKnightRelocation?.options || [];
     if (options.length > 0) {
       this.log(`[AI-Agent] Relocating knight to vertex ${options[0]}`);
-      await this.sendAction('relocate_knight', { vertexId: options[0] });
+      await this.sendAction('relocate_displaced_knight', { vertexId: options[0] });
     }
   }
 
@@ -556,10 +589,15 @@ export class CatanAIAgent {
       const v1 = grid.vertices[edge.v1];
       const v2 = grid.vertices[edge.v2];
 
+      const v1Blocked = (v1?.building && v1.building.playerId !== this.myPlayerId) ||
+                        (v1?.knight && v1.knight.playerId !== this.myPlayerId);
+      const v2Blocked = (v2?.building && v2.building.playerId !== this.myPlayerId) ||
+                        (v2?.knight && v2.knight.playerId !== this.myPlayerId);
+
       const v1Connected = (v1?.building?.playerId === this.myPlayerId) ||
-        v1?.adjacentEdges.some(adjId => adjId !== eId && grid.edges[adjId]?.road?.playerId === this.myPlayerId);
+        (!v1Blocked && v1?.adjacentEdges.some(adjId => adjId !== eId && grid.edges[adjId]?.road?.playerId === this.myPlayerId));
       const v2Connected = (v2?.building?.playerId === this.myPlayerId) ||
-        v2?.adjacentEdges.some(adjId => adjId !== eId && grid.edges[adjId]?.road?.playerId === this.myPlayerId);
+        (!v2Blocked && v2?.adjacentEdges.some(adjId => adjId !== eId && grid.edges[adjId]?.road?.playerId === this.myPlayerId));
 
       if (v1Connected || v2Connected) {
         return eId;
@@ -568,11 +606,23 @@ export class CatanAIAgent {
     return null;
   }
 
-  sendAction(event, payload) {
+  sendAction(event, payload, timeoutMs = 8000) {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error(`Action ${event} timed out after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
       this.socket.emit(event, { code: this.roomCode, ...payload }, (res) => {
-        if (res && res.success) resolve(res);
-        else reject(new Error(res ? res.error : `Action ${event} failed`));
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          if (res && res.success) resolve(res);
+          else reject(new Error(res ? res.error : `Action ${event} failed`));
+        }
       });
     });
   }

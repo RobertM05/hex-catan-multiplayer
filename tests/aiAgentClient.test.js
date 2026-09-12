@@ -136,4 +136,131 @@ describe('AI-01: Autonomous AI Agent Client & Room Summoning', () => {
 
     roomManager.destroyRoom(room.code);
   });
+
+  it('should autonomously place city and road in C&K Round 2 setup without freezing', async () => {
+    // Create C&K room
+    const hostData = { id: 'ck_host', name: 'CKHost', socketId: 'sock_ck_host' };
+    const room = roomManager.createRoom(hostData, { name: 'CKAgentTestRoom', mode: 'cities_knights', maxPlayers: 2 });
+    roomManager.setPlayerReady(room.code, hostData.id, true);
+
+    const agent = new CatanAIAgent({
+      serverUrl,
+      name: 'ClaudeBot',
+      turnDelay: 10,
+      autoReady: true,
+      log: () => {}
+    });
+
+    await agent.connect();
+    await agent.joinRoom(room.code);
+
+    roomManager.startGame(room.code, hostData.id);
+    const engine = room.engine;
+
+    // Helper to simulate a player's setup step
+    const takeSetupTurn = (playerId) => {
+      const curPlayer = engine.getCurrentPlayer();
+      if (curPlayer.id !== playerId) return;
+      const v = Array.from(engine.grid.vertices.keys()).find(vId => {
+        const vtx = engine.grid.vertices.get(vId);
+        return !vtx.building && !vtx.knight && !engine.violatesDistanceRule(vId);
+      });
+      engine.placeSetupSettlement(playerId, v);
+      const e = engine.grid.vertices.get(v).adjacentEdges.find(eId => !engine.grid.edges.get(eId)?.road);
+      engine.placeSetupRoad(playerId, e);
+      roomManager.broadcastState(room);
+    };
+
+    // Advance round 1 if needed
+    if (engine.getCurrentPlayer().id === hostData.id) {
+      takeSetupTurn(hostData.id);
+    }
+
+    // Wait for agent round 1
+    let attempts = 0;
+    while (attempts < 30) {
+      await new Promise(r => setTimeout(r, 100));
+      const agentState = engine.players.find(p => p.id === agent.myPlayerId);
+      if (agentState && agentState.settlementsBuilt.length >= 1 && agentState.roadsBuilt.length >= 1) {
+        break;
+      }
+      attempts++;
+    }
+
+    // Now in Round 2: snake draft order has the second player go first, or host
+    if (engine.phase === 'SETUP_ROUND_2') {
+      if (engine.getCurrentPlayer().id === hostData.id) {
+        takeSetupTurn(hostData.id);
+      }
+
+      // Wait for agent to place city and road in Round 2
+      attempts = 0;
+      while (attempts < 30) {
+        await new Promise(r => setTimeout(r, 100));
+        const agentState = engine.players.find(p => p.id === agent.myPlayerId);
+        if (agentState && agentState.citiesBuilt.length >= 1 && agentState.roadsBuilt.length >= 2) {
+          break;
+        }
+        attempts++;
+      }
+    }
+
+    const finalAgent = engine.players.find(p => p.id === agent.myPlayerId);
+    assert.ok(finalAgent.settlementsBuilt.length >= 1, 'Agent should have a settlement from Round 1');
+    assert.ok(finalAgent.citiesBuilt.length >= 1, 'Agent should have placed a city in C&K Round 2');
+    assert.ok(finalAgent.roadsBuilt.length >= 2, 'Agent should have placed roads in both rounds');
+
+    agent.disconnect();
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('should successfully discard cards on 7-roll without INVALID_DISCARD_DATA', async () => {
+    const hostData = { id: 'discard_host', name: 'DiscardHost', socketId: 'sock_discard_host' };
+    const room = roomManager.createRoom(hostData, { name: 'DiscardRoom', mode: 'cities_knights', maxPlayers: 2 });
+    roomManager.setPlayerReady(room.code, hostData.id, true);
+
+    const agent = new CatanAIAgent({
+      serverUrl,
+      name: 'DeepHex',
+      turnDelay: 10,
+      autoReady: true,
+      log: () => {}
+    });
+
+    await agent.connect();
+    await agent.joinRoom(room.code);
+
+    roomManager.startGame(room.code, hostData.id);
+    const engine = room.engine;
+
+    // Fast-forward setup
+    engine.phase = 'TURN_ACTION';
+    const agentPlayer = engine.players.find(p => p.id === agent.myPlayerId);
+    // Give agent 8 cards (5 resources + 3 commodities)
+    agentPlayer.resources = { wood: 2, brick: 1, wool: 1, wheat: 1, ore: 0 };
+    agentPlayer.commodities = { cloth: 1, coin: 1, paper: 1 };
+
+    // Trigger discard phase
+    engine.phase = 'TURN_DISCARD';
+    engine.pendingDiscards = new Set([agent.myPlayerId]);
+    roomManager.broadcastState(room);
+
+    // Wait for agent to discard
+    let attempts = 0;
+    while (attempts < 30) {
+      await new Promise(r => setTimeout(r, 100));
+      if (!engine.pendingDiscards.has(agent.myPlayerId)) {
+        break;
+      }
+      attempts++;
+    }
+
+    assert.ok(!engine.pendingDiscards.has(agent.myPlayerId), 'Agent should have completed discard successfully');
+    const totalRemaining = Object.values(agentPlayer.resources).reduce((s, v) => s + v, 0) +
+                           Object.values(agentPlayer.commodities).reduce((s, v) => s + v, 0);
+    assert.equal(totalRemaining, 4, 'Agent should have discarded exactly half (4 cards)');
+
+    agent.disconnect();
+    roomManager.destroyRoom(room.code);
+  });
 });
