@@ -1316,8 +1316,8 @@ export class GameEngine {
     }
 
     const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
-      throw new Error('MUST_CHOOSE_YOUR_CITY');
+    if (!vertex?.building || (vertex.building.type !== 'city' && vertex.building.type !== 'metropolis') || vertex.building.playerId !== playerId) {
+      throw new Error('MUST_CHOOSE_YOUR_CITY: MUST_CHOOSE_OWN_CITY');
     }
 
     const track = this.pendingMetropolisChoice.track;
@@ -1690,54 +1690,6 @@ export class GameEngine {
       args: { playerName: player.name }
     });
     return { vertexId, wallsRemaining: player.cityWalls };
-  }
-
-  chooseMetropolis(playerId, vertexId) {
-    if (this.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) throw new Error('NOT_IN_METROPOLIS_PHASE');
-    const player = this.players.find(p => p.id === playerId);
-    if (!player) throw new Error('PLAYER_NOT_FOUND');
-    const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
-      throw new Error('MUST_CHOOSE_OWN_CITY');
-    }
-    const track = this.pendingMetropolisChoice?.track || 'trade';
-    player.metropolis = player.metropolis || { trade: false, politics: false, science: false };
-    for (const other of this.players) {
-      if (other.id !== playerId && other.metropolis?.[track]) {
-        other.metropolis[track] = false;
-      }
-    }
-    player.metropolis[track] = true;
-    vertex.building.hasMetropolis = true;
-    this.pendingMetropolisChoice = null;
-    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
-    this.recalculateVictoryPoints();
-    this.checkVictory();
-    return { vertexId, track };
-  }
-
-  chooseMetropolis(playerId, vertexId) {
-    if (this.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) throw new Error('NOT_IN_METROPOLIS_PHASE');
-    const player = this.players.find(p => p.id === playerId);
-    if (!player) throw new Error('PLAYER_NOT_FOUND');
-    const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || vertex.building.type !== 'city' || vertex.building.playerId !== playerId) {
-      throw new Error('MUST_CHOOSE_OWN_CITY');
-    }
-    const track = this.pendingMetropolisChoice?.track || 'trade';
-    player.metropolis = player.metropolis || { trade: false, politics: false, science: false };
-    for (const other of this.players) {
-      if (other.id !== playerId && other.metropolis?.[track]) {
-        other.metropolis[track] = false;
-      }
-    }
-    player.metropolis[track] = true;
-    vertex.building.hasMetropolis = true;
-    this.pendingMetropolisChoice = null;
-    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
-    this.recalculateVictoryPoints();
-    this.checkVictory();
-    return { vertexId, track };
   }
 
   buyDevCard(playerId) {

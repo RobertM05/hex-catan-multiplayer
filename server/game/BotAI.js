@@ -315,16 +315,28 @@ export class BotAI {
   static chooseCityForMetropolis(engine, playerId) {
     const player = engine.players.find(p => p.id === playerId);
     if (!player?.citiesBuilt?.length) return null;
-    let best = player.citiesBuilt[0];
+    let best = null;
     let bestScore = -1;
     for (const vid of player.citiesBuilt) {
+      const v = engine.grid.vertices.get(vid);
+      if (!v?.building || v.building.playerId !== playerId || v.building.type !== 'city') continue;
       const score = this.cityResourceScore(engine, vid);
       if (score > bestScore) {
         bestScore = score;
         best = vid;
       }
     }
-    return best;
+    if (best) return best;
+    for (const vid of player.citiesBuilt) {
+      const v = engine.grid.vertices.get(vid);
+      if (!v?.building || v.building.playerId !== playerId) continue;
+      const score = this.cityResourceScore(engine, vid);
+      if (score > bestScore) {
+        bestScore = score;
+        best = vid;
+      }
+    }
+    return best || player.citiesBuilt[0];
   }
 
   static chooseBestImprovementTrack(engine, me) {
