@@ -67,6 +67,7 @@ class CatanApp {
     this.setupLobbyActions();
     this.setupWaitingRoomActions();
     this.setupInGameActions();
+    this.setupHudOverlays();
     this.setupCkUi();
     this.setupTradeModals();
     this.setupDiscardModal();
@@ -486,6 +487,27 @@ class CatanApp {
         network.sendChat(text);
         input.value = '';
       }
+    });
+  }
+
+  setupHudOverlays() {
+    const viewport = document.querySelector('.game-viewport-container');
+    const toggle = document.getElementById('btn-toggle-sidebar');
+    const backdrop = document.getElementById('hud-sidebar-backdrop');
+    if (!viewport || !toggle || !backdrop) return;
+
+    const setOpen = (open) => {
+      viewport.classList.toggle('sidebar-open', open);
+      backdrop.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', () => {
+      setOpen(!viewport.classList.contains('sidebar-open'));
+    });
+    backdrop.addEventListener('click', () => setOpen(false));
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 1024) setOpen(false);
     });
   }
 
