@@ -253,16 +253,13 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].progressCards.length, before + 2);
   });
 
-  it('gives 2:1 bank trades on basic resources at Trade level 1, not commodities', () => {
+  it('does not give 2:1 bank trades at Trade level 1 (only Level 5 grants 2:1)', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].cityImprovements.trade = 1;
     engine.players[0].resources.wood = 2;
     engine.players[0].commodities.cloth = 4;
-    engine.tradeWithBank('p1', 'wood', 'brick', 2);
-    assert.equal(engine.players[0].resources.wood, 0);
-    assert.equal(engine.players[0].resources.brick, 1);
-    assert.throws(() => engine.tradeWithBank('p1', 'cloth', 'ore', 2), /INVALID_TRADE_RATIO|NOT_ENOUGH/);
+    assert.throws(() => engine.tradeWithBank('p1', 'wood', 'brick', 2), /INVALID_TRADE_RATIO/);
   });
 
   it('allows 2:1 commodity bank trades at Trade level 5', () => {
@@ -537,7 +534,7 @@ describe('CK-04: Knight Units', () => {
     assert.throws(() => engine.placeKnight('p1', vertex.id), /VERTEX_OCCUPIED/);
   });
 
-  it('should reject placement violating distance rule', () => {
+  it('allows knight placement adjacent to building (knights do not obey distance rule)', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.ore = 1;
@@ -546,7 +543,9 @@ describe('CK-04: Knight Units', () => {
     const adjId = vertex.adjacentVertices[0];
     engine.grid.vertices.get(adjId).building = { type: 'settlement', playerId: 'p2' };
     giveRoad(engine, 'p1', vertex.id);
-    assert.throws(() => engine.placeKnight('p1', vertex.id), /DISTANCE_RULE_VIOLATION/);
+    const res = engine.placeKnight('p1', vertex.id);
+    assert.equal(res.vertexId, vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.playerId, 'p1');
   });
 
   it('should reject placement without road connection', () => {
@@ -620,7 +619,7 @@ describe('CK-04: Knight Units', () => {
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].rank, 'strong');
     assert.equal(engine.players[0].knightsPlaced[0].strength, 2);
-    assert.equal(engine.players[0].knightsPlaced[0].active, true);
+    assert.equal(engine.players[0].knightsPlaced[0].active, false);
     assert.equal(engine.players[0].knightsAvailable.basic, 2);
     assert.equal(engine.players[0].knightsAvailable.strong, 1);
   });
@@ -659,12 +658,20 @@ describe('CK-04: Knight Units', () => {
     assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_MAX_RANK/);
   });
 
-  it('should auto-activate knight on promotion', () => {
+  it('should preserve active/inactive status on promotion (does not auto-activate)', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id, { active: false });
     engine.players[0].cityImprovements.politics = 1;
+    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.ore = 1;
+    engine.promoteKnight('p1', vertex.id);
+    assert.equal(engine.players[0].knightsPlaced[0].active, false);
+
+    // If already active, stays active
+    engine.players[0].knightsPlaced[0].active = true;
+    engine.players[0].cityImprovements.politics = 2;
     engine.players[0].resources.wheat = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
@@ -827,7 +834,7 @@ describe('PR #22 review follow-up', () => {
     assert.equal(engine.pendingDiscards.has('p1'), true);
   });
 
-  it('does not drive settlementsRemaining negative when supply is empty', () => {
+  it('places city on side as settlement when settlements supply is empty', () => {
     const engine = makeCkEngine();
     attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
     const cityId = engine.players[0].citiesBuilt[0];
@@ -839,8 +846,10 @@ describe('PR #22 review follow-up', () => {
 
     assert.equal(engine.players[0].settlementsRemaining, 0);
     assert.equal(engine.players[0].citiesBuilt.length, 0);
-    assert.equal(engine.grid.vertices.get(cityId).building, null);
-    assert.equal(engine.players[0].settlementsBuilt.includes(cityId), false);
+    const building = engine.grid.vertices.get(cityId).building;
+    assert.equal(building.type, 'settlement');
+    assert.equal(building.isCityOnSide, true);
+    assert.equal(engine.players[0].settlementsBuilt.includes(cityId), true);
   });
 });
 
@@ -1060,6 +1069,8 @@ describe('CK-05: Trade Progress Cards', () => {
   it('should execute Master Merchant: steal 2 chosen cards from target', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOL, 'settlement');
+    engine.recalculateVictoryPoints();
     engine.players[1].resources.wool = 1;
     engine.players[1].commodities.cloth = 1;
     const card = giveCard(engine.players[0], 'master_merchant');
