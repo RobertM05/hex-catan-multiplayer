@@ -1071,7 +1071,7 @@
   <div id="rules-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-rules">
       <h3 class="modal-title" data-i18n="RULES_BUTTON">Reguli joc</h3>
-      <div class="rules-copy">
+      <div id="rules-copy-base" class="rules-copy">
         <div>
           <strong data-i18n="RULES_RESOURCES_TITLE">Resurse:</strong>
           <span data-i18n="RULES_RESOURCES_BODY">Lemn (Pădure), Cărămidă (Dealuri), Lână (Pășune), Grâu (Câmpie), Minereu (Munți). Deșertul nu produce resurse.</span>
@@ -1091,6 +1091,48 @@
         <div>
           <strong data-i18n="RULES_TITLES_TITLE">Titluri speciale:</strong>
           <span data-i18n="RULES_TITLES_BODY">Cel mai lung drum (minim 5 segmente continue) = +2 PV. Cea mai mare armată (minim 3 cavaleri jucați) = +2 PV.</span>
+        </div>
+      </div>
+      <div id="rules-copy-ck" class="rules-copy is-hidden">
+        <div>
+          <strong data-i18n="RULES_CK_VP_TITLE">Victorie:</strong>
+          <span data-i18n="RULES_CK_VP_BODY">Primul la 13 PV câștigă. Cărțile de dezvoltare clasice și Cea mai mare armată nu se folosesc.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_COMMODITIES_TITLE">Comodități:</strong>
+          <span data-i18n="RULES_CK_COMMODITIES_BODY">Orașele pe lână/minereu/grâu produc 1 resursă + 1 comoditate (pânză/monedă/hârtie). Orașele pe lemn/cărămidă produc 2 resurse. Satele nu produc niciodată comodități. Comoditățile contează la pragul de 7 la discard și se pot tranzacționa, dar nu plătesc clădiri.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_COSTS_TITLE">Costuri clădiri:</strong>
+          <span data-i18n="RULES_CK_COSTS_BODY">Drum = 1 Lemn + 1 Cărămidă. Așezare = 1 Lemn + 1 Cărămidă + 1 Lână + 1 Grâu (1 PV). Oraș = 3 Minereu + 2 Grâu (2 PV). Cavaler = 1 Minereu + 1 Lână (inactiv). Activare cavaler = 1 Grâu. Promovare cavaler = 1 Grâu + 1 Minereu. Zid de oraș = 2 Cărămidă.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_DISTANCE_TITLE">Regula distanței:</strong>
+          <span data-i18n="RULES_DISTANCE_BODY">Orice două așezări sau orașe trebuie să fie la cel puțin 2 intersecții distanță.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_ROBBER_TITLE">Zarul 7 &amp; Hoțul:</strong>
+          <span data-i18n="RULES_ROBBER_BODY">Dacă suma zarurilor este 7, jucătorii cu mai mult de 7 cărți în mână decartează jumătate. Jucătorul activ mută hoțul pe un hexagon și poate lua 1 resursă de la un jucător cu o așezare sau oraș adiacent.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_KNIGHTS_TITLE">Cavaleri:</strong>
+          <span data-i18n="RULES_CK_KNIGHTS_BODY">Rezervă per jucător: 2 de bază, 2 puternici, 1 mighty. Politică 1 deblochează Strong; Politică 2 deblochează Mighty. Cavalerii activi apără de barbari, se pot muta, deplasează un cavaler inamic mai slab și alungă hoțul (apoi redevin inactivi).</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_BARBARIANS_TITLE">Zar de eveniment și barbari:</strong>
+          <span data-i18n="RULES_CK_BARBARIANS_BODY">Fiecare aruncare folosește 2 zaruri de producție plus un zar de eveniment (3/6 barbar, 1/6 fiecare Comerț/Politică/Știință). Corabia avansează pe fața de barbar. La capătul pistei, dacă puterea cavalerilor activi este cel puțin numărul de orașe, Catan câștigă și apărătorul unic cel mai puternic primește Defender of Catan (+1 PV). Dacă Catan pierde, jucătorii cu cei mai puțini cavaleri activi care mai au oraș trebuie să retrogradeze unul. Apoi toți cavalerii redevin inactivi. O față colorată lasă fiecare jucător al cărui track corespunzător este cel puțin zarul roșu să tragă o carte de progres.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_IMPROVE_TITLE">Îmbunătățiri de oraș:</strong>
+          <span data-i18n="RULES_CK_IMPROVE_BODY">Ai nevoie de un oraș ca să investești. Costul este nivelul la care urci (1–5) în pânză (Comerț), monedă (Politică) sau hârtie (Știință). Tragi o carte de progres la nivelul 3. Liderul unic de la nivelul 4+ pune o metropolă pe un oraș (+2 PV). Nivelul 5 deblochează abilități speciale: schimb bancar 2:1 (Comerț), Cavaleri Mighty (Politică) sau Apeduct (Știință). Zidurile ridică pragul de discard cu 2 fiecare (maxim 3 ziduri).</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_TITLES_TITLE">Titluri speciale:</strong>
+          <span data-i18n="RULES_CK_TITLES_BODY">Cel mai lung drum (minim 5 segmente continue) = +2 PV. Cărțile Defender of Catan = +1 PV fiecare. Nu există Cea mai mare armată.</span>
+        </div>
+        <div>
+          <strong data-i18n="RULES_CK_PROGRESS_TITLE">Cărți de progres:</strong>
+          <span data-i18n="RULES_CK_PROGRESS_BODY">Înlocuiesc cărțile de dezvoltare. Limită 4 cărți nejucate. Se joacă în tura ta (Alchimistul înainte să arunci zarurile).</span>
         </div>
       </div>
       <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite &amp; Lorc.</p>

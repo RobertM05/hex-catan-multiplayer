@@ -315,6 +315,17 @@ describe('Longest Road & Largest Army Rules', () => {
     assert.equal(engine.longestRoadHolder, null, 'Longest road must be set aside on tie when holder loses it');
   });
 
+  it('serializes each player roadLength in getStateForPlayer', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.calculatePlayerLongestRoad = (id) => (id === 'p1' ? 4 : 2);
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.players.find(p => p.id === 'p1').roadLength, 4);
+    assert.equal(state.players.find(p => p.id === 'p2').roadLength, 2);
+  });
+
   it('should NOT allow ties to steal Largest Army', () => {
     const engine = new GameEngine();
     engine.addPlayer({ id: 'p1', name: 'Alice' });

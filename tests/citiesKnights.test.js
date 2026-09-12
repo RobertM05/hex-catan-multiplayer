@@ -505,6 +505,19 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     assert.equal(result.progressDraws[0].drawn, true);
     assert.ok(result.progressDraws[0].cardType);
   });
+
+  it('gives a progress card to every player whose track meets the red die', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 4;
+    engine.players[1].cityImprovements.science = 2;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const result = forceRoll(engine, 'p1', 2, 3, 5);
+    assert.equal(result.eventDie, 'science');
+    assert.deepEqual(result.progressDraws.map(d => d.playerId).sort(), ['p1', 'p2']);
+    assert.ok(result.progressDraws.every(d => d.drawn));
+    assert.equal(engine.players[0].progressCards.length, 1);
+    assert.equal(engine.players[1].progressCards.length, 1);
+  });
 });
 
 describe('CK-04: Knight Units', () => {

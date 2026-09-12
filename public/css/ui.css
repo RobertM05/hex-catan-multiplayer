@@ -743,7 +743,22 @@
 .opponent-stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.opponent-stat {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.opponent-stat.is-title {
+  color: var(--gold-primary);
+  font-weight: 700;
 }
 
 .opponent-card-count {
