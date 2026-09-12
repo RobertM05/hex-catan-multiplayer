@@ -32,6 +32,8 @@ export class BoardRenderer {
     this.onVertexClick = null;
     this.onEdgeClick = null;
     this.onHexClick = null;
+    this.onKnightClick = null;
+    this.currentPlayerId = null;
 
     // Pan & Zoom state
     this.viewBox = { x: -400, y: -350, width: 800, height: 700 };
@@ -179,16 +181,18 @@ export class BoardRenderer {
     this.updateViewBox();
   }
 
-  render(gridData, interactiveAction = null, rollSum = null) {
+  render(gridData, interactiveAction = null, rollSum = null, players = null) {
     if (!gridData) return;
     this.grid = gridData;
     this.selectedAction = interactiveAction;
     this.lastRollSum = rollSum;
+    if (players) this.gameStatePlayers = players;
 
     this.renderHexes();
     this.renderHarbors();
     this.renderEdges();
     this.renderVertices();
+    this.renderKnights();
     this.renderRobber();
   }
 
@@ -273,7 +277,7 @@ export class BoardRenderer {
       }
 
       // If interactive action is robber move, allow click
-      if (this.selectedAction && this.selectedAction.type === 'robber' && hex.id !== this.grid.robberHexId) {
+      if (this.selectedAction && (this.selectedAction.type === 'robber' || this.selectedAction.type === 'chase_robber') && hex.id !== this.grid.robberHexId) {
         g.classList.add('hex-robber-target');
         poly.setAttribute('stroke', '#ffb703');
         poly.setAttribute('stroke-width', '4');
@@ -563,7 +567,7 @@ export class BoardRenderer {
       } else {
         // Empty vertex: check if building settlement is valid here
         const isInteractive = this.selectedAction &&
-          this.selectedAction.type === 'settlement' &&
+          ['settlement', 'knight', 'move_knight'].includes(this.selectedAction.type) &&
           this.selectedAction.validIds &&
           this.selectedAction.validIds.has(v.id);
 
@@ -608,6 +612,66 @@ export class BoardRenderer {
           });
           g.appendChild(targetG);
         }
+      }
+
+      this.vertexLayer.appendChild(g);
+    }
+  }
+
+  renderKnights() {
+    if (!this.grid) return;
+    const vertices = Object.values(this.grid.vertices);
+    const pipCount = { basic: 1, strong: 2, mighty: 3 };
+
+    for (const v of vertices) {
+      if (!v.knight) continue;
+      const knight = v.knight;
+      const player = this.gameStatePlayers?.find(p => p.id === knight.playerId);
+      const color = player?.color || knight.color || '#888888';
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', knight.active ? 'knight-piece' : 'knight-piece knight-inactive');
+      g.setAttribute('data-vertex-id', v.id);
+      g.setAttribute('transform', `translate(${v.x}, ${v.y})`);
+
+      const shield = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      shield.setAttribute('d', 'M-8,-12 L8,-12 L8,4 L0,12 L-8,4 Z');
+      shield.setAttribute('fill', color);
+      shield.setAttribute('stroke', '#1a1a1a');
+      shield.setAttribute('stroke-width', '1.5');
+      g.appendChild(shield);
+
+      const pips = pipCount[knight.rank] || 1;
+      for (let i = 0; i < pips; i++) {
+        const pip = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        pip.setAttribute('cx', String(-4 + i * 4));
+        pip.setAttribute('cy', '-2');
+        pip.setAttribute('r', '1.8');
+        pip.setAttribute('fill', '#FFD700');
+        pip.setAttribute('stroke', '#3f2e00');
+        pip.setAttribute('stroke-width', '0.4');
+        g.appendChild(pip);
+      }
+
+      if (this.selectedAction?.type === 'move_knight' && this.selectedAction.validIds?.has(v.id)) {
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        ring.setAttribute('r', '16');
+        ring.setAttribute('fill', 'rgba(217, 119, 6, 0.18)');
+        ring.setAttribute('stroke', '#f59e0b');
+        ring.setAttribute('stroke-width', '2');
+        ring.setAttribute('stroke-dasharray', '4,3');
+        ring.style.cursor = 'pointer';
+        g.insertBefore(ring, shield);
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.onVertexClick) this.onVertexClick(v.id);
+        });
+      } else if (knight.playerId === this.currentPlayerId) {
+        g.style.cursor = 'pointer';
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (this.onKnightClick) this.onKnightClick(v.id, knight, e);
+        });
       }
 
       this.vertexLayer.appendChild(g);

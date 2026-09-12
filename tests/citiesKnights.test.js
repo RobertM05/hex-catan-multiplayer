@@ -752,3 +752,27 @@ describe('PR #22 review follow-up', () => {
     assert.equal(engine.players[0].settlementsBuilt.includes(cityId), false);
   });
 });
+
+describe('CK-11: Knight State in UI', () => {
+  it('should include knight data on vertices in serialized grid state', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    giveRoad(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'basic', active: true });
+    const state = engine.getStateForPlayer('p1');
+    const serialized = state.grid.vertices[vertex.id];
+    assert.ok(serialized.knight);
+    assert.equal(serialized.knight.rank, 'basic');
+    assert.equal(serialized.knight.active, true);
+    assert.equal(serialized.knight.playerId, 'p1');
+  });
+
+  it('should include knightsAvailable in player state', () => {
+    const engine = makeCkEngine();
+    const self = engine.getStateForPlayer('p1').players.find(p => p.id === 'p1');
+    const asOpponent = engine.getStateForPlayer('p2').players.find(p => p.id === 'p1');
+    assert.deepEqual(self.knightsAvailable, { basic: 2, strong: 2, mighty: 1 });
+    assert.equal(asOpponent.knightsAvailable, undefined);
+    assert.ok(Array.isArray(self.knightsPlaced));
+  });
+});

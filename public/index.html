@@ -329,7 +329,23 @@
               </span>
             </div>
           </button>
+
+          <button id="btn-place-knight" class="btn-build-action ck-hud-widget">
+            <span class="build-action-label">
+              <span data-i18n="PLACE_KNIGHT">Cavaler</span>
+            </span>
+            <div class="build-cost-pills">
+              <span class="cost-pill pill-ore" title="Minereu">
+                <span class="ico" data-icon="ore"></span> 1
+              </span>
+              <span class="cost-pill pill-wool" title="Lână">
+                <span class="ico" data-icon="wool"></span> 1
+              </span>
+            </div>
+          </button>
         </div>
+
+        <div id="knight-supply" class="ck-hud-widget knight-supply" aria-live="polite"></div>
 
         <button id="btn-end-turn" class="btn-glass" style="margin-top: auto; padding: 12px; font-weight: 700;" data-i18n="ACTION_END_TURN">Încheie tura</button>
       </aside>
@@ -356,6 +372,8 @@
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
+
+        <div id="knight-action-menu" class="knight-action-menu" hidden></div>
 
       </div>
 
