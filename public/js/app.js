@@ -8,6 +8,7 @@ import { i18n } from './i18n.js';
 import { audio } from './audio.js';
 import { network } from './network.js';
 import { BoardRenderer } from './renderer.js';
+import { ico } from './icons.js';
 
 class CatanApp {
   constructor() {
@@ -16,6 +17,8 @@ class CatanApp {
     this.gameState = null;
     this.selectedAction = null; // { type: 'settlement'|'road'|'city'|'robber', validIds: Set }
     this.bankTrade = { give: null, receive: null };
+    this.lastEventDie = null;
+    this.barbarianOverlayKey = null;
     this.myPlayerId = localStorage.getItem('catan_player_id') || `p_${Math.random().toString(36).substring(2, 8)}`;
     localStorage.setItem('catan_player_id', this.myPlayerId);
     network.currentPlayerId = this.myPlayerId;
@@ -31,6 +34,21 @@ class CatanApp {
     const types = ['wood', 'brick', 'wool', 'wheat', 'ore'];
     if (this.isCitiesKnights()) types.push('cloth', 'coin', 'paper');
     return types;
+  }
+
+  isCommodity(type) {
+    return type === 'cloth' || type === 'coin' || type === 'paper';
+  }
+
+  getCardCount(me, type) {
+    if (!me) return 0;
+    if (this.isCommodity(type)) return (me.commodities && me.commodities[type]) || 0;
+    return (me.resources && me.resources[type]) || 0;
+  }
+
+  cardLabel(type) {
+    if (this.isCommodity(type)) return i18n.t(`COMM_${type.toUpperCase()}`);
+    return i18n.t(`RES_${type.toUpperCase()}`);
   }
 
   async init() {
@@ -49,6 +67,7 @@ class CatanApp {
     this.setupLobbyActions();
     this.setupWaitingRoomActions();
     this.setupInGameActions();
+    this.setupCkUi();
     this.setupTradeModals();
     this.setupDiscardModal();
     this.setupDevCardsModal();
@@ -85,10 +104,10 @@ class CatanApp {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${isError ? 'toast-error' : ''}`;
-    const iconSvg = isError
-      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
-      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>`;
-    toast.innerHTML = `${iconSvg} <span>${message}</span>`;
+    const iconMarkup = isError
+      ? ico('warning', 'ico-error toast-icon')
+      : ico('check', 'ico-ok toast-icon');
+    toast.innerHTML = `${iconMarkup} <span>${message}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
@@ -127,10 +146,8 @@ class CatanApp {
   setupSoundToggle() {
     const soundBtn = document.getElementById('btn-sound-toggle');
     const updateIcon = () => {
-      const iconSvg = audio.enabled
-        ? `<svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`
-        : `<svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
-      soundBtn.innerHTML = `${iconSvg} <span>${i18n.t('SOUND_TOGGLE')}</span>`;
+      const iconMarkup = ico(audio.enabled ? 'speakerHigh' : 'speakerSlash', 'btn-icon');
+      soundBtn.innerHTML = `${iconMarkup} <span>${i18n.t('SOUND_TOGGLE')}</span>`;
     };
     soundBtn.addEventListener('click', () => {
       audio.toggle();
@@ -364,7 +381,7 @@ class CatanApp {
     // Roll dice button
     document.getElementById('btn-roll-dice').addEventListener('click', async () => {
       try {
-        const diceCubes = document.querySelectorAll('.die');
+        const diceCubes = document.querySelectorAll('.dice-cubes .die');
         diceCubes.forEach(d => d.classList.add('rolling'));
         audio.playDiceRoll();
 
@@ -617,6 +634,160 @@ class CatanApp {
     this.updateBoardHint();
   }
 
+  setupCkUi() {
+    const panel = document.getElementById('city-improvements-panel');
+    panel?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-improve-track]');
+      if (!btn || btn.disabled) return;
+      try {
+        await network.sendAction('improve_city', { track: btn.getAttribute('data-improve-track') });
+        audio.playBuild();
+      } catch (err) {
+        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+      }
+    });
+
+    document.getElementById('btn-close-barbarian')?.addEventListener('click', () => {
+      document.getElementById('barbarian-modal')?.classList.remove('active');
+    });
+
+    document.getElementById('btn-toggle-improvements')?.addEventListener('click', () => {
+      document.getElementById('city-improvements-panel')?.classList.toggle('collapsed');
+    });
+  }
+
+  renderCkHud(s, me, isActionPhase) {
+    document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
+    this.renderEventDie(s);
+    this.renderBarbarianTrack(s);
+    this.renderImprovementPanel(me, isActionPhase);
+    this.renderBarbarianOverlay(s, me);
+  }
+
+  renderEventDie(s) {
+    const el = document.getElementById('die-event');
+    if (!el) return;
+    el.classList.remove('event-barbarian', 'event-trade', 'event-politics', 'event-science');
+    const face = s.eventDie;
+    if (!face) {
+      el.textContent = '?';
+      return;
+    }
+    const icons = { barbarian: 'bandit', trade: 'cloth', politics: 'coin', science: 'paper' };
+    el.classList.add(`event-${face}`);
+    el.innerHTML = ico(icons[face] || 'warning');
+    el.title = i18n.t(`EVENT_DIE_${face.toUpperCase()}`) || face;
+    if (this.lastEventDie !== face) {
+      el.classList.add('event-flash');
+      setTimeout(() => el.classList.remove('event-flash'), 450);
+      this.lastEventDie = face;
+    }
+  }
+
+  renderBarbarianTrack(s) {
+    const wrap = document.getElementById('barbarian-track');
+    const pips = document.getElementById('barbarian-track-pips');
+    const countEl = document.getElementById('barbarian-track-count');
+    if (!wrap || !pips) return;
+    const pos = s.barbarianPosition || 0;
+    wrap.classList.toggle('barbarian-warning', pos >= 5);
+    if (countEl) countEl.textContent = `${pos}/7`;
+    pips.innerHTML = '';
+    for (let i = 1; i <= 7; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'barbarian-pip';
+      if (i <= pos) pip.classList.add('filled');
+      if (i === pos) pip.classList.add('ship');
+      pips.appendChild(pip);
+    }
+  }
+
+  renderImprovementPanel(me, isActionPhase) {
+    if (!me) return;
+    const tracks = {
+      trade: 'cloth',
+      politics: 'coin',
+      science: 'paper'
+    };
+    const hasCities = (me.citiesBuilt || []).length > 0;
+    for (const [track, commodity] of Object.entries(tracks)) {
+      const level = me.cityImprovements?.[track] || 0;
+      const cost = Math.min(level + 1, 5);
+      const have = this.getCardCount(me, commodity);
+      const canAfford = hasCities && isActionPhase && level < 5 && have >= cost;
+      const levelEl = document.getElementById(`improve-level-${track}`);
+      const fillEl = document.getElementById(`improve-fill-${track}`);
+      const costEl = document.getElementById(`improve-cost-${track}`);
+      const btn = document.getElementById(`btn-improve-${track}`);
+      const row = document.querySelector(`.improvement-track[data-track="${track}"]`);
+      if (levelEl) levelEl.textContent = `${level}/5`;
+      if (fillEl) fillEl.style.width = `${(level / 5) * 100}%`;
+      if (costEl) costEl.textContent = level >= 5 ? '—' : String(cost);
+      if (btn) btn.disabled = !canAfford;
+      row?.classList.toggle('track-ready', canAfford);
+      row?.classList.toggle('track-metro', level >= 4);
+    }
+  }
+
+  renderBarbarianOverlay(s, me) {
+    const modal = document.getElementById('barbarian-modal');
+    const body = document.getElementById('barbarian-modal-body');
+    const list = document.getElementById('barbarian-downgrade-list');
+    const closeBtn = document.getElementById('btn-close-barbarian');
+    if (!modal || !body || !list) return;
+
+    const pending = s.pendingBarbarianDowngrades || [];
+    const result = s.lastBarbarianResult;
+    const mustDowngrade = s.phase === 'TURN_BARBARIAN_DOWNGRADE' && me && pending.includes(me.id);
+
+    if (!result && !mustDowngrade) {
+      modal.classList.remove('active');
+      return;
+    }
+
+    const key = `${s.turnNumber}-${result?.outcome || 'none'}-${pending.join(',')}`;
+    if (!mustDowngrade && this.barbarianOverlayKey === key) return;
+    this.barbarianOverlayKey = key;
+
+    if (result?.outcome === 'victory') {
+      const defender = s.players.find(p => p.id === result.defenderOfCatan);
+      body.textContent = defender
+        ? i18n.t('BARBARIAN_VICTORY_BODY', { name: defender.name, knights: result.totalActiveKnights, cities: result.totalCities })
+        : i18n.t('BARBARIAN_VICTORY_TIE_BODY', { knights: result.totalActiveKnights, cities: result.totalCities });
+    } else {
+      body.textContent = i18n.t('BARBARIAN_DEFEAT_BODY', {
+        knights: result?.totalActiveKnights ?? '—',
+        cities: result?.totalCities ?? '—'
+      });
+    }
+
+    list.innerHTML = '';
+    if (mustDowngrade) {
+      closeBtn.style.display = 'none';
+      (me.citiesBuilt || []).forEach((vid) => {
+        const vertex = s.grid?.vertices?.[vid];
+        const hexes = (vertex?.hexes || []).map((hid) => s.grid?.hexes?.[hid]?.resource).filter(Boolean);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-glass barbarian-city-btn';
+        btn.textContent = i18n.t('BARBARIAN_DOWNGRADE_CITY', { hexes: hexes.map((r) => this.cardLabel(r)).join(', ') || vid });
+        btn.addEventListener('click', async () => {
+          try {
+            await network.sendAction('downgrade_city', { vertexId: vid });
+            modal.classList.remove('active');
+          } catch (err) {
+            this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+          }
+        });
+        list.appendChild(btn);
+      });
+    } else {
+      closeBtn.style.display = '';
+    }
+
+    modal.classList.add('active');
+  }
+
   /* =========================================================
    * ROBBER & DISCARD MODALS
    * ========================================================= */
@@ -737,13 +908,17 @@ class CatanApp {
         }
       }
 
-      const total = typeof me.resources?.total === 'number'
-        ? me.resources.total
-        : Object.values(resCounts).reduce((a, b) => a + b, 0);
+      const total = Object.values(resCounts).reduce((a, b) => a + b, 0);
       const needed = Math.floor(total / 2);
+      const wallsBuilt = (me.citiesBuilt || []).filter((vid) => this.gameState.grid?.vertices?.[vid]?.building?.hasWall).length;
+      const threshold = typeof me.discardThreshold === 'number' ? me.discardThreshold : (7 + wallsBuilt * 2);
 
       const neededCountEl = document.getElementById('discard-needed-count');
       if (neededCountEl) neededCountEl.textContent = needed;
+      const thresholdHint = document.getElementById('discard-threshold-hint');
+      if (thresholdHint) {
+        thresholdHint.textContent = i18n.t('DISCARD_THRESHOLD_HINT', { needed, threshold, walls: wallsBuilt });
+      }
 
       const isAlreadyActive = modal.classList.contains('active');
 
@@ -880,6 +1055,7 @@ class CatanApp {
    * TRADE MODAL (Domestic & Bank / Port)
    * ========================================================= */
   getBestBankRatio(resource) {
+    if (this.isCommodity(resource)) return 4;
     if (!this.gameState || !this.gameState.grid) return 4;
     this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     let me = this.gameState.players.find(p => p.id === this.myPlayerId);
@@ -912,15 +1088,7 @@ class CatanApp {
     giveGrid.innerHTML = '';
     wantGrid.innerHTML = '';
 
-    const RES_ICONS = {
-      wood: `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L5 10h3.5L4 16h4.5L5 21h14l-3.5-5H20l-4.5-6H19L12 2z"/></svg>`,
-      brick: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9.3" x2="21" y2="9.3"/><line x1="3" y1="14.6" x2="21" y2="14.6"/><line x1="12" y1="4" x2="12" y2="9.3"/><line x1="7.5" y1="9.3" x2="7.5" y2="14.6"/><line x1="16.5" y1="9.3" x2="16.5" y2="14.6"/><line x1="12" y1="14.6" x2="12" y2="20"/></svg>`,
-      wool: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 3.5 3.5 3 3 0 0 1 0 6H5.5a3.5 3.5 0 0 1 0-7A3 3 0 0 1 9 6z" fill="currentColor" fill-opacity="0.2"/><path d="M8 18v2M16 18v2"/></svg>`,
-      wheat: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M12 5c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 5c-2-2-5-1-5 1s3 3 5 3"/><path d="M12 11c2-2 5-1 5 1s-3 3-5 3"/><path d="M12 11c-2-2-5-1-5 1s3 3 5 3"/></svg>`,
-      ore: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20L8.5 7L13 13.5L16.5 9L22 20H2Z" fill="currentColor" fill-opacity="0.2"/><path d="M8.5 7L13 13.5L16.5 9"/></svg>`
-    };
-
-    const resources = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    const resources = this.getHandCardTypes();
     this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     let me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
     if (!me || (me.resources && typeof me.resources.wood !== 'number')) {
@@ -955,7 +1123,7 @@ class CatanApp {
     if (!this.bankTrade.give) {
       const firstAffordable = resources.find(r => {
         const ratio = this.getBestBankRatio(r);
-        const have = me?.resources ? (me.resources[r] || 0) : 0;
+        const have = this.getCardCount(me, r);
         return have >= ratio;
       });
       this.bankTrade.give = firstAffordable || 'wood';
@@ -973,7 +1141,7 @@ class CatanApp {
     // Render Give Grid - always allow user to select any resource to trade
     resources.forEach(res => {
       const ratio = this.getBestBankRatio(res);
-      const have = me?.resources ? (me.resources[res] || 0) : 0;
+      const have = this.getCardCount(me, res);
       const canAfford = have >= ratio;
       const isSelected = this.bankTrade.give === res;
 
@@ -990,8 +1158,8 @@ class CatanApp {
       const card = document.createElement('div');
       card.className = `bank-res-card res-${res} ${isSelected ? 'selected' : ''} ${canAfford ? 'can-afford' : 'insufficient'}`;
       card.innerHTML = `
-        <span class="bank-res-icon">${RES_ICONS[res]}</span>
-        <span class="bank-res-name">${i18n.t(`RES_${res.toUpperCase()}`)}</span>
+        <span class="bank-res-icon">${ico(res)}</span>
+        <span class="bank-res-name">${this.cardLabel(res)}</span>
         <span class="bank-res-have" style="${canAfford ? 'color: #34d399; font-weight: 700;' : 'color: #f87171;'}">${i18n.t('BANK_CARDS_HAVE', { count: have })} / ${ratio}</span>
         <span class="bank-res-ratio ${ratioClass}">${ratioTag}</span>
       `;
@@ -1012,8 +1180,8 @@ class CatanApp {
       const card = document.createElement('div');
       card.className = `bank-res-card res-${res} ${isSelected ? 'selected' : ''} ${isGiveRes ? 'disabled' : ''}`;
       card.innerHTML = `
-        <span class="bank-res-icon">${RES_ICONS[res]}</span>
-        <span class="bank-res-name">${i18n.t(`RES_${res.toUpperCase()}`)}</span>
+        <span class="bank-res-icon">${ico(res)}</span>
+        <span class="bank-res-name">${this.cardLabel(res)}</span>
         <span class="bank-res-have">+1 carte</span>
       `;
 
@@ -1035,10 +1203,10 @@ class CatanApp {
 
     if (this.bankTrade.give && this.bankTrade.receive) {
       const ratio = this.getBestBankRatio(this.bankTrade.give);
-      const have = me?.resources ? (me.resources[this.bankTrade.give] || 0) : 0;
+      const have = this.getCardCount(me, this.bankTrade.give);
       const canAfford = have >= ratio;
-      const giveName = i18n.t(`RES_${this.bankTrade.give.toUpperCase()}`);
-      const recName = i18n.t(`RES_${this.bankTrade.receive.toUpperCase()}`);
+      const giveName = this.cardLabel(this.bankTrade.give);
+      const recName = this.cardLabel(this.bankTrade.receive);
 
       if (ratioTextEl) ratioTextEl.textContent = `Rată: ${ratio}:1`;
       if (ratioDescEl) {
@@ -1089,7 +1257,7 @@ class CatanApp {
     const resetTradeSteppers = () => {
       this.myPlayerId = network.currentPlayerId || this.myPlayerId;
       const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      ['wood', 'brick', 'wool', 'wheat', 'ore'].forEach(res => {
+      this.getHandCardTypes().forEach(res => {
         // Reset Give
         const giveInput = document.getElementById(`trade-give-${res}`);
         const giveVal = document.getElementById(`val-trade-give-${res}`);
@@ -1097,8 +1265,7 @@ class CatanApp {
         if (giveInput) giveInput.value = '0';
         if (giveVal) giveVal.textContent = '0';
         if (availSpan) {
-          const avail = me && me.resources ? (me.resources[res] || 0) : 0;
-          availSpan.textContent = `(${avail})`;
+          availSpan.textContent = `(${this.getCardCount(me, res)})`;
         }
         // Reset Want
         const wantInput = document.getElementById(`trade-want-${res}`);
@@ -1161,7 +1328,7 @@ class CatanApp {
           if (targetId.startsWith('trade-give-')) {
             const resType = targetId.replace('trade-give-', '');
             const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-            const maxAvail = me && me.resources ? (me.resources[resType] || 0) : 0;
+            const maxAvail = this.getCardCount(me, resType);
             if (curVal >= maxAvail) {
               this.showToast(i18n.t('ERROR_NOT_ENOUGH_RESOURCES'), true);
               return;
@@ -1180,20 +1347,12 @@ class CatanApp {
     // Propose Trade
     document.getElementById('form-propose-trade').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const give = {
-        wood: parseInt(document.getElementById('trade-give-wood').value) || 0,
-        brick: parseInt(document.getElementById('trade-give-brick').value) || 0,
-        wool: parseInt(document.getElementById('trade-give-wool').value) || 0,
-        wheat: parseInt(document.getElementById('trade-give-wheat').value) || 0,
-        ore: parseInt(document.getElementById('trade-give-ore').value) || 0
-      };
-      const want = {
-        wood: parseInt(document.getElementById('trade-want-wood').value) || 0,
-        brick: parseInt(document.getElementById('trade-want-brick').value) || 0,
-        wool: parseInt(document.getElementById('trade-want-wool').value) || 0,
-        wheat: parseInt(document.getElementById('trade-want-wheat').value) || 0,
-        ore: parseInt(document.getElementById('trade-want-ore').value) || 0
-      };
+      const give = {};
+      const want = {};
+      for (const res of this.getHandCardTypes()) {
+        give[res] = parseInt(document.getElementById(`trade-give-${res}`)?.value, 10) || 0;
+        want[res] = parseInt(document.getElementById(`trade-want-${res}`)?.value, 10) || 0;
+      }
 
       const totalGive = Object.values(give).reduce((a, b) => a + b, 0);
       const totalWant = Object.values(want).reduce((a, b) => a + b, 0);
@@ -1484,6 +1643,8 @@ class CatanApp {
       document.getElementById('dice-sum').textContent = s.dice[0] + s.dice[1];
     }
 
+    this.renderCkHud(s, s.players.find(p => p.id === this.myPlayerId), isActionPhase);
+
     // Update My Resources
     const me = s.players.find(p => p.id === this.myPlayerId);
     if (me) {
@@ -1518,9 +1679,9 @@ class CatanApp {
         ? p.resources.total
         : Object.values(p.resources || {}).reduce((a, b) => a + b, 0);
       const commodityCount = typeof p.commodities?.total === 'number'
-        ? 0 // already folded into resources.total for opponents
+        ? p.commodities.total
         : Object.values(p.commodities || {}).reduce((a, b) => a + b, 0);
-      const cardCount = typeof p.resources.total === 'number' ? resourceCount : resourceCount + commodityCount;
+      const cardCount = resourceCount + commodityCount;
 
       card.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -1529,7 +1690,7 @@ class CatanApp {
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+            ${ico('cards', 'ico-opp')}
             ${cardCount}
           </span>
           <span class="opponent-vp-badge">${p.victoryPoints} ${i18n.t('VICTORY_POINTS_ABBR')}</span>
