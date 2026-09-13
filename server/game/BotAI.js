@@ -447,9 +447,9 @@ export class BotAI {
   static progressCardValue(type) {
     const order = {
       constitution: 100, printer: 100, alchemist: 80, warlord: 70, smith: 65,
-      merchant: 60, merchant_fleet: 55, crane: 50, medicine: 45, master_merchant: 40,
-      bishop: 35, engineer: 30, inventor: 25, saboteur: 22, intrigue: 20, deserter: 18,
-      diplomat: 15, irrigation: 12, mining: 12, commercial_harbor: 10, resource_monopoly: 8
+      merchant: 60, merchant_fleet: 55, crane: 50, medicine: 45, wedding: 42, master_merchant: 40,
+      spy: 38, road_building: 36, bishop: 35, engineer: 30, inventor: 25, saboteur: 22, intrigue: 20, deserter: 18,
+      diplomat: 15, irrigation: 12, mining: 12, commercial_harbor: 10, resource_monopoly: 8, trade_monopoly: 8
     };
     return order[type] || 5;
   }
@@ -498,6 +498,29 @@ export class BotAI {
     const crane = cards.find(c => c.type === 'crane');
     if (crane && this.chooseBestImprovementTrack(engine, me)) {
       return { action: 'play_progress_card', cardId: crane.id, options: {} };
+    }
+    const wedding = cards.find(c => c.type === 'wedding');
+    if (wedding) {
+      const richer = engine.players.some(p => p.id !== me.id && (p.victoryPoints || 0) > (me.victoryPoints || 0));
+      if (richer) {
+        return { action: 'play_progress_card', cardId: wedding.id, options: {} };
+      }
+    }
+    const spy = cards.find(c => c.type === 'spy');
+    if (spy) {
+      const target = engine.players.find(p => p.id !== me.id && engine.countUnplayedProgressCards(p) > 0);
+      if (target) {
+        return { action: 'play_progress_card', cardId: spy.id, options: { targetPlayerId: target.id } };
+      }
+    }
+    const rb = cards.find(c => c.type === 'road_building');
+    if (rb && (me.roadsRemaining || 0) >= 2) {
+      return { action: 'play_progress_card', cardId: rb.id, options: {} };
+    }
+    const tm = cards.find(c => c.type === 'trade_monopoly');
+    if (tm) {
+      const res = ['wood', 'brick', 'wheat', 'ore', 'wool'].sort((a, b) => (me.resources[a] || 0) - (me.resources[b] || 0))[0];
+      return { action: 'play_progress_card', cardId: tm.id, options: { resource: res } };
     }
     const master = cards.find(c => c.type === 'master_merchant');
     if (master) {

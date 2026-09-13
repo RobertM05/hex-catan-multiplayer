@@ -10,7 +10,8 @@ import {
   GameEngine,
   GAME_PHASES,
   GAME_MODES,
-  normalizeGameMode
+  normalizeGameMode,
+  PROGRESS_CARD_DECKS
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
@@ -1038,15 +1039,16 @@ describe('CK-05: Trade Progress Cards', () => {
     return card;
   }
 
-  it('should initialize trade deck with 9 cards (2+2+2+2+1)', () => {
+  it('should initialize trade deck with 18 cards', () => {
     const engine = makeCkEngine();
-    assert.equal(engine.progressDecks.trade.length, 9);
+    assert.equal(engine.progressDecks.trade.length, 18);
     const types = engine.progressDecks.trade.map(c => c.type);
     assert.equal(types.filter(t => t === 'commercial_harbor').length, 2);
     assert.equal(types.filter(t => t === 'master_merchant').length, 2);
-    assert.equal(types.filter(t => t === 'merchant').length, 2);
+    assert.equal(types.filter(t => t === 'merchant').length, 6);
     assert.equal(types.filter(t => t === 'merchant_fleet').length, 2);
-    assert.equal(types.filter(t => t === 'resource_monopoly').length, 1);
+    assert.equal(types.filter(t => t === 'resource_monopoly').length, 4);
+    assert.equal(types.filter(t => t === 'trade_monopoly').length, 2);
   });
 
   it('should draw from trade deck and add to player hand', () => {
@@ -1197,17 +1199,19 @@ describe('CK-06: Politics Progress Cards', () => {
     return card;
   }
 
-  it('should initialize politics deck with 10 cards', () => {
+  it('should initialize politics deck with 18 cards', () => {
     const engine = makeCkEngine();
-    assert.equal(engine.progressDecks.politics.length, 10);
+    assert.equal(engine.progressDecks.politics.length, 18);
     const types = engine.progressDecks.politics.map(c => c.type);
     assert.equal(types.filter(t => t === 'bishop').length, 2);
     assert.equal(types.filter(t => t === 'constitution').length, 1);
     assert.equal(types.filter(t => t === 'deserter').length, 2);
     assert.equal(types.filter(t => t === 'diplomat').length, 2);
-    assert.equal(types.filter(t => t === 'intrigue').length, 1);
-    assert.equal(types.filter(t => t === 'saboteur').length, 1);
-    assert.equal(types.filter(t => t === 'warlord').length, 1);
+    assert.equal(types.filter(t => t === 'intrigue').length, 2);
+    assert.equal(types.filter(t => t === 'saboteur').length, 2);
+    assert.equal(types.filter(t => t === 'spy').length, 3);
+    assert.equal(types.filter(t => t === 'warlord').length, 2);
+    assert.equal(types.filter(t => t === 'wedding').length, 2);
   });
 
   it('Bishop: should move robber and steal from ALL adjacent players', () => {
@@ -1420,19 +1424,20 @@ describe('CK-07: Science Progress Cards', () => {
     return card;
   }
 
-  it('should initialize science deck with 9 cards', () => {
+  it('should initialize science deck with 18 cards', () => {
     const engine = makeCkEngine();
+    assert.equal(engine.progressDecks.science.length, 18);
     const types = engine.progressDecks.science.map(c => c.type);
     assert.equal(types.filter(t => t === 'alchemist').length, 2);
     assert.equal(types.filter(t => t === 'crane').length, 2);
     assert.equal(types.filter(t => t === 'engineer').length, 1);
-    assert.equal(types.filter(t => t === 'inventor').length, 1);
-    assert.equal(types.filter(t => t === 'irrigation').length, 1);
+    assert.equal(types.filter(t => t === 'inventor').length, 2);
+    assert.equal(types.filter(t => t === 'irrigation').length, 2);
     assert.equal(types.filter(t => t === 'medicine').length, 2);
-    assert.equal(types.filter(t => t === 'mining').length, 1);
+    assert.equal(types.filter(t => t === 'mining').length, 2);
     assert.equal(types.filter(t => t === 'printer').length, 1);
-    assert.equal(types.filter(t => t === 'smith').length, 1);
-    assert.equal(engine.progressDecks.science.length, 12);
+    assert.equal(types.filter(t => t === 'road_building').length, 2);
+    assert.equal(types.filter(t => t === 'smith').length, 2);
   });
 
   it('Alchemist: should let player choose dice values before roll', () => {
@@ -2065,3 +2070,104 @@ describe('CK-11: Knight State in UI', () => {
     assert.equal(engine.getStateForPlayer('p1').pendingKnightRelocation, null);
   });
 });
+
+describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
+  it('initializes all 3 progress decks with 18 cards each (54 cards total)', () => {
+    const totalTrade = PROGRESS_CARD_DECKS.trade.reduce((sum, item) => sum + item.count, 0);
+    const totalPolitics = PROGRESS_CARD_DECKS.politics.reduce((sum, item) => sum + item.count, 0);
+    const totalScience = PROGRESS_CARD_DECKS.science.reduce((sum, item) => sum + item.count, 0);
+
+    assert.equal(totalTrade, 18);
+    assert.equal(totalPolitics, 18);
+    assert.equal(totalScience, 18);
+    assert.equal(totalTrade + totalPolitics + totalScience, 54);
+
+    const engine = makeCkEngine();
+    assert.equal(engine.progressDecks.trade.length, 18);
+    assert.equal(engine.progressDecks.politics.length, 18);
+    assert.equal(engine.progressDecks.science.length, 18);
+  });
+
+  it('trade_monopoly steals 1 specified resource from each opponent who has it', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1, p2] = engine.players;
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    const p3 = engine.players[2];
+
+    p1.resources.wood = 0;
+    p2.resources.wood = 3;
+    p3.resources.wood = 0;
+
+    const card = { id: 'c-tm', type: 'trade_monopoly', played: false };
+    p1.progressCards.push(card);
+
+    const res = engine.playProgressCard('p1', card.id, { resource: 'wood' });
+    assert.equal(res.stolen, 1);
+    assert.equal(p1.resources.wood, 1);
+    assert.equal(p2.resources.wood, 2);
+    assert.equal(p3.resources.wood, 0);
+    assert.equal(card.played, true);
+  });
+
+  it('wedding requires opponents with strictly more victory points and transfers up to 2 cards', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1, p2] = engine.players;
+
+    p1.victoryPoints = 2;
+    p2.victoryPoints = 2;
+    const card = { id: 'c-wed', type: 'wedding', played: false };
+    p1.progressCards.push(card);
+
+    assert.throws(() => {
+      engine.playProgressCard('p1', card.id);
+    }, /NO_PLAYERS_WITH_MORE_VP/);
+
+    p2.defenderCards = 2;
+    p2.resources.wood = 2;
+    p2.commodities.cloth = 1;
+
+    const res = engine.playProgressCard('p1', card.id);
+    assert.ok(res.gifts.length === 1);
+    assert.equal(res.gifts[0].cards.length, 2);
+    assert.equal(engine.countTotalCards(p1), 2);
+    assert.equal(engine.countTotalCards(p2), 1);
+    assert.equal(card.played, true);
+  });
+
+  it('spy allows stealing an unplayed progress card from an opponent', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1, p2] = engine.players;
+
+    const cardSpy = { id: 'c-spy', type: 'spy', played: false };
+    p1.progressCards.push(cardSpy);
+
+    assert.throws(() => {
+      engine.playProgressCard('p1', cardSpy.id, { targetPlayerId: 'p2' });
+    }, /TARGET_HAS_NO_PROGRESS_CARDS/);
+
+    const opponentCard = { id: 'c-opp-1', type: 'crane', played: false };
+    p2.progressCards.push(opponentCard);
+
+    const res = engine.playProgressCard('p1', cardSpy.id, { targetPlayerId: 'p2', stealCardId: 'c-opp-1' });
+    assert.equal(res.stolenCard.type, 'crane');
+    assert.equal(p2.progressCards.some(c => c.id === 'c-opp-1'), false);
+    assert.equal(p1.progressCards.some(c => c.id === 'c-opp-1'), true);
+  });
+
+  it('road_building grants 2 free roads', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1] = engine.players;
+
+    const cardRb = { id: 'c-rb', type: 'road_building', played: false };
+    p1.progressCards.push(cardRb);
+
+    const res = engine.playProgressCard('p1', cardRb.id);
+    assert.equal(res.freeRoads, 2);
+    assert.equal(engine.freeRoadsRemaining, 2);
+  });
+});
+

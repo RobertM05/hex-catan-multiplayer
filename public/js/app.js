@@ -2334,7 +2334,7 @@ export class CatanApp {
       </div>`;
       return;
     }
-    if (type === 'resource_monopoly' || type === 'commercial_harbor') {
+    if (type === 'resource_monopoly' || type === 'commercial_harbor' || type === 'trade_monopoly') {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE')}</div>
         <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
           ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${i18n.t(`RES_${r.toUpperCase()}`)}</button>`).join('')}
@@ -2343,6 +2343,26 @@ export class CatanApp {
         b.addEventListener('click', () => {
           this.progressPlay.options.resource = b.dataset.res;
           box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+        });
+      });
+      return;
+    }
+    if (type === 'spy') {
+      const opponents = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId);
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>
+        <div class="modal-res-buttons-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+          ${opponents.map(p => {
+            const count = Array.isArray(p.progressCards)
+              ? unplayedProgressCards(p.progressCards).length
+              : Math.max(0, (p.progressCards?.count || 0) - (p.progressCards?.revealed?.length || 0));
+            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${p.name} (${count} cards)</button>`;
+          }).join('')}
+        </div>`;
+      box.querySelectorAll('.progress-target-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.targetPlayerId = b.dataset.id;
+          box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
         });
       });
@@ -2590,6 +2610,10 @@ export class CatanApp {
       await network.sendAction('play_progress_card', { cardId: play.card.id, options });
       audio.playBuild();
       this.closeProgressCardModal();
+      if (play.card.type === 'road_building') {
+        this.activateBuildRoad();
+        this.showToast(i18n.t('ROAD_BUILDING_PLAYED_TOAST'));
+      }
     } catch (err) {
       el?.classList.remove('playing');
       this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
