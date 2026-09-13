@@ -15,6 +15,57 @@ export function getVertex(grid, vertexId) {
   return grid.vertices instanceof Map ? grid.vertices.get(vertexId) : grid.vertices[vertexId];
 }
 
+function isVertexBlockedForOwner(vertex, ownerId) {
+  if (!vertex) return true;
+  const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
+  const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
+  return Boolean(blockedByBuilding || blockedByKnight);
+}
+
+/**
+ * Longest simple path (edge IDs) in the connected component that contains edgeId.
+ * Branches that are not on that path are omitted — used for hover highlighting.
+ */
+export function getLongestContinuousPath(grid, edgeId) {
+  const startEdge = getEdge(grid, edgeId);
+  if (!startEdge || !startEdge.road) return [];
+
+  const ownerId = startEdge.road.playerId;
+  const componentEdges = getConnectedRoadNetwork(grid, edgeId);
+  if (componentEdges.length <= 1) return componentEdges.slice();
+
+  let bestPath = [edgeId];
+  const visited = new Set();
+
+  const dfs = (vertexId, pathEdges) => {
+    if (pathEdges.length > bestPath.length) bestPath = pathEdges.slice();
+    const vertex = getVertex(grid, vertexId);
+    if (!vertex || isVertexBlockedForOwner(vertex, ownerId)) return;
+    for (const adjId of vertex.adjacentEdges || []) {
+      if (visited.has(adjId)) continue;
+      const adj = getEdge(grid, adjId);
+      if (!adj || !adj.road || adj.road.playerId !== ownerId) continue;
+      visited.add(adjId);
+      pathEdges.push(adjId);
+      const nextV = adj.v1 === vertexId ? adj.v2 : adj.v1;
+      dfs(nextV, pathEdges);
+      pathEdges.pop();
+      visited.delete(adjId);
+    }
+  };
+
+  for (const compEdgeId of componentEdges) {
+    const ce = getEdge(grid, compEdgeId);
+    if (!ce) continue;
+    visited.add(compEdgeId);
+    dfs(ce.v1, [compEdgeId]);
+    dfs(ce.v2, [compEdgeId]);
+    visited.delete(compEdgeId);
+  }
+
+  return bestPath;
+}
+
 /**
  * Returns all edge IDs belonging to the same player in the contiguous connected
  * road network containing edgeId. Opponent settlements/cities block road continuity.
@@ -36,10 +87,7 @@ export function getConnectedRoadNetwork(grid, edgeId) {
       const vertex = getVertex(grid, vId);
       if (!vertex) continue;
 
-      // Opponent building or knight blocks road connection through this vertex
-      const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-      const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-      if (blockedByBuilding || blockedByKnight) {
+      if (isVertexBlockedForOwner(vertex, ownerId)) {
         continue;
       }
 
@@ -83,10 +131,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
   const dfsMax = (vertexId, currentLength) => {
     if (currentLength > maxNetworkLength) maxNetworkLength = currentLength;
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (currentLength > 0 && (blockedByBuilding || blockedByKnight)) {
+    if (!vertex || (currentLength > 0 && isVertexBlockedForOwner(vertex, ownerId))) {
       return;
     }
     for (const adjId of vertex.adjacentEdges || []) {
@@ -119,12 +164,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
   const extendV2 = (vertexId, len) => {
     if (len > maxThroughEdge) maxThroughEdge = len;
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (blockedByBuilding || blockedByKnight) {
-      return;
-    }
+    if (!vertex || isVertexBlockedForOwner(vertex, ownerId)) return;
     for (const adjId of vertex.adjacentEdges || []) {
       if (!visitedThrough.has(adjId)) {
         const adj = getEdge(grid, adjId);
@@ -142,12 +182,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
     extendV2(edge.v2, len);
 
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (blockedByBuilding || blockedByKnight) {
-      return;
-    }
+    if (!vertex || isVertexBlockedForOwner(vertex, ownerId)) return;
     for (const adjId of vertex.adjacentEdges || []) {
       if (!visitedThrough.has(adjId)) {
         const adj = getEdge(grid, adjId);
@@ -193,6 +228,7 @@ export function formatRoadTooltipData({
 
   const { continuousLength, maxNetworkLength, networkSize } = calculateContinuousRoadLength(grid, edgeId);
   const connectedEdgeIds = getConnectedRoadNetwork(grid, edgeId);
+  const highlightEdgeIds = getLongestContinuousPath(grid, edgeId);
 
   const translate = (key, params) => {
     if (i18n && typeof i18n.t === 'function') {
@@ -259,6 +295,7 @@ export function formatRoadTooltipData({
     networkSize,
     totalPlayerRoads: player.roadsBuilt ? player.roadsBuilt.length : networkSize,
     longestRoadStatus,
+    highlightEdgeIds,
     connectedEdgeIds,
     ownerText: translate('TOOLTIP_ROAD_OWNER', { playerName: player.name }),
     continuousText: translate('TOOLTIP_ROAD_CONTINUOUS', { length: continuousLength }),

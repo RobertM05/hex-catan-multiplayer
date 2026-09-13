@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   getConnectedRoadNetwork,
   calculateContinuousRoadLength,
-  formatRoadTooltipData
+  formatRoadTooltipData,
+  getLongestContinuousPath
 } from '../public/js/roadInspection.js';
 
 describe('UX-07: Road Network Inspection & Hover Highlighting', () => {
@@ -92,6 +93,19 @@ describe('UX-07: Road Network Inspection & Hover Highlighting', () => {
     assert.equal(lenE1.continuousLength, 5);
   });
 
+  it('should highlight only the longest continuous path, not branch spurs', () => {
+    const grid = makeTestGrid();
+    delete grid.edges.e7;
+    grid.vertices.v3.adjacentEdges = ['e2', 'e3', 'e6'];
+    grid.vertices.v7.adjacentEdges = ['e6'];
+
+    const pathFromSpur = getLongestContinuousPath(grid, 'e6');
+    assert.equal(pathFromSpur.length, 5);
+    assert.deepEqual(pathFromSpur.slice().sort(), ['e1', 'e2', 'e3', 'e4', 'e5']);
+    assert.equal(pathFromSpur.includes('e6'), false);
+    assert.equal(getConnectedRoadNetwork(grid, 'e6').length, 6);
+  });
+
   it('should format tooltip data with Longest Road holder status', () => {
     const grid = makeTestGrid();
     const players = [
@@ -111,6 +125,7 @@ describe('UX-07: Road Network Inspection & Hover Highlighting', () => {
     assert.equal(data.ownerColor, '#e63946');
     assert.equal(data.continuousLength, 5);
     assert.equal(data.networkSize, 7);
+    assert.deepEqual(data.highlightEdgeIds.slice().sort(), ['e1', 'e2', 'e3', 'e4', 'e5']);
     assert.equal(data.longestRoadStatus.type, 'holder');
     assert.match(data.longestRoadStatus.text, /Longest Road Holder/);
   });
@@ -160,18 +175,18 @@ describe('UX-07: Road Network Inspection & Hover Highlighting', () => {
     assert.match(data.longestRoadStatus.text, /5 more/);
   });
 
-  it('should support Romanian translations in tooltip formatting', () => {
+  it('should use injected i18n.t for tooltip copy', () => {
     const grid = makeTestGrid();
     const players = [
       { id: 'p1', name: 'Robert', color: '#e63946', roadsBuilt: ['e1'] }
     ];
     const mockI18n = {
       t: (key, params) => {
-        if (key === 'TOOLTIP_ROAD_OWNER') return `Proprietar: ${params.playerName}`;
-        if (key === 'TOOLTIP_ROAD_CONTINUOUS') return `Drum continuu: ${params.length} segmente`;
-        if (key === 'TOOLTIP_ROAD_NETWORK') return `Rețea: ${params.total} segmente`;
-        if (key === 'TOOLTIP_LONGEST_ROAD_TIED') return `La egalitate pentru Cel Mai Lung Drum (${params.length})`;
-        if (key === 'TOOLTIP_LONGEST_ROAD_NEED_MORE') return `Încă ${params.diff} segment(e)`;
+        if (key === 'TOOLTIP_ROAD_OWNER') return `Owner: ${params.playerName}`;
+        if (key === 'TOOLTIP_ROAD_CONTINUOUS') return `Continuous: ${params.length}`;
+        if (key === 'TOOLTIP_ROAD_NETWORK') return `Network: ${params.total}`;
+        if (key === 'TOOLTIP_LONGEST_ROAD_TIED') return `Tied (${params.length})`;
+        if (key === 'TOOLTIP_LONGEST_ROAD_NEED_MORE') return `${params.diff} more`;
         return key;
       }
     };
@@ -184,9 +199,9 @@ describe('UX-07: Road Network Inspection & Hover Highlighting', () => {
       i18n: mockI18n
     });
 
-    assert.equal(data.ownerText, 'Proprietar: Robert');
-    assert.equal(data.continuousText, 'Drum continuu: 5 segmente');
-    assert.equal(data.networkText, 'Rețea: 7 segmente');
-    assert.match(data.longestRoadStatus.text, /La egalitate/);
+    assert.equal(data.ownerText, 'Owner: Robert');
+    assert.equal(data.continuousText, 'Continuous: 5');
+    assert.equal(data.networkText, 'Network: 7');
+    assert.match(data.longestRoadStatus.text, /Tied/);
   });
 });

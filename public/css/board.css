@@ -334,6 +334,11 @@
   stroke-width: 15 !important;
 }
 
+.road-casing.road-hover-active {
+  stroke: rgba(255, 255, 255, 0.9) !important;
+  stroke-width: 17 !important;
+}
+
 /* Floating Road Length Tooltip */
 .road-length-tooltip {
   position: absolute;
