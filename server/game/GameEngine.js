@@ -351,6 +351,23 @@ export class GameEngine {
     return entry;
   }
 
+  buildRobberMovedLog(playerName, hexId) {
+    const hex = this.grid.hexes.get(hexId);
+    const isDesert = !hex || hex.resource === RESOURCE_TYPES.DESERT || hex.token == null;
+    if (isDesert) {
+      return {
+        type: 'ROBBER_MOVED',
+        messageKey: 'LOG_ROBBER_MOVED_DESERT',
+        args: { playerName }
+      };
+    }
+    return {
+      type: 'ROBBER_MOVED',
+      messageKey: 'LOG_ROBBER_MOVED',
+      args: { playerName, number: hex.token }
+    };
+  }
+
   /* =========================================================
    * VALIDATIONS & RULES
    * ========================================================= */
@@ -1227,11 +1244,7 @@ export class GameEngine {
     }
 
     this.phase = this.hasRolledDice ? GAME_PHASES.TURN_ACTION : GAME_PHASES.TURN_ROLL;
-    this.logEvent({
-      type: 'ROBBER_MOVED',
-      messageKey: 'LOG_ROBBER_MOVED',
-      args: { playerName: player.name, hexId }
-    });
+    this.logEvent(this.buildRobberMovedLog(player.name, hexId));
 
     return { hexId, stolenFrom: targetPlayerId, stolenResource };
   }
@@ -1749,9 +1762,8 @@ export class GameEngine {
     knight.lastActionTurn = this.turnNumber;
 
     this.logEvent({
-      type: 'KNIGHT_CHASED_ROBBER',
-      messageKey: 'LOG_KNIGHT_CHASED_ROBBER',
-      args: { playerName: player.name, hexId }
+      ...this.buildRobberMovedLog(player.name, hexId),
+      type: 'KNIGHT_CHASED_ROBBER'
     });
     return { vertexId, hexId, stolenFrom: targetPlayerId, stolenResource };
   }
@@ -2305,6 +2317,9 @@ export class GameEngine {
     }
 
     card.played = true;
+    if (card.type === 'bishop' && result.hexId) {
+      this.logEvent(this.buildRobberMovedLog(player.name, result.hexId));
+    }
     this.logEvent({
       type: 'PROGRESS_CARD_PLAYED',
       messageKey: 'LOG_PROGRESS_CARD_PLAYED',

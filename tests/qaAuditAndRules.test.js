@@ -150,6 +150,31 @@ describe('Knight Card & Dice Roll Phase Transition', () => {
     assert.equal(engine.hasRolledDice, true);
   });
 
+  it('logs robber moves with the hex number token, not the hex id', () => {
+    const engine = new GameEngine();
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ROBBER;
+
+    const numbered = Array.from(engine.grid.hexes.values())
+      .find(h => h.id !== engine.grid.robberHexId && h.token != null);
+    engine.moveRobber('p1', numbered.id);
+    const numberedLog = engine.eventLog.filter(e => e.type === 'ROBBER_MOVED').at(-1);
+    assert.equal(numberedLog.messageKey, 'LOG_ROBBER_MOVED');
+    assert.equal(numberedLog.args.number, numbered.token);
+    assert.equal(numberedLog.args.hexId, undefined);
+
+    engine.phase = GAME_PHASES.TURN_ROBBER;
+    const desert = Array.from(engine.grid.hexes.values())
+      .find(h => h.resource === RESOURCE_TYPES.DESERT);
+    engine.moveRobber('p1', desert.id);
+    const desertLog = engine.eventLog.filter(e => e.type === 'ROBBER_MOVED').at(-1);
+    assert.equal(desertLog.messageKey, 'LOG_ROBBER_MOVED_DESERT');
+    assert.equal(desertLog.args.hexId, undefined);
+    assert.equal(desertLog.args.number, undefined);
+  });
+
   it('should disallow playing dev cards during setup or discard phases', () => {
     const engine = new GameEngine();
     engine.addPlayer({ id: 'p1', name: 'Alice' });
