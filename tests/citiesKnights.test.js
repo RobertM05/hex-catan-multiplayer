@@ -73,27 +73,27 @@ describe('CK-01 game mode toggle', () => {
 });
 
 describe('CK-01 commodities', () => {
-  it('cities produce 1 resource + 1 commodity on wool/ore/wheat', () => {
+  it('cities produce 1 resource + 1 commodity on wool/ore/wood', () => {
     const engine = makeCkEngine();
     const production = { p1: {} };
     engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.WOOL, 'city', production);
     engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.ORE, 'city', production);
-    engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.WHEAT, 'city', production);
+    engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.WOOD, 'city', production);
 
     assert.equal(engine.players[0].resources.wool, 1);
     assert.equal(engine.players[0].commodities.cloth, 1);
     assert.equal(engine.players[0].resources.ore, 1);
     assert.equal(engine.players[0].commodities.coin, 1);
-    assert.equal(engine.players[0].resources.wheat, 1);
+    assert.equal(engine.players[0].resources.wood, 1);
     assert.equal(engine.players[0].commodities.paper, 1);
   });
 
-  it('cities still produce 2 resources on wood/brick', () => {
+  it('cities still produce 2 resources on wheat/brick', () => {
     const engine = makeCkEngine();
     const production = { p1: {} };
-    engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.WOOD, 'city', production);
+    engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.WHEAT, 'city', production);
     engine.applyHexProduction(engine.players[0], RESOURCE_TYPES.BRICK, 'city', production);
-    assert.equal(engine.players[0].resources.wood, 2);
+    assert.equal(engine.players[0].resources.wheat, 2);
     assert.equal(engine.players[0].resources.brick, 2);
     assert.equal(engine.countCommodities(engine.players[0]), 0);
   });
@@ -663,13 +663,13 @@ describe('CK-04: Knight Units', () => {
     assert.throws(() => engine.activateKnight('p1', vertex.id), /NOT_ENOUGH_RESOURCES/);
   });
 
-  it('should promote basic to strong with wheat + ore and Politics ≥ 1', () => {
+  it('should promote basic to strong with wool + ore and Politics ≥ 1', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id);
     engine.players[0].cityImprovements.politics = 1;
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].rank, 'strong');
@@ -685,7 +685,7 @@ describe('CK-04: Knight Units', () => {
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id, { rank: 'strong' });
     engine.players[0].cityImprovements.politics = 2;
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].rank, 'mighty');
@@ -697,7 +697,7 @@ describe('CK-04: Knight Units', () => {
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id);
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     assert.throws(() => engine.promoteKnight('p1', vertex.id), /POLITICS_LEVEL_TOO_LOW/);
   });
@@ -708,7 +708,7 @@ describe('CK-04: Knight Units', () => {
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id, { rank: 'mighty' });
     engine.players[0].cityImprovements.politics = 5;
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_MAX_RANK/);
   });
@@ -719,7 +719,7 @@ describe('CK-04: Knight Units', () => {
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id, { active: false });
     engine.players[0].cityImprovements.politics = 1;
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].active, false);
@@ -728,7 +728,7 @@ describe('CK-04: Knight Units', () => {
     engine.turnNumber++;
     engine.players[0].knightsPlaced[0].active = true;
     engine.players[0].cityImprovements.politics = 2;
-    engine.players[0].resources.wheat = 1;
+    engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
     assert.equal(engine.players[0].knightsPlaced[0].active, true);

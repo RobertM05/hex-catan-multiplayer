@@ -635,6 +635,41 @@ export class BoardRenderer {
         } else if (v.building.type === 'city' || v.building.type === 'metropolis') {
           // Fortified City / Cathedral with two towers
           const hx = v.x, hy = v.y;
+
+          // Fortified City Wall base with crenellated battlements if wall is built
+          if (v.building.hasWall) {
+            const wallG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            wallG.setAttribute('class', 'city-wall-fortification');
+
+            // Outer fortified masonry foundation
+            const wallBase = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            wallBase.setAttribute('x', hx - 19);
+            wallBase.setAttribute('y', hy - 14);
+            wallBase.setAttribute('width', '38');
+            wallBase.setAttribute('height', '30');
+            wallBase.setAttribute('rx', '6');
+            wallBase.setAttribute('fill', '#92400e');
+            wallBase.setAttribute('stroke', '#451a03');
+            wallBase.setAttribute('stroke-width', '2');
+            wallG.appendChild(wallBase);
+
+            // Crenellated stone wall battlements (wall teeth)
+            for (let i = 0; i < 5; i++) {
+              const tooth = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+              tooth.setAttribute('x', hx - 18 + i * 8);
+              tooth.setAttribute('y', hy - 18);
+              tooth.setAttribute('width', '5');
+              tooth.setAttribute('height', '5');
+              tooth.setAttribute('rx', '1');
+              tooth.setAttribute('fill', '#f59e0b');
+              tooth.setAttribute('stroke', '#78350f');
+              tooth.setAttribute('stroke-width', '1');
+              wallG.appendChild(tooth);
+            }
+
+            g.appendChild(wallG);
+          }
+
           const d = `
             M ${hx - 14} ${hy + 12}
             L ${hx - 14} ${hy - 8}

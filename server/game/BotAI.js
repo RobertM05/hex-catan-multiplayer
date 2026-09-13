@@ -577,7 +577,7 @@ export class BotAI {
       if (knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
       const nextReq = knight.rank === 'basic' ? 1 : knight.rank === 'strong' ? 2 : 99;
       if (politics >= nextReq && knight.rank !== 'mighty'
-        && (me.resources.wheat || 0) >= 1 && (me.resources.ore || 0) >= 1) {
+        && (me.resources.wool || 0) >= 1 && (me.resources.ore || 0) >= 1) {
         const nextRank = knight.rank === 'basic' ? 'strong' : 'mighty';
         if ((me.knightsAvailable?.[nextRank] || 0) > 0) {
           return { action: 'promote_knight', vertexId: knight.vertexId };

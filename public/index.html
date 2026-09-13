@@ -409,6 +409,13 @@
           <span id="board-hint-text" data-i18n="PAN_ZOOM_HINT">Drag board to pan • Scroll wheel or pinch to zoom</span>
         </div>
 
+        <!-- Floating Board Pick Banner for Targeting Cards/Actions -->
+        <div id="board-pick-banner" class="board-pick-banner is-hidden">
+          <span class="board-pick-banner-icon">🎯</span>
+          <span id="board-pick-banner-text" class="board-pick-banner-text">Select a target on the board</span>
+          <button type="button" id="btn-cancel-board-pick" class="btn-glass btn-sm" data-i18n="CANCEL_ACTION">Cancel</button>
+        </div>
+
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
           <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-label="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
@@ -431,6 +438,20 @@
 
       <!-- Bottom Player Hand Dock -->
       <footer class="hud-bottom">
+        <!-- Realm Bank Reserve & Defense Status Strip -->
+        <div id="realm-bank-strip" class="realm-bank-strip">
+          <div class="bank-strip-left">
+            <span class="bank-strip-title" data-i18n="BANK_SUPPLY_TITLE">🏛️ Bank Reserve:</span>
+            <div id="bank-pills-container" class="bank-pills-container"></div>
+          </div>
+          <div class="bank-strip-right">
+            <button type="button" id="btn-open-knights-modal" class="btn-glass btn-defense-summary ck-only" data-i18n-title="KNIGHTS_OVERVIEW_TITLE" title="Knights & Realm Defense Overview">
+              <span class="defense-status-icon">🛡️</span>
+              <span id="defense-summary-text">Defense: --/--</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Resource Cards -->
         <div class="resource-cards-deck">
           <div class="res-card wood" data-i18n-title="RES_WOOD" title="Wood">
@@ -1020,6 +1041,7 @@
       <p id="progress-card-modal-desc" class="progress-card-modal-desc"></p>
       <div id="progress-card-target-ui" class="progress-card-target-ui"></div>
       <div class="progress-card-actions">
+        <button type="button" id="btn-pick-progress-board" class="btn-glass is-hidden" data-i18n="PROGRESS_PICK_ON_BOARD">🎯 Pick on Board</button>
         <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary" data-i18n="ACTION_PLAY_CARD">Play Card</button>
         <button type="button" id="btn-cancel-progress-card" class="btn-glass" data-i18n="CANCEL_ACTION">Cancel</button>
       </div>
@@ -1031,6 +1053,21 @@
       <h3 class="modal-title" data-i18n="PROGRESS_DISCARD_TITLE">Discard a progress card</h3>
       <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress cards. Discard one to continue.</p>
       <div id="progress-discard-list" class="progress-discard-list"></div>
+    </div>
+  </div>
+
+  <!-- Knights & Realm Defense Overview Modal -->
+  <div id="knights-overview-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box modal-lg">
+      <div class="modal-header-row loose">
+        <h3 class="modal-title" data-i18n="KNIGHTS_OVERVIEW_TITLE">🛡️ Knights & Realm Defense</h3>
+        <button type="button" id="btn-close-knights-modal-x" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div id="knights-defense-status-banner" class="knights-defense-banner"></div>
+      <div id="knights-players-table-container" class="knights-table-container"></div>
+      <div class="modal-footer-actions">
+        <button type="button" id="btn-close-knights-modal" class="btn-glass btn-primary btn-modal-close-block" data-i18n="CLOSE_BTN">Close</button>
+      </div>
     </div>
   </div>
 
@@ -1119,11 +1156,11 @@
         </div>
         <div>
           <strong data-i18n="RULES_CK_COMMODITIES_TITLE">Commodities:</strong>
-          <span data-i18n="RULES_CK_COMMODITIES_BODY">Cities on wool/ore/wheat produce 1 resource + 1 commodity (cloth/coin/paper). Cities on wood/brick produce 2 resources. Settlements never produce commodities. Commodities count toward the 7-card discard limit and can be traded, but cannot pay for buildings.</span>
+          <span data-i18n="RULES_CK_COMMODITIES_BODY">Cities on wool/ore/wood produce 1 resource + 1 commodity (cloth/coin/paper). Cities on wheat/brick produce 2 resources. Settlements never produce commodities. Commodities count toward the 7-card discard limit and can be traded, but cannot pay for buildings.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_COSTS_TITLE">Building costs:</strong>
-          <span data-i18n="RULES_CK_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP). Knight = 1 Ore + 1 Wool (placed inactive). Activate knight = 1 Wheat. Promote knight = 1 Wheat + 1 Ore. City wall = 2 Brick.</span>
+          <span data-i18n="RULES_CK_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP). Knight = 1 Ore + 1 Wool (placed inactive). Activate knight = 1 Wheat. Promote knight = 1 Wool + 1 Ore. City wall = 2 Brick.</span>
         </div>
         <div>
           <strong data-i18n="RULES_DISTANCE_TITLE">Distance rule:</strong>

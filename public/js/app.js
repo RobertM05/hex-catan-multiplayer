@@ -1081,6 +1081,7 @@ export class CatanApp {
     if (!isMyTurn || this.gameState.phase !== 'TURN_ACTION') return;
 
     const wheat = me.resources?.wheat || 0;
+    const wool = me.resources?.wool || 0;
     const ore = me.resources?.ore || 0;
     const politics = me.cityImprovements?.politics || 0;
     const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
@@ -1102,7 +1103,7 @@ export class CatanApp {
     if (nextRank) {
       actions.push({
         label: i18n.t('KNIGHT_PROMOTE'),
-        disabled: wheat < 1 || ore < 1 || politics < politicsNeeded || (me.knightsAvailable?.[nextRank] || 0) <= 0,
+        disabled: wool < 1 || ore < 1 || politics < politicsNeeded || (me.knightsAvailable?.[nextRank] || 0) <= 0,
         run: async () => {
           await network.sendAction('promote_knight', { vertexId });
           audio.playBuild();
@@ -1247,6 +1248,158 @@ export class CatanApp {
     }
   }
 
+  renderBankSupply(bank, isCk) {
+    const container = document.getElementById('bank-pills-container');
+    if (!container || !bank) return;
+
+    const resIcons = {
+      wood: '🌲', brick: '🧱', wool: '🐑', wheat: '🌾', ore: '⛰️',
+      cloth: '🧶', coin: '🪙', paper: '📜'
+    };
+
+    let html = '';
+    // Resources
+    for (const [res, count] of Object.entries(bank.resources || {})) {
+      html += `<div class="bank-pill bank-res-${res}" title="${i18n.t(`RES_${res.toUpperCase()}`)}: ${count} in bank">
+        <span class="bank-pill-icon">${resIcons[res] || ''}</span>
+        <span class="bank-pill-label">${this.cardLabel(res)}</span>
+        <span class="bank-pill-count">${count}</span>
+      </div>`;
+    }
+
+    // Commodities (if C&K)
+    if (isCk && bank.commodities) {
+      for (const [com, count] of Object.entries(bank.commodities)) {
+        html += `<div class="bank-pill bank-com-${com}" title="${i18n.t(`COMM_${com.toUpperCase()}`)}: ${count} in bank">
+          <span class="bank-pill-icon">${resIcons[com] || ''}</span>
+          <span class="bank-pill-label">${this.cardLabel(com)}</span>
+          <span class="bank-pill-count">${count}</span>
+        </div>`;
+      }
+    }
+
+    // Decks
+    if (isCk && bank.decks) {
+      if (bank.decks.trade !== undefined) {
+        html += `<div class="bank-pill bank-deck-trade" title="Trade Progress Deck: ${bank.decks.trade} cards remaining">
+          <span class="bank-pill-icon">📜</span>
+          <span class="bank-pill-label">Trade</span>
+          <span class="bank-pill-count">${bank.decks.trade}</span>
+        </div>`;
+      }
+      if (bank.decks.politics !== undefined) {
+        html += `<div class="bank-pill bank-deck-politics" title="Politics Progress Deck: ${bank.decks.politics} cards remaining">
+          <span class="bank-pill-icon">🏛️</span>
+          <span class="bank-pill-label">Politics</span>
+          <span class="bank-pill-count">${bank.decks.politics}</span>
+        </div>`;
+      }
+      if (bank.decks.science !== undefined) {
+        html += `<div class="bank-pill bank-deck-science" title="Science Progress Deck: ${bank.decks.science} cards remaining">
+          <span class="bank-pill-icon">🧪</span>
+          <span class="bank-pill-label">Science</span>
+          <span class="bank-pill-count">${bank.decks.science}</span>
+        </div>`;
+      }
+    } else if (bank.decks?.devCards !== undefined) {
+      html += `<div class="bank-pill bank-deck-dev" title="Development Deck: ${bank.decks.devCards} cards remaining">
+        <span class="bank-pill-icon">🃏</span>
+        <span class="bank-pill-label">Dev Cards</span>
+        <span class="bank-pill-count">${bank.decks.devCards}</span>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  renderKnightsOverview(overview) {
+    const summaryBtn = document.getElementById('btn-open-knights-modal');
+    const summaryText = document.getElementById('defense-summary-text');
+    if (!overview || !this.isCitiesKnights()) {
+      if (summaryBtn) summaryBtn.style.display = 'none';
+      return;
+    }
+    if (summaryBtn) summaryBtn.style.display = 'inline-flex';
+
+    if (summaryText) {
+      const statusLabel = overview.isDefenseReady ? i18n.t('DEFENSE_STATUS_SAFE') : i18n.t('DEFENSE_STATUS_DANGER');
+      summaryText.textContent = `⚔️ ${overview.totalActiveStrength} / 🏰 ${overview.totalCities} (${statusLabel}) · ⛵ ${overview.barbarianPosition}/7`;
+    }
+
+    if (summaryBtn) {
+      summaryBtn.classList.toggle('safe', overview.isDefenseReady);
+      summaryBtn.classList.toggle('danger', !overview.isDefenseReady);
+    }
+
+    const modal = document.getElementById('knights-overview-modal');
+    if (modal && modal.classList.contains('active')) {
+      this.populateKnightsModal(overview);
+    }
+  }
+
+  populateKnightsModal(overview) {
+    const banner = document.getElementById('knights-defense-status-banner');
+    const container = document.getElementById('knights-players-table-container');
+    if (!banner || !container) return;
+
+    const isReady = overview.isDefenseReady;
+    const margin = overview.defenseMargin;
+    const percent = Math.min(100, Math.round((overview.barbarianPosition / 7) * 100));
+
+    banner.innerHTML = `
+      <div class="knights-defense-headline ${isReady ? 'safe' : 'danger'}">
+        <span>${isReady ? '🛡️' : '⚠️'}</span>
+        <span>${isReady
+          ? i18n.t('DEFENSE_BANNER_SAFE', { active: overview.totalActiveStrength, cities: overview.totalCities, margin })
+          : i18n.t('DEFENSE_BANNER_DANGER', { active: overview.totalActiveStrength, cities: overview.totalCities, shortfall: Math.abs(margin) })}</span>
+      </div>
+      <div class="knights-defense-track-row">
+        <span>Barbarian Fleet: <strong>${overview.barbarianPosition} / 7</strong></span>
+        <div class="knights-barbarian-progress-bar">
+          <div class="knights-barbarian-progress-fill" style="width: ${percent}%;"></div>
+        </div>
+        <span>${overview.barbarianPosition >= 7 ? '⚔️ ATTACKING!' : `${7 - overview.barbarianPosition} steps away`}</span>
+      </div>
+    `;
+
+    let html = '<div class="knights-players-grid">';
+    for (const p of overview.players || []) {
+      html += `
+        <div class="knights-player-card">
+          <div class="knights-player-card-header">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 10px; height: 10px; border-radius: 50%; background: ${p.color}; display: inline-block;"></span>
+              <span>${escapeHtml(p.name)}</span>
+            </span>
+            <span style="color: ${p.activeStrength > 0 ? '#4ade80' : 'var(--text-secondary)'};">
+              ⚔️ ${p.activeStrength} str
+            </span>
+          </div>
+          <div class="knights-player-rank-list">
+            <div class="knights-player-rank-row">
+              <span class="knights-rank-badge">Basic (⚔1):</span>
+              <span>${p.ranks.basic.active} active · ${p.ranks.basic.inactive} inactive</span>
+            </div>
+            <div class="knights-player-rank-row">
+              <span class="knights-rank-badge">Strong (⚔2):</span>
+              <span>${p.ranks.strong.active} active · ${p.ranks.strong.inactive} inactive</span>
+            </div>
+            <div class="knights-player-rank-row">
+              <span class="knights-rank-badge">Mighty (⚔3):</span>
+              <span>${p.ranks.mighty.active} active · ${p.ranks.mighty.inactive} inactive</span>
+            </div>
+          </div>
+          <div class="knights-supply-row">
+            <span>Reserve Supply:</span>
+            <span>${p.availableSupply.basic}B · ${p.availableSupply.strong}S · ${p.availableSupply.mighty}M</span>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
   renderEventDie(s) {
     const el = document.getElementById('die-event');
     if (!el) return;
@@ -1360,9 +1513,11 @@ export class CatanApp {
       return;
     }
 
-    const key = `${s.turnNumber}-${result?.outcome || 'none'}-${pending.join(',')}-${pendingRewards.join(',')}-${s.phase}`;
-    if (!mustDowngrade && !mustChooseReward && this.barbarianOverlayKey === key) return;
-    this.barbarianOverlayKey = key;
+    const invasionId = result?.id || (result ? `${result.outcome}-${result.totalActiveKnights}-${result.totalCities}` : null);
+    if (!mustDowngrade && !mustChooseReward && invasionId && this.dismissedBarbarianInvasionId === invasionId) {
+      modal.classList.remove('active');
+      return;
+    }
 
     if (result?.outcome === 'victory') {
       const defender = s.players.find(p => p.id === result.defenderOfCatan);
@@ -1378,7 +1533,7 @@ export class CatanApp {
 
     list.innerHTML = '';
     if (mustDowngrade) {
-      closeBtn.style.display = 'none';
+      if (closeBtn) closeBtn.style.display = 'none';
       (me.citiesBuilt || []).filter((vid) => s.grid?.vertices?.[vid]?.building?.type === 'city').forEach((vid) => {
         const vertex = s.grid?.vertices?.[vid];
         const hexes = (vertex?.hexes || []).map((hid) => s.grid?.hexes?.[hid]?.resource).filter(Boolean);
@@ -1389,6 +1544,7 @@ export class CatanApp {
         btn.addEventListener('click', async () => {
           try {
             await network.sendAction('downgrade_city', { vertexId: vid });
+            if (invasionId) this.dismissedBarbarianInvasionId = invasionId;
             modal.classList.remove('active');
           } catch (err) {
             this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -1397,7 +1553,7 @@ export class CatanApp {
         list.appendChild(btn);
       });
     } else if (mustChooseReward) {
-      closeBtn.style.display = 'none';
+      if (closeBtn) closeBtn.style.display = 'none';
       const promptTitle = document.createElement('div');
       promptTitle.className = 'barbarian-reward-title';
       promptTitle.style.fontWeight = 'bold';
@@ -1420,6 +1576,7 @@ export class CatanApp {
         btn.addEventListener('click', async () => {
           try {
             await network.sendAction('choose_barbarian_reward', { deck: deck.id });
+            if (invasionId) this.dismissedBarbarianInvasionId = invasionId;
             modal.classList.remove('active');
           } catch (err) {
             this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -1428,7 +1585,18 @@ export class CatanApp {
         list.appendChild(btn);
       });
     } else {
-      closeBtn.style.display = '';
+      if (closeBtn) {
+        closeBtn.style.display = '';
+        if (!this.barbarianCloseBound) {
+          this.barbarianCloseBound = true;
+          closeBtn.addEventListener('click', () => {
+            const curResult = this.gameState?.lastBarbarianResult;
+            const curId = curResult?.id || (curResult ? `${curResult.outcome}-${curResult.totalActiveKnights}-${curResult.totalCities}` : null);
+            if (curId) this.dismissedBarbarianInvasionId = curId;
+            modal.classList.remove('active');
+          });
+        }
+      }
     }
 
     modal.classList.add('active');
@@ -1704,7 +1872,7 @@ export class CatanApp {
           </div>
         </div>
         <button type="button" class="btn-glass btn-primary btn-steal-card" style="padding: 8px 16px; font-size: 13px; font-weight: 700;">
-          ${i18n.t('STEAL_1_RES_BTN')}
+          ${i18n.t('STEAL_1_RANDOM_CARD_BTN') || i18n.t('STEAL_1_RES_BTN')}
         </button>
       `;
 
@@ -1715,8 +1883,8 @@ export class CatanApp {
           audio.playRobber();
           if (chaseFrom) this.clearActiveAction();
           if (res && res.stolenResource) {
-            const resName = i18n.t(`RES_${res.stolenResource.toUpperCase()}`);
-            this.showToast(i18n.t('STOLE_RESOURCE_FROM', { resource: resName, player: opponent.name }), false);
+            const cardName = this.cardLabel(res.stolenResource);
+            this.showToast(i18n.t('STOLE_RANDOM_CARD_FROM', { resource: cardName, player: opponent.name }) || `You drew 1 random ${cardName} from ${opponent.name}!`, false);
           } else {
             this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL'), true);
           }
@@ -1743,9 +1911,7 @@ export class CatanApp {
     }
     if (!me) return 4;
     if (me.merchantFleetActive) return 2;
-    const isCommodity = this.isCommodity(resource);
-    if (!isCommodity && (me.cityImprovements?.trade || 0) >= 1) return 2;
-    if (isCommodity && (me.cityImprovements?.trade || 0) >= 5) return 2;
+    if ((me.cityImprovements?.trade || 0) >= 5) return 2;
     if (this.gameState.merchantHolder === this.myPlayerId && this.gameState.merchantHexId) {
       const hex = this.gameState.grid.hexes?.[this.gameState.merchantHexId];
       if (hex && hex.resource === resource) return 2;
@@ -2243,6 +2409,43 @@ export class CatanApp {
     document.getElementById('btn-close-progress-card')?.addEventListener('click', () => this.closeProgressCardModal());
     document.getElementById('btn-cancel-progress-card')?.addEventListener('click', () => this.closeProgressCardModal());
     document.getElementById('btn-play-progress-card')?.addEventListener('click', () => this.confirmProgressCardPlay());
+
+    document.getElementById('btn-pick-progress-board')?.addEventListener('click', () => {
+      if (!this.progressPlay) return;
+      const cardType = this.progressPlay.card.type;
+      document.getElementById('progress-card-modal')?.classList.remove('active');
+      this.beginProgressBoardPick(cardType);
+      const banner = document.getElementById('board-pick-banner');
+      const bannerText = document.getElementById('board-pick-banner-text');
+      if (banner && bannerText) {
+        const hintKey = `CARD_${cardType.toUpperCase()}`;
+        bannerText.textContent = `🎯 Select ${i18n.t(hintKey) || cardType} target on the board`;
+        banner.classList.remove('is-hidden');
+      }
+    });
+
+    document.getElementById('btn-cancel-board-pick')?.addEventListener('click', () => {
+      const banner = document.getElementById('board-pick-banner');
+      if (banner) banner.classList.add('is-hidden');
+      this.progressPlay = null;
+      this.clearActiveAction();
+    });
+
+    // Knights Overview Modal Listeners
+    document.getElementById('btn-open-knights-modal')?.addEventListener('click', () => {
+      const modal = document.getElementById('knights-overview-modal');
+      if (!modal) return;
+      if (this.gameState?.knightsOverview) {
+        this.populateKnightsModal(this.gameState.knightsOverview);
+      }
+      modal.classList.add('active');
+    });
+
+    document.querySelectorAll('#btn-close-knights-modal, #btn-close-knights-modal-x').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('knights-overview-modal')?.classList.remove('active');
+      });
+    });
   }
 
   getMe() {
@@ -2361,48 +2564,245 @@ export class CatanApp {
     document.getElementById('progress-card-modal-title').textContent = i18n.t(`CARD_${card.type.toUpperCase()}`);
     document.getElementById('progress-card-modal-desc').textContent = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
     this.renderCardTargetSelector(card);
-    const canPlayNow = card.type === 'alchemist'
-      ? this.gameState.phase === 'TURN_ROLL' && this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId
-      : this.gameState.phase === 'TURN_ACTION' && this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId;
-    const playBtn = document.getElementById('btn-play-progress-card');
-    if (playBtn) playBtn.disabled = !canPlayNow;
     modal.classList.add('active');
   }
 
   closeProgressCardModal() {
     document.getElementById('progress-card-modal')?.classList.remove('active');
+    const banner = document.getElementById('board-pick-banner');
+    if (banner) banner.classList.add('is-hidden');
     this.progressPlay = null;
     if (this.selectedAction && String(this.selectedAction.type).startsWith('progress_')) {
       this.clearActiveAction();
     }
   }
 
+  countPlayerCommodities(p) {
+    if (!p || !p.commodities) return 0;
+    if (typeof p.commodities.total === 'number') return p.commodities.total;
+    return Object.values(p.commodities).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+  }
+
+  countPlayerTotalCards(p) {
+    if (!p) return 0;
+    const res = typeof p.resources?.total === 'number' ? p.resources.total : Object.values(p.resources || {}).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    const com = this.countPlayerCommodities(p);
+    return res + com;
+  }
+
   renderCardTargetSelector(card) {
     const box = document.getElementById('progress-card-target-ui');
+    const pickBoardBtn = document.getElementById('btn-pick-progress-board');
+    const playBtn = document.getElementById('btn-play-progress-card');
     if (!box) return;
     box.innerHTML = '';
+    if (pickBoardBtn) pickBoardBtn.classList.add('is-hidden');
+
     const type = card.type;
+    const me = this.getMe();
+    const isMyTurn = this.gameState?.currentPlayerId === this.myPlayerId;
+    const isActionPhase = this.gameState?.phase === 'TURN_ACTION' && isMyTurn;
+
     if (type === 'alchemist') {
       box.innerHTML = `<div class="alchemist-dice-row">
         <label>${i18n.t('PROGRESS_DIE_1')}<select id="alchemist-d1">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
         <label>${i18n.t('PROGRESS_DIE_2')}<select id="alchemist-d2">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
       </div>`;
+      if (playBtn) playBtn.disabled = !(this.gameState.phase === 'TURN_ROLL' && isMyTurn);
       return;
     }
-    if (type === 'resource_monopoly' || type === 'commercial_harbor' || type === 'trade_monopoly') {
+
+    if (type === 'resource_monopoly' || type === 'trade_monopoly') {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE')}</div>
-        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
-          ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${i18n.t(`RES_${r.toUpperCase()}`)}</button>`).join('')}
+        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px;">
+          ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${this.cardLabel(r)}</button>`).join('')}
         </div>`;
+      if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.res-choice-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.resource = b.dataset.res;
           box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
         });
       });
       return;
     }
+
+    if (type === 'commercial_harbor') {
+      const available = ['wood','brick','wool','wheat','ore'].filter(r => (me?.resources?.[r] || 0) > 0);
+      const opponentsWithCom = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId && this.countPlayerCommodities(p) > 0);
+
+      if (available.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning">
+          <p>You have no resources to give. You need at least 1 resource to trade with opponents.</p>
+        </div>`;
+        if (playBtn) playBtn.disabled = true;
+        return;
+      }
+
+      box.innerHTML = `<div>Select 1 resource to offer to opponents in exchange for their commodities:</div>
+        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0;">
+          ${['wood','brick','wool','wheat','ore'].map(r => {
+            const count = me?.resources?.[r] || 0;
+            return `<button type="button" class="btn-glass res-choice-btn" data-res="${r}" ${count < 1 ? 'disabled' : ''}>${this.cardLabel(r)} (${count})</button>`;
+          }).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);">
+          ${opponentsWithCom.length > 0
+            ? `Opponents holding commodities: ${opponentsWithCom.map(p => escapeHtml(p.name)).join(', ')}`
+            : 'Notice: Opponents currently hold 0 commodities.'}
+        </div>`;
+
+      if (playBtn) playBtn.disabled = true;
+      box.querySelectorAll('.res-choice-btn:not([disabled])').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.resource = b.dataset.res;
+          box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
+    if (type === 'wedding') {
+      const myVp = me?.victoryPoints || 0;
+      const targets = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId && (p.victoryPoints || 0) > myVp);
+
+      if (targets.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning">
+          <p>No opponent currently has more victory points than you (${myVp} VP). Wedding requires at least one opponent with strictly more VP.</p>
+        </div>`;
+        if (playBtn) playBtn.disabled = true;
+      } else {
+        box.innerHTML = `<div class="progress-notice-box info">
+          <p>💍 <strong>Opponents with more VP who must give you up to 2 cards:</strong></p>
+          <ul style="margin: 6px 0 0 16px;">
+            ${targets.map(p => `<li><strong>${escapeHtml(p.name)}</strong> (${p.victoryPoints} VP, ${this.countPlayerTotalCards(p)} cards)</li>`).join('')}
+          </ul>
+        </div>`;
+        if (playBtn) playBtn.disabled = !isActionPhase;
+      }
+      return;
+    }
+
+    if (type === 'merchant') {
+      const mine = new Set([...(me?.settlementsBuilt || []), ...(me?.citiesBuilt || [])]);
+      const validHexIds = new Set();
+      Object.values(this.gameState?.grid?.vertices || {}).forEach(v => {
+        if (mine.has(v.id) && v.hexes) v.hexes.forEach(hid => validHexIds.add(hid));
+      });
+
+      const validHexes = Array.from(validHexIds).map(id => this.gameState.grid.hexes[id]).filter(Boolean);
+
+      if (validHexes.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning"><p>You must have a settlement or city adjacent to a hex to place the Merchant.</p></div>`;
+        if (playBtn) playBtn.disabled = true;
+        return;
+      }
+
+      box.innerHTML = `<div>Choose an adjacent hex to place the Merchant (gives 2:1 bank trade & 1 VP):</div>
+        <div class="progress-target-grid">
+          ${validHexes.map(h => {
+            const tokenStr = h.token ? ` (#${h.token})` : '';
+            return `<button type="button" class="btn-glass progress-target-card-btn" data-hex-id="${h.id}">
+              <span>${this.cardLabel(h.resource)}${tokenStr}</span>
+            </button>`;
+          }).join('')}
+        </div>`;
+
+      if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
+      if (playBtn) playBtn.disabled = true;
+
+      box.querySelectorAll('.progress-target-card-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.hexId = b.dataset.hexId;
+          box.querySelectorAll('.progress-target-card-btn').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
+    if (type === 'engineer') {
+      const unwalled = (me?.citiesBuilt || []).filter(vid => {
+        const v = this.gameState?.grid?.vertices?.[vid];
+        return v?.building && !v.building.hasWall;
+      });
+
+      if (unwalled.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning"><p>You have no unwalled cities to build a wall on.</p></div>`;
+        if (playBtn) playBtn.disabled = true;
+        return;
+      }
+
+      box.innerHTML = `<div>Choose a city to fortify with a city wall for free:</div>
+        <div class="progress-target-grid">
+          ${unwalled.map(vid => {
+            const v = this.gameState.grid.vertices[vid];
+            const hexes = (v.hexes || []).map(hid => this.cardLabel(this.gameState.grid.hexes[hid]?.resource)).filter(Boolean).join(', ');
+            return `<button type="button" class="btn-glass progress-target-card-btn" data-vertex-id="${vid}">
+              <span>🏰 City (${hexes || vid})</span>
+            </button>`;
+          }).join('')}
+        </div>`;
+
+      if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
+      if (playBtn) playBtn.disabled = true;
+
+      box.querySelectorAll('.progress-target-card-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.vertexId = b.dataset.vertexId;
+          box.querySelectorAll('.progress-target-card-btn').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
+    if (type === 'smith') {
+      const promotable = (me?.knightsPlaced || []).filter(k => k.rank !== 'mighty');
+      if (promotable.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning"><p>You have no knights that can be promoted.</p></div>`;
+        if (playBtn) playBtn.disabled = true;
+        return;
+      }
+
+      box.innerHTML = `<div>Select up to 2 knights to promote for free (or click Pick on Board):</div>
+        <div class="progress-target-grid">
+          ${promotable.map(k => `
+            <button type="button" class="btn-glass progress-target-card-btn" data-vertex-id="${k.vertexId}">
+              <span>⚔️ ${k.rank.toUpperCase()} (Str ${k.strength})</span>
+            </button>
+          `).join('')}
+        </div>`;
+
+      if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
+      if (playBtn) playBtn.disabled = true;
+
+      const selected = new Set();
+      box.querySelectorAll('.progress-target-card-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          const vid = b.dataset.vertexId;
+          if (selected.has(vid)) {
+            selected.delete(vid);
+            b.classList.remove('selected');
+          } else {
+            if (selected.size < 2) {
+              selected.add(vid);
+              b.classList.add('selected');
+            }
+          }
+          this.progressPlay.options.knightVertices = Array.from(selected);
+          if (playBtn) playBtn.disabled = selected.size === 0 || !isActionPhase;
+        });
+      });
+      return;
+    }
+
     if (type === 'spy') {
       const opponents = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId);
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>
@@ -2411,34 +2811,42 @@ export class CatanApp {
             const count = Array.isArray(p.progressCards)
               ? unplayedProgressCards(p.progressCards).length
               : Math.max(0, (p.progressCards?.count || 0) - (p.progressCards?.revealed?.length || 0));
-            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${p.name} (${count} cards)</button>`;
+            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count} cards)</button>`;
           }).join('')}
         </div>`;
+      if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
         });
       });
       return;
     }
+
     if (type === 'master_merchant') {
-      const opponents = this.gameState.players.filter(p => p.id !== this.myPlayerId);
-      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>` +
-        opponents.map(p => `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${p.name}</button>`).join('') +
-        `<div>${i18n.t('PROGRESS_SELECT_STEAL')}</div>
-         <select id="mm-steal-1">${this.handTypeOptions()}</select>
-         <select id="mm-steal-2">${this.handTypeOptions()}</select>`;
+      const opponents = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId);
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;">
+          ${opponents.map(p => `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join('')}
+        </div>
+        <div>${i18n.t('PROGRESS_SELECT_STEAL')}</div>
+        <select id="mm-steal-1">${this.handTypeOptions()}</select>
+        <select id="mm-steal-2">${this.handTypeOptions()}</select>`;
+      if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
         });
       });
       return;
     }
+
     const hints = {
       bishop: 'PROGRESS_SELECT_HEX',
       merchant: 'PROGRESS_SELECT_HEX',
@@ -2451,7 +2859,10 @@ export class CatanApp {
     };
     if (hints[type]) {
       box.innerHTML = `<p>${i18n.t(hints[type])}</p>`;
-      this.beginProgressBoardPick(type);
+      if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
+      if (playBtn) playBtn.disabled = true;
+    } else {
+      if (playBtn) playBtn.disabled = !isActionPhase;
     }
   }
 
@@ -2535,33 +2946,46 @@ export class CatanApp {
 
   onProgressHexPicked(hexId) {
     if (!this.progressPlay) return;
+    const banner = document.getElementById('board-pick-banner');
     const type = this.progressPlay.card.type;
     if (type === 'inventor') {
       this.progressPlay.picks.push(hexId);
       if (this.progressPlay.picks.length === 1) {
-        document.getElementById('progress-card-target-ui').innerHTML = `<p>${i18n.t('PROGRESS_SELECT_HEX_2')}</p>`;
+        const hint = document.getElementById('progress-card-target-ui');
+        if (hint) hint.innerHTML = `<p>${i18n.t('PROGRESS_SELECT_HEX_2')}</p>`;
+        const bannerText = document.getElementById('board-pick-banner-text');
+        if (bannerText) bannerText.textContent = `🎯 ${i18n.t('PROGRESS_SELECT_HEX_2')}`;
         return;
       }
+      if (banner) banner.classList.add('is-hidden');
       this.progressPlay.options.hexId1 = this.progressPlay.picks[0];
       this.progressPlay.options.hexId2 = this.progressPlay.picks[1];
       this.confirmProgressCardPlay();
       return;
     }
+    if (banner) banner.classList.add('is-hidden');
     this.progressPlay.options.hexId = hexId;
     this.confirmProgressCardPlay();
   }
 
   onProgressVertexPicked(vertexId) {
     if (!this.progressPlay) return;
+    const banner = document.getElementById('board-pick-banner');
     const type = this.progressPlay.card.type;
     if (type === 'smith') {
       if (!this.progressPlay.picks.includes(vertexId)) this.progressPlay.picks.push(vertexId);
-      if (this.progressPlay.picks.length < 2) return;
+      if (this.progressPlay.picks.length < 2) {
+        const bannerText = document.getElementById('board-pick-banner-text');
+        if (bannerText) bannerText.textContent = '🎯 Click a 2nd knight (or click Confirm)';
+        return;
+      }
+      if (banner) banner.classList.add('is-hidden');
       this.progressPlay.options.knightVertices = this.progressPlay.picks.slice(0, 2);
       this.confirmProgressCardPlay();
       return;
     }
     if (type === 'engineer') {
+      if (banner) banner.classList.add('is-hidden');
       this.progressPlay.options.vertexId = vertexId;
       this.confirmProgressCardPlay();
       return;
@@ -2586,18 +3010,24 @@ export class CatanApp {
         this.boardRenderer.render(this.gameState.grid, this.selectedAction);
         const hint = document.getElementById('progress-card-target-ui');
         if (hint) hint.innerHTML = `<p>${i18n.t('PROGRESS_SELECT_KNIGHT_PLACE')}</p>`;
+        const bannerText = document.getElementById('board-pick-banner-text');
+        if (bannerText) bannerText.textContent = `🎯 ${i18n.t('PROGRESS_SELECT_KNIGHT_PLACE')}`;
         return;
       }
+      if (banner) banner.classList.add('is-hidden');
       this.progressPlay.options.placeVertexId = vertexId;
       this.confirmProgressCardPlay();
       return;
     }
+    if (banner) banner.classList.add('is-hidden');
     this.progressPlay.options.vertexId = vertexId;
     this.confirmProgressCardPlay();
   }
 
   onProgressRoadPicked(edgeId) {
     if (!this.progressPlay) return;
+    const banner = document.getElementById('board-pick-banner');
+    if (banner) banner.classList.add('is-hidden');
     const type = this.progressPlay.card.type;
     if (type === 'diplomat') {
       const edge = this.gameState.grid.edges[edgeId];
@@ -2874,6 +3304,8 @@ export class CatanApp {
     }
 
     this.renderCkHud(s, me, isActionPhase);
+    this.renderBankSupply(s.bank, this.isCitiesKnights());
+    this.renderKnightsOverview(s.knightsOverview);
 
     // Update My Resources
     if (me) {
@@ -3107,6 +3539,14 @@ export class CatanApp {
           const message = i18n.t('YOU_RECEIVED_RESOURCE', { amount: entry.args.amount, resource: resLocalized });
           if (this.diceAnim) this.deferredProductionToasts.push(message);
           else this.showToast(message);
+        } else if (entry.type === 'WEDDING_GIFT' && me && entry.args) {
+          if (entry.args.targetName === me.name) {
+            this.showToast(i18n.t('WEDDING_GIFT_GIVEN', { player: entry.args.playerName, count: entry.args.count }) || `💍 You gave ${entry.args.count} card(s) to ${entry.args.playerName} for the wedding.`, true);
+          } else if (entry.args.playerName === me.name) {
+            this.showToast(i18n.t('WEDDING_GIFT_RECEIVED', { target: entry.args.targetName, count: entry.args.count }) || `💍 You received ${entry.args.count} wedding card(s) from ${entry.args.targetName}!`);
+          }
+        } else if (entry.type === 'COMMERCIAL_HARBOR_TRADE' && me && entry.args && entry.args.playerName === me.name) {
+          this.showToast(`⚖️ Commercial Harbor: traded ${entry.args.resource} for ${entry.args.count} commodities!`);
         }
       });
       this.lastProcessedLogCount = logs.length;

@@ -19,7 +19,7 @@ export const COMMODITY_TYPES = {
 export const RESOURCE_TO_COMMODITY = {
   [RESOURCE_TYPES.WOOL]: COMMODITY_TYPES.CLOTH,
   [RESOURCE_TYPES.ORE]: COMMODITY_TYPES.COIN,
-  [RESOURCE_TYPES.WHEAT]: COMMODITY_TYPES.PAPER
+  [RESOURCE_TYPES.WOOD]: COMMODITY_TYPES.PAPER
 };
 
 export const COMMODITY_VALUES = Object.values(COMMODITY_TYPES);
@@ -113,7 +113,7 @@ export const COSTS = {
   DEV_CARD: { ore: 1, wool: 1, wheat: 1 },
   KNIGHT: { ore: 1, wool: 1 },
   ACTIVATE_KNIGHT: { wheat: 1 },
-  PROMOTE_KNIGHT: { wheat: 1, ore: 1 },
+  PROMOTE_KNIGHT: { ore: 1, wool: 1 },
   CITY_WALL: { brick: 2 },
   MEDICINE_CITY: { ore: 2, wheat: 1 }
 };
@@ -1813,6 +1813,7 @@ export class GameEngine {
       }
       this.pendingBarbarianDowngrades.clear();
       result = {
+        id: `barb-${this.turnNumber}-${this.eventLog.length}`,
         outcome: 'victory',
         defenderOfCatan: this.defenderOfCatan,
         totalActiveKnights,
@@ -1833,6 +1834,7 @@ export class GameEngine {
         args: { playerIds: Array.from(this.pendingBarbarianDowngrades) }
       });
       result = {
+        id: `barb-${this.turnNumber}-${this.eventLog.length}`,
         outcome: 'defeat',
         pendingDowngrades: Array.from(this.pendingBarbarianDowngrades),
         totalActiveKnights,
@@ -2174,7 +2176,15 @@ export class GameEngine {
         const exchanges = [];
         for (const other of this.players) {
           if (other.id === playerId) continue;
-          const commodity = commodities[other.id];
+          let commodity = commodities[other.id];
+          if (!commodity) {
+            for (const com of COMMODITY_VALUES) {
+              if (this.getPlayerCardCount(other, com) > 0) {
+                commodity = com;
+                break;
+              }
+            }
+          }
           if (!COMMODITY_VALUES.includes(commodity)) continue;
           if (this.getPlayerCardCount(player, resource) < 1) break;
           if (this.getPlayerCardCount(other, commodity) < 1) continue;
@@ -2185,6 +2195,13 @@ export class GameEngine {
           exchanges.push({ playerId: other.id, commodity });
         }
         result.exchanges = exchanges;
+        if (exchanges.length > 0) {
+          this.logEvent({
+            type: 'COMMERCIAL_HARBOR_TRADE',
+            messageKey: 'LOG_COMMERCIAL_HARBOR_TRADE',
+            args: { playerName: player.name, count: exchanges.length, resource }
+          });
+        }
         break;
       }
       case 'bishop': {
@@ -2361,7 +2378,12 @@ export class GameEngine {
           for (const cardType of givenCards) {
             this.adjustPlayerCard(player, cardType, 1);
           }
-          gifts.push({ playerId: target.id, cards: givenCards });
+          gifts.push({ playerId: target.id, targetName: target.name, cards: givenCards });
+          this.logEvent({
+            type: 'WEDDING_GIFT',
+            messageKey: 'LOG_WEDDING_GIFT',
+            args: { targetName: target.name, playerName: player.name, count: givenCards.length }
+          });
         }
         result.gifts = gifts;
         break;
@@ -3000,6 +3022,85 @@ export class GameEngine {
     }
   }
 
+  getBankStock() {
+    const isCk = this.isCitiesKnights();
+    const resourceMax = this.players.length <= 4 ? 19 : 24;
+    const commodityMax = 12;
+
+    const resources = {};
+    for (const r of RESOURCE_VALUES) {
+      const held = this.players.reduce((sum, p) => sum + (p.resources?.[r] || 0), 0);
+      resources[r] = Math.max(0, resourceMax - held);
+    }
+
+    const commodities = {};
+    if (isCk) {
+      for (const c of COMMODITY_VALUES) {
+        const held = this.players.reduce((sum, p) => sum + (p.commodities?.[c] || 0), 0);
+        commodities[c] = Math.max(0, commodityMax - held);
+      }
+    }
+
+    const decks = {};
+    if (isCk) {
+      decks.trade = this.progressDecks?.trade?.length || 0;
+      decks.politics = this.progressDecks?.politics?.length || 0;
+      decks.science = this.progressDecks?.science?.length || 0;
+    } else {
+      decks.devCards = this.devCardDeck?.length || 0;
+    }
+
+    return {
+      resources,
+      commodities,
+      decks
+    };
+  }
+
+  getKnightsOverview() {
+    if (!this.isCitiesKnights()) return null;
+    const totalCities = this.players.reduce((sum, p) => sum + (p.citiesBuilt?.length || 0), 0);
+    const activeStrength = this.players.reduce((sum, p) => sum + this.getActiveKnightStrength(p), 0);
+
+    const playersBreakdown = this.players.map(p => {
+      const placed = p.knightsPlaced || [];
+      const activeCount = placed.filter(k => k.active).length;
+      const inactiveCount = placed.length - activeCount;
+      const ranks = {
+        basic: { total: 0, active: 0, inactive: 0 },
+        strong: { total: 0, active: 0, inactive: 0 },
+        mighty: { total: 0, active: 0, inactive: 0 }
+      };
+      for (const k of placed) {
+        if (ranks[k.rank]) {
+          ranks[k.rank].total++;
+          if (k.active) ranks[k.rank].active++;
+          else ranks[k.rank].inactive++;
+        }
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        totalPlaced: placed.length,
+        activeCount,
+        inactiveCount,
+        activeStrength: this.getActiveKnightStrength(p),
+        ranks,
+        availableSupply: p.knightsAvailable || { basic: 0, strong: 0, mighty: 0 }
+      };
+    });
+
+    return {
+      totalCities,
+      totalActiveStrength: activeStrength,
+      barbarianPosition: this.barbarianPosition,
+      isDefenseReady: activeStrength >= totalCities,
+      defenseMargin: activeStrength - totalCities,
+      players: playersBreakdown
+    };
+  }
+
   /* =========================================================
    * SERIALIZATION (WITH FOG-OF-WAR FOR OPPONENT CARDS)
    * ========================================================= */
@@ -3021,6 +3122,8 @@ export class GameEngine {
       defenderOfCatan: this.defenderOfCatan,
       hasRolledDice: this.hasRolledDice,
       grid: this.grid ? this.grid.toJSON() : null,
+      bank: this.getBankStock(),
+      knightsOverview: this.getKnightsOverview(),
       pendingDiscards: Array.from(this.pendingDiscards),
       discardDeadline: this.discardDeadline,
       pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
@@ -3041,7 +3144,7 @@ export class GameEngine {
       longestRoadHolder: this.longestRoadHolder,
       largestArmyHolder: this.largestArmyHolder,
       devCardsRemaining: this.devCardDeck.length,
-      eventLog: this.eventLog.slice(-25),
+      eventLog: this.eventLog.slice(-100),
       players: this.players.map(p => {
         const isSelf = p.id === playerId;
         return {

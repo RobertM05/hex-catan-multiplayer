@@ -2689,3 +2689,280 @@ body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
   from { transform: scale(0.6) rotateY(90deg); opacity: 0; }
   to { transform: scale(1) rotateY(0); opacity: 1; }
 }
+
+/* =========================================================
+ * REALM BANK SUPPLY STRIP
+ * ========================================================= */
+.realm-bank-strip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: oklch(0.12 0.015 260 / 0.85);
+  border: 1px solid oklch(1 0 0 / 0.12);
+  border-radius: 9px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.bank-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 1;
+}
+.bank-strip-left::-webkit-scrollbar {
+  display: none;
+}
+
+.bank-strip-title {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.bank-pills-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bank-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: oklch(1 0 0 / 0.06);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.bank-pill-icon {
+  font-size: 12px;
+}
+.bank-pill-label {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+.bank-pill-count {
+  font-weight: 700;
+  color: #fff;
+  background: oklch(1 0 0 / 0.18);
+  padding: 0 4px;
+  border-radius: 4px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.bank-strip-right {
+  display: flex;
+  align-items: center;
+}
+
+.btn-defense-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-defense-summary.safe {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+.btn-defense-summary.danger {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+  animation: pulse-danger-border 1.8s infinite ease-in-out;
+}
+@keyframes pulse-danger-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+}
+
+/* =========================================================
+ * FLOATING BOARD PICK BANNER
+ * ========================================================= */
+.board-pick-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: oklch(0.18 0.04 260 / 0.95);
+  backdrop-filter: blur(14px);
+  border: 2px solid var(--gold-primary);
+  border-radius: 30px;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 12px rgba(245, 158, 11, 0.3);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  pointer-events: auto;
+}
+.board-pick-banner-icon {
+  font-size: 16px;
+}
+.board-pick-banner-text {
+  color: #fef08a;
+}
+
+/* =========================================================
+ * KNIGHTS & REALM DEFENSE OVERVIEW MODAL
+ * ========================================================= */
+.knights-defense-banner {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.knights-defense-headline {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.knights-defense-headline.safe {
+  color: #4ade80;
+}
+.knights-defense-headline.danger {
+  color: #f87171;
+}
+.knights-defense-track-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.knights-barbarian-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.knights-barbarian-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  transition: width 0.3s ease;
+}
+
+.knights-players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.knights-player-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.knights-player-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.knights-player-rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.knights-player-rank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.knights-rank-badge {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.knights-supply-row {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Progress card modal targets */
+.progress-target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+  margin: 10px 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.progress-target-card-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.progress-target-card-btn.selected {
+  border-color: var(--gold-primary);
+  background: rgba(245, 158, 11, 0.2);
+  color: #fff;
+}
+.progress-notice-box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.progress-notice-box.warning {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+.progress-notice-box.info {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
