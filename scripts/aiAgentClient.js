@@ -167,7 +167,8 @@ export class CatanAIAgent {
       (state.phase === 'TURN_ACTION' && isMyTurn) ||
       (state.phase === 'TURN_CHOOSE_METROPOLIS' && state.pendingMetropolisChoice?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' && state.pendingKnightRelocation?.playerId === this.myPlayerId) ||
-      (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId))
+      (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId)) ||
+      (state.phase === 'TURN_BARBARIAN_REWARD' && state.pendingBarbarianTieDraws?.includes(this.myPlayerId))
     );
 
     if (!hasAction) return;
@@ -234,6 +235,12 @@ export class CatanAIAgent {
       else if (curState.phase === 'TURN_BARBARIAN_DOWNGRADE') {
         if (curState.pendingBarbarianDowngrades?.includes(this.myPlayerId)) {
           await this.handleBarbarianDowngrade(curState, curMe);
+        }
+      }
+      // 9. Barbarian Reward (C&K)
+      else if (curState.phase === 'TURN_BARBARIAN_REWARD') {
+        if (curState.pendingBarbarianTieDraws?.includes(this.myPlayerId)) {
+          await this.handleBarbarianReward(curState, curMe);
         }
       }
     } catch (err) {
@@ -564,6 +571,15 @@ export class CatanAIAgent {
       this.log(`[AI-Agent] Downgrading city ${cities[0]} after barbarian attack`);
       await this.sendAction('downgrade_city', { vertexId: cities[0] });
     }
+  }
+
+  async handleBarbarianReward(state, me) {
+    const imps = me?.cityImprovements || {};
+    const decks = ['trade', 'politics', 'science'];
+    decks.sort((a, b) => (imps[b] || 0) - (imps[a] || 0));
+    const chosenDeck = decks[0] || 'trade';
+    this.log(`[AI-Agent] Choosing barbarian reward deck: ${chosenDeck}`);
+    await this.sendAction('choose_barbarian_reward', { deck: chosenDeck });
   }
 
   /* ------------------- Helpers ------------------- */

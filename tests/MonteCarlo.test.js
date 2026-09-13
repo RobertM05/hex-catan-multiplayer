@@ -65,6 +65,15 @@ describe('Monte Carlo Simulation', () => {
              continue;
            }
 
+           if (engine.phase === GAME_PHASES.TURN_BARBARIAN_REWARD) {
+             for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
+               const p = engine.players.find(x => x.id === pId);
+               const deck = BotAI.chooseBarbarianRewardDeck(p);
+               engine.chooseBarbarianReward(pId, deck);
+             }
+             continue;
+           }
+
            if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
              const chooserId = engine.pendingMetropolisChoice?.playerId || curPlayer?.id;
              const chooser = engine.players.find(p => p.id === chooserId);
@@ -181,6 +190,15 @@ describe('Monte Carlo Simulation', () => {
                const p = engine.players.find(x => x.id === pId);
                const city = BotAI.chooseCityToDowngrade(engine, pId) || (engine.getFirstVulnerableCityId && engine.getFirstVulnerableCityId(p)) || p.citiesBuilt[0];
                if (city) engine.downgradeCity(pId, city);
+             }
+             continue;
+           }
+
+           if (engine.phase === GAME_PHASES.TURN_BARBARIAN_REWARD) {
+             for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
+               const p = engine.players.find(x => x.id === pId);
+               const deck = BotAI.chooseBarbarianRewardDeck(p);
+               engine.chooseBarbarianReward(pId, deck);
              }
              continue;
            }
