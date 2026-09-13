@@ -1770,7 +1770,7 @@ export class CatanApp {
       card.innerHTML = `
         <span class="bank-res-icon">${ico(res)}</span>
         <span class="bank-res-name">${this.cardLabel(res)}</span>
-        <span class="bank-res-have">+1 carte</span>
+        <span class="bank-res-have">+1 card</span>
       `;
 
       if (!isGiveRes) {
@@ -1804,7 +1804,7 @@ export class CatanApp {
       }
 
       if (giveSummaryEl) {
-        giveSummaryEl.innerHTML = `${ratio}x ${giveName} <span style="font-size: 11px; opacity: 0.85;">(Ai ${have})</span>`;
+        giveSummaryEl.innerHTML = `${ratio}x ${giveName} <span style="font-size: 11px; opacity: 0.85;">${i18n.t('AVAILABLE_IN_HAND', { count: have })}</span>`;
       }
       if (wantSummaryEl) wantSummaryEl.textContent = `1x ${recName}`;
 

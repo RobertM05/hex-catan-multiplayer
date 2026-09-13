@@ -7,7 +7,6 @@ export const STRINGS = {
     // App Header & Navigation
     APP_TITLE: "HexSettlers Online",
     TAGLINE: "Hexagonal Strategy & Trading Board Game",
-    LANG_SELECT: "Language",
     SOUND_TOGGLE: "Sound",
     RULES_BUTTON: "Game Rules",
     LEAVE_ROOM: "Leave Room",
