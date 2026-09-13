@@ -592,6 +592,17 @@ describe('CK-04: Knight Units', () => {
     assert.equal(engine.grid.vertices.get(vertex.id).knight.playerId, 'p1');
   });
 
+  it('BotAI.findValidKnightVertices includes vertices adjacent to buildings', () => {
+    const engine = makeCkEngine();
+    const p1 = engine.players[0];
+    const vertex = emptyVertex(engine);
+    const adjId = vertex.adjacentVertices[0];
+    engine.grid.vertices.get(adjId).building = { type: 'settlement', playerId: 'p2' };
+    giveRoad(engine, 'p1', vertex.id);
+    const valid = BotAI.findValidKnightVertices(engine, p1);
+    assert.ok(valid.includes(vertex.id));
+  });
+
   it('should reject placement without road connection', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;

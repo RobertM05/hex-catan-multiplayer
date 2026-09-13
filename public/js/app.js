@@ -1000,7 +1000,6 @@ export class CatanApp {
     const validIds = new Set();
     Object.values(this.gameState.grid.vertices).forEach(v => {
       if (v.building || v.knight) return;
-      if (!this.distanceClear(v.id)) return;
       if (!this.vertexHasOwnRoad(v)) return;
       validIds.add(v.id);
     });
@@ -1027,7 +1026,7 @@ export class CatanApp {
           }
           continue;
         }
-        if (this.distanceClear(adjId, [fromVertexId])) validIds.add(adjId);
+        validIds.add(adjId);
         queue.push(adjId);
       }
     }
@@ -1042,6 +1041,10 @@ export class CatanApp {
       return;
     }
     const validIds = this.collectKnightPlaceTargets();
+    if (validIds.size === 0) {
+      this.showToast(i18n.t('ERROR_NO_LEGAL_KNIGHT_SPOTS'), true);
+      return;
+    }
     this.selectedAction = { type: 'knight', validIds };
     document.getElementById('btn-place-knight')?.classList.add('btn-primary');
     this.boardRenderer.render(this.gameState.grid, this.selectedAction, null, this.gameState.players);
@@ -1246,17 +1249,47 @@ export class CatanApp {
     const wrap = document.getElementById('barbarian-track');
     const pips = document.getElementById('barbarian-track-pips');
     const countEl = document.getElementById('barbarian-track-count');
+    const shipWrapper = document.getElementById('barbarian-ship-wrapper');
+    const sublabel = document.getElementById('barbarian-sublabel');
     if (!wrap || !pips) return;
-    const pos = s.barbarianPosition || 0;
+    const pos = Math.max(0, Math.min(7, s.barbarianPosition || 0));
     wrap.classList.toggle('barbarian-warning', pos >= 5);
+    wrap.classList.toggle('barbarian-danger', pos >= 7);
     if (countEl) countEl.textContent = `${pos}/7`;
+
+    if (shipWrapper) {
+      const pct = (pos / 7) * 100;
+      shipWrapper.style.left = `calc(${pct}% - ${Math.round(pct * 0.32)}px)`;
+      shipWrapper.classList.toggle('ship-warning', pos >= 5);
+      shipWrapper.classList.toggle('ship-danger', pos >= 7);
+    }
+
+    if (sublabel) {
+      if (pos === 0) {
+        sublabel.textContent = i18n.t('BARBARIAN_POS_0') || 'Distant Waters — Catan is Safe';
+      } else if (pos < 5) {
+        sublabel.textContent = i18n.t('BARBARIAN_POS_APPROACH', { step: pos, remain: 7 - pos }) || `Barbarians sailing to Catan (${7 - pos} steps away)`;
+      } else if (pos < 7) {
+        sublabel.textContent = i18n.t('BARBARIAN_POS_WARNING', { step: pos }) || `⚠️ WARNING: Invasion imminent! (${7 - pos} step left)`;
+      } else {
+        sublabel.textContent = i18n.t('BARBARIAN_POS_ATTACK') || '⚔️ Barbarian Attack in Progress!';
+      }
+    }
+
     pips.innerHTML = '';
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 0; i <= 7; i++) {
       const pip = document.createElement('div');
-      pip.className = 'barbarian-pip';
-      if (i <= pos) pip.classList.add('filled');
-      if (i === pos) pip.classList.add('ship');
+      pip.className = 'barbarian-waypoint';
+      pip.dataset.step = i;
+      if (i < pos) pip.classList.add('passed');
+      if (i === pos) pip.classList.add('current');
+      if (i === 7) pip.classList.add('catan-shore');
+      pip.title = i === 0 ? 'Distant Waters (Start)' : i === 7 ? 'Catan Shore (Invasion)' : `Step ${i} of 7`;
       pips.appendChild(pip);
+    }
+
+    if (this.boardRenderer && typeof this.boardRenderer.renderBarbarianShip === 'function') {
+      this.boardRenderer.renderBarbarianShip(pos, this.isCitiesKnights());
     }
   }
 

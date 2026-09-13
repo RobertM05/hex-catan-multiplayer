@@ -337,7 +337,6 @@ export class BotAI {
     const ids = [];
     for (const [vId, vertex] of engine.grid.vertices) {
       if (vertex.building || vertex.knight) continue;
-      if (engine.violatesDistanceRule(vId)) continue;
       if (!engine.vertexHasPlayerRoad(vertex, botPlayer.id)) continue;
       ids.push(vId);
     }

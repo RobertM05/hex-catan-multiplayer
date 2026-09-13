@@ -122,6 +122,7 @@ export class BoardRenderer {
     this.edgeLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.vertexLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.robberLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.barbarianShipLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.particleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
     this.boardGroup.appendChild(this.hexLayer);
@@ -129,6 +130,7 @@ export class BoardRenderer {
     this.boardGroup.appendChild(this.edgeLayer);
     this.boardGroup.appendChild(this.vertexLayer);
     this.boardGroup.appendChild(this.robberLayer);
+    this.boardGroup.appendChild(this.barbarianShipLayer);
     this.boardGroup.appendChild(this.particleLayer);
     this.svg.appendChild(this.boardGroup);
 
@@ -265,6 +267,7 @@ export class BoardRenderer {
     this.renderVertices();
     this.renderKnights();
     this.renderRobber();
+    this.renderBarbarianShip();
   }
 
   renderHexes() {
@@ -889,6 +892,163 @@ export class BoardRenderer {
     if (icon) g.appendChild(icon);
 
     this.robberLayer.appendChild(g);
+  }
+
+  renderBarbarianShip(pos, isCk) {
+    if (!this.barbarianShipLayer) return;
+    if (pos !== undefined && pos !== null) this.barbarianPosition = pos;
+    if (isCk !== undefined) this.isCkMode = Boolean(isCk);
+
+    this.barbarianShipLayer.innerHTML = '';
+    if (!this.isCkMode) return;
+
+    const currentPos = Math.max(0, Math.min(7, this.barbarianPosition || 0));
+    const route = [
+      { x: 300, y: -260 },
+      { x: 275, y: -245 },
+      { x: 250, y: -230 },
+      { x: 225, y: -215 },
+      { x: 200, y: -200 },
+      { x: 175, y: -185 },
+      { x: 150, y: -170 },
+      { x: 125, y: -155 }
+    ];
+
+    // Nautical dashed trajectory across the sea
+    const trackLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const pathD = route.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+    trackLine.setAttribute('d', pathD);
+    trackLine.setAttribute('fill', 'none');
+    trackLine.setAttribute('stroke', 'rgba(239, 68, 68, 0.35)');
+    trackLine.setAttribute('stroke-width', '2');
+    trackLine.setAttribute('stroke-dasharray', '4,4');
+    this.barbarianShipLayer.appendChild(trackLine);
+
+    // Waypoint beacons along the sea
+    route.forEach((pt, i) => {
+      const beacon = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      beacon.setAttribute('cx', pt.x);
+      beacon.setAttribute('cy', pt.y);
+      beacon.setAttribute('r', i === currentPos ? '5' : '2.5');
+      beacon.setAttribute('fill', i <= currentPos ? '#f43f5e' : 'rgba(148, 163, 184, 0.4)');
+      if (i === currentPos) {
+        beacon.setAttribute('stroke', '#ffffff');
+        beacon.setAttribute('stroke-width', '1.5');
+      }
+      this.barbarianShipLayer.appendChild(beacon);
+    });
+
+    const targetCoord = route[currentPos];
+    const shipG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    shipG.setAttribute('class', 'barbarian-ship-figure');
+    shipG.setAttribute('transform', `translate(${targetCoord.x}, ${targetCoord.y - 6})`);
+    shipG.style.cursor = 'pointer';
+
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = `Barbarian Fleet (${currentPos}/7) — ${currentPos === 0 ? 'Distant Waters' : currentPos === 7 ? 'Catan Shore Invaded!' : 'Sailing Towards Catan'}`;
+    shipG.appendChild(title);
+
+    // Water wake ripples
+    const wake = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    wake.setAttribute('cx', '0');
+    wake.setAttribute('cy', '10');
+    wake.setAttribute('rx', '20');
+    wake.setAttribute('ry', '7');
+    wake.setAttribute('fill', 'rgba(56, 189, 248, 0.2)');
+    wake.setAttribute('stroke', 'rgba(56, 189, 248, 0.6)');
+    wake.setAttribute('stroke-width', '1.2');
+    shipG.appendChild(wake);
+
+    // Wooden Hull
+    const hull = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hull.setAttribute('d', 'M -18 5 Q 0 14 18 5 Q 22 2 20 -2 Q 15 3 0 3 Q -15 3 -20 -2 Q -22 2 -18 5 Z');
+    hull.setAttribute('fill', '#3b0764');
+    hull.setAttribute('stroke', currentPos >= 5 ? '#f43f5e' : '#b91c1c');
+    hull.setAttribute('stroke-width', '1.5');
+    hull.setAttribute('filter', 'url(#shadow-building)');
+    shipG.appendChild(hull);
+
+    // Dragon Prow
+    const prow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    prow.setAttribute('d', 'M 18 4 Q 24 -3 21 -8 Q 19 -10 18 -8 Q 19 -4 15 -1 Z');
+    prow.setAttribute('fill', '#dc2626');
+    shipG.appendChild(prow);
+
+    // Dragon Tail
+    const stern = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    stern.setAttribute('d', 'M -18 4 Q -23 -2 -20 -7 Q -18 -8 -17 -6 Q -18 -2 -14 0 Z');
+    stern.setAttribute('fill', '#dc2626');
+    shipG.appendChild(stern);
+
+    // Mast
+    const mast = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    mast.setAttribute('x1', '0');
+    mast.setAttribute('y1', '-18');
+    mast.setAttribute('x2', '0');
+    mast.setAttribute('y2', '4');
+    mast.setAttribute('stroke', '#78350f');
+    mast.setAttribute('stroke-width', '2');
+    shipG.appendChild(mast);
+
+    // Billowing Sail
+    const sail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    sail.setAttribute('d', 'M 0 -16 Q -12 -11 -10 -3 L 10 -3 Q 12 -11 0 -16 Z');
+    sail.setAttribute('fill', '#fff1f2');
+    sail.setAttribute('stroke', '#be123c');
+    sail.setAttribute('stroke-width', '1.2');
+    shipG.appendChild(sail);
+
+    // Striped Sail Colors
+    [-5, 5].forEach(sx => {
+      const stripe = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      stripe.setAttribute('x1', sx);
+      stripe.setAttribute('y1', '-13');
+      stripe.setAttribute('x2', sx);
+      stripe.setAttribute('y2', '-3');
+      stripe.setAttribute('stroke', '#e11d48');
+      stripe.setAttribute('stroke-width', '1.8');
+      shipG.appendChild(stripe);
+    });
+
+    // Gunwale Shields
+    [-9, -3, 3, 9].forEach((sx, idx) => {
+      const shield = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      shield.setAttribute('cx', sx);
+      shield.setAttribute('cy', '5');
+      shield.setAttribute('r', '2.2');
+      shield.setAttribute('fill', idx % 2 === 0 ? '#d97706' : '#2563eb');
+      shield.setAttribute('stroke', '#0f172a');
+      shield.setAttribute('stroke-width', '0.6');
+      shipG.appendChild(shield);
+    });
+
+    // Fleet Badge Pill
+    const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    badge.setAttribute('transform', 'translate(0, 20)');
+
+    const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', '-22');
+    bgRect.setAttribute('y', '-8');
+    bgRect.setAttribute('width', '44');
+    bgRect.setAttribute('height', '16');
+    bgRect.setAttribute('rx', '8');
+    bgRect.setAttribute('fill', currentPos >= 5 ? '#991b1b' : '#1e1b4b');
+    bgRect.setAttribute('stroke', currentPos >= 5 ? '#f87171' : '#818cf8');
+    bgRect.setAttribute('stroke-width', '1');
+    badge.appendChild(bgRect);
+
+    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    txt.setAttribute('x', '0');
+    txt.setAttribute('y', '3');
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '9px');
+    txt.setAttribute('font-weight', 'bold');
+    txt.setAttribute('fill', '#ffffff');
+    txt.textContent = currentPos === 7 ? '⚔️ ATTACK' : `⛵ ${currentPos}/7`;
+    badge.appendChild(txt);
+
+    shipG.appendChild(badge);
+    this.barbarianShipLayer.appendChild(shipG);
   }
 
   createTerrainEmblem(res, x, y) {
