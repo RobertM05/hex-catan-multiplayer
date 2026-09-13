@@ -6,13 +6,16 @@ export const PROGRESS_DECK_BY_TYPE = {
   merchant: 'trade',
   merchant_fleet: 'trade',
   resource_monopoly: 'trade',
+  trade_monopoly: 'trade',
   bishop: 'politics',
   constitution: 'politics',
   deserter: 'politics',
   diplomat: 'politics',
   intrigue: 'politics',
   saboteur: 'politics',
+  spy: 'politics',
   warlord: 'politics',
+  wedding: 'politics',
   alchemist: 'science',
   crane: 'science',
   engineer: 'science',
@@ -21,6 +24,7 @@ export const PROGRESS_DECK_BY_TYPE = {
   medicine: 'science',
   mining: 'science',
   printer: 'science',
+  road_building: 'science',
   smith: 'science'
 };
 
@@ -30,13 +34,16 @@ export const PROGRESS_CARD_ICONS = {
   merchant: '🐪',
   merchant_fleet: '⛵',
   resource_monopoly: '♦',
+  trade_monopoly: '💰',
   bishop: '✝',
   constitution: '📜',
   deserter: '🏃',
   diplomat: '🤝',
   intrigue: '🗡',
   saboteur: '💣',
+  spy: '🕵',
   warlord: '⚔',
+  wedding: '💍',
   alchemist: '⚗',
   crane: '🏗',
   engineer: '🧱',
@@ -45,6 +52,7 @@ export const PROGRESS_CARD_ICONS = {
   medicine: '✚',
   mining: '⛏',
   printer: '🖨',
+  road_building: '🛣',
   smith: '🔨'
 };
 

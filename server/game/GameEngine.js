@@ -41,29 +41,33 @@ export const PROGRESS_CARD_DECKS = {
   trade: [
     { type: 'commercial_harbor', count: 2 },
     { type: 'master_merchant', count: 2 },
-    { type: 'merchant', count: 2 },
+    { type: 'merchant', count: 6 },
     { type: 'merchant_fleet', count: 2 },
-    { type: 'resource_monopoly', count: 1 }
+    { type: 'resource_monopoly', count: 4 },
+    { type: 'trade_monopoly', count: 2 }
   ],
   politics: [
     { type: 'bishop', count: 2 },
     { type: 'constitution', count: 1 },
     { type: 'deserter', count: 2 },
     { type: 'diplomat', count: 2 },
-    { type: 'intrigue', count: 1 },
-    { type: 'saboteur', count: 1 },
-    { type: 'warlord', count: 1 }
+    { type: 'intrigue', count: 2 },
+    { type: 'saboteur', count: 2 },
+    { type: 'spy', count: 3 },
+    { type: 'warlord', count: 2 },
+    { type: 'wedding', count: 2 }
   ],
   science: [
     { type: 'alchemist', count: 2 },
     { type: 'crane', count: 2 },
     { type: 'engineer', count: 1 },
-    { type: 'inventor', count: 1 },
-    { type: 'irrigation', count: 1 },
+    { type: 'inventor', count: 2 },
+    { type: 'irrigation', count: 2 },
     { type: 'medicine', count: 2 },
-    { type: 'mining', count: 1 },
+    { type: 'mining', count: 2 },
     { type: 'printer', count: 1 },
-    { type: 'smith', count: 1 }
+    { type: 'road_building', count: 2 },
+    { type: 'smith', count: 2 }
   ]
 };
 
@@ -2109,6 +2113,23 @@ export class GameEngine {
         result.stolen = stolen;
         break;
       }
+      case 'trade_monopoly': {
+        const resource = options.resource;
+        if (!resource || !RESOURCE_VALUES.includes(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
+        let stolen = 0;
+        for (const other of this.players) {
+          if (other.id === playerId) continue;
+          const take = Math.min(1, other.resources[resource] || 0);
+          if (take > 0) {
+            other.resources[resource] -= take;
+            stolen += take;
+          }
+        }
+        player.resources[resource] = (player.resources[resource] || 0) + stolen;
+        result.stolen = stolen;
+        result.resource = resource;
+        break;
+      }
       case 'merchant_fleet':
         player.merchantFleetActive = true;
         break;
@@ -2296,6 +2317,95 @@ export class GameEngine {
         result.victims = victims;
         break;
       }
+      case 'wedding': {
+        this.recalculateVictoryPoints();
+        const myVp = player.victoryPoints || 0;
+        const targets = this.players.filter(other => other.id !== playerId && (other.victoryPoints || 0) > myVp);
+        if (!targets.length) {
+          throw new Error('NO_PLAYERS_WITH_MORE_VP');
+        }
+        const gifts = [];
+        for (const target of targets) {
+          const totalCards = this.countTotalCards(target);
+          const takeCount = Math.min(2, totalCards);
+          if (takeCount <= 0) continue;
+
+          let givenCards = [];
+          if (options.gifts && Array.isArray(options.gifts[target.id])) {
+            const requested = options.gifts[target.id].slice(0, takeCount);
+            for (const cType of requested) {
+              if (this.getPlayerCardCount(target, cType) > 0) {
+                givenCards.push(cType);
+                this.adjustPlayerCard(target, cType, -1);
+              }
+            }
+          }
+          while (givenCards.length < takeCount) {
+            let maxKey = null;
+            let maxCount = -1;
+            const consider = (bag) => {
+              for (const [key, count] of Object.entries(bag || {})) {
+                if (count > maxCount && count > 0) {
+                  maxCount = count;
+                  maxKey = key;
+                }
+              }
+            };
+            consider(target.resources);
+            consider(target.commodities);
+            if (!maxKey) break;
+            this.adjustPlayerCard(target, maxKey, -1);
+            givenCards.push(maxKey);
+          }
+
+          for (const cardType of givenCards) {
+            this.adjustPlayerCard(player, cardType, 1);
+          }
+          gifts.push({ playerId: target.id, cards: givenCards });
+        }
+        result.gifts = gifts;
+        break;
+      }
+      case 'spy': {
+        const target = this.players.find(p => p.id === options.targetPlayerId);
+        if (!target || target.id === playerId) throw new Error('INVALID_TARGET');
+        const unplayedTargetCards = target.progressCards.filter(c => !c.played);
+        if (!unplayedTargetCards.length) {
+          throw new Error('TARGET_HAS_NO_PROGRESS_CARDS');
+        }
+        let stolenCard;
+        if (options.stealCardId) {
+          stolenCard = unplayedTargetCards.find(c => c.id === options.stealCardId);
+          if (!stolenCard) throw new Error('CARD_NOT_FOUND_IN_TARGET_HAND');
+        } else {
+          stolenCard = unplayedTargetCards[0];
+        }
+        const stolenIdx = target.progressCards.findIndex(c => c.id === stolenCard.id);
+        target.progressCards.splice(stolenIdx, 1);
+        if (this.pendingProgressDiscard && this.countUnplayedProgressCards(target) <= PROGRESS_CARD_HAND_LIMIT) {
+          this.pendingProgressDiscard.delete(target.id);
+        }
+
+        const isVp = ['constitution', 'printer'].includes(stolenCard.type);
+        const cardObj = {
+          ...stolenCard,
+          boughtTurn: this.turnNumber,
+          played: isVp,
+          revealed: isVp
+        };
+        player.progressCards.push(cardObj);
+        if (isVp) {
+          this.recalculateVictoryPoints();
+          this.checkVictory();
+        }
+        if (this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
+          this.pendingProgressDiscard.add(player.id);
+        }
+        result.targetPlayerId = target.id;
+        result.stolenCard = { id: cardObj.id, type: cardObj.type };
+        result.targetProgressCards = target.progressCards.filter(c => !c.played).map(c => ({ id: c.id, type: c.type }));
+        break;
+      }
       case 'alchemist': {
         const d1 = Number(options.d1);
         const d2 = Number(options.d2);
@@ -2364,6 +2474,10 @@ export class GameEngine {
         result.knightVertices = verts;
         break;
       }
+      case 'road_building':
+        this.freeRoadsRemaining = Math.min(2, player.roadsRemaining);
+        result.freeRoads = this.freeRoadsRemaining;
+        break;
       default:
         throw new Error('UNKNOWN_PROGRESS_CARD');
     }
