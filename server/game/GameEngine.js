@@ -2317,6 +2317,9 @@ export class GameEngine {
     }
 
     card.played = true;
+    if (card.type === 'bishop' && result.hexId) {
+      this.logEvent(this.buildRobberMovedLog(player.name, result.hexId));
+    }
     this.logEvent({
       type: 'PROGRESS_CARD_PLAYED',
       messageKey: 'LOG_PROGRESS_CARD_PLAYED',

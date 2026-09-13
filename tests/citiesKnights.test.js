@@ -749,6 +749,17 @@ describe('CK-04: Knight Units', () => {
     assert.equal(engine.grid.robberHexId, newHex);
     assert.equal(engine.players[0].knightsPlaced[0].active, false);
     assert.equal(result.hexId, newHex);
+    const chaseLog = [...engine.eventLog].reverse().find(
+      e => e.messageKey === 'LOG_ROBBER_MOVED' || e.messageKey === 'LOG_ROBBER_MOVED_DESERT'
+    );
+    assert.ok(chaseLog, 'Knight chase should log the robber move with hex number or desert');
+    const destHex = engine.grid.hexes.get(newHex);
+    if (destHex.resource === RESOURCE_TYPES.DESERT || destHex.token == null) {
+      assert.equal(chaseLog.messageKey, 'LOG_ROBBER_MOVED_DESERT');
+    } else {
+      assert.equal(chaseLog.messageKey, 'LOG_ROBBER_MOVED');
+      assert.equal(chaseLog.args.number, destHex.token);
+    }
   });
 
   it('should not include Knight dev cards in C&K mode deck', () => {
@@ -1161,6 +1172,17 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.players[2].resources.brick, 0);
     assert.equal(engine.players[0].resources.wool, 1);
     assert.equal(engine.players[0].resources.brick, 1);
+    const robberLog = [...engine.eventLog].reverse().find(
+      e => e.messageKey === 'LOG_ROBBER_MOVED' || e.messageKey === 'LOG_ROBBER_MOVED_DESERT'
+    );
+    assert.ok(robberLog, 'Bishop should log the robber move with hex number or desert');
+    const destHex = engine.grid.hexes.get(dest.id);
+    if (destHex.resource === RESOURCE_TYPES.DESERT || destHex.token == null) {
+      assert.equal(robberLog.messageKey, 'LOG_ROBBER_MOVED_DESERT');
+    } else {
+      assert.equal(robberLog.messageKey, 'LOG_ROBBER_MOVED');
+      assert.equal(robberLog.args.number, destHex.token);
+    }
   });
 
   it('Constitution: should immediately grant 1 VP and be revealed', () => {
