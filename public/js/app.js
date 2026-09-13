@@ -555,10 +555,20 @@ export class CatanApp {
     // End turn button
     document.getElementById('btn-end-turn').addEventListener('click', async () => {
       try {
+        const me = this.getMe();
+        const unplayedCards = unplayedProgressCards(me?.progressCards);
+        if (this.isCitiesKnights() && unplayedCards.length > 4) {
+          this.showToast(i18n.t('ERROR_MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN'), true);
+          this.checkProgressDiscardState();
+          return;
+        }
         this.clearActiveAction();
         await network.sendAction('end_turn');
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+        if (err.message === 'MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN') {
+          this.checkProgressDiscardState();
+        }
       }
     });
 

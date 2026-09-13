@@ -2317,6 +2317,9 @@ export class GameEngine {
     }
 
     card.played = true;
+    if (this.pendingProgressDiscard && this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
+      this.pendingProgressDiscard.delete(player.id);
+    }
     if (card.type === 'bishop' && result.hexId) {
       this.logEvent(this.buildRobberMovedLog(player.name, result.hexId));
     }
@@ -2507,6 +2510,15 @@ export class GameEngine {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+
+    if (this.isCitiesKnights()) {
+      if (this.pendingProgressDiscard?.has(playerId) || this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
+        if (this.pendingProgressDiscard) {
+          this.pendingProgressDiscard.add(playerId);
+        }
+        throw new Error('MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN');
+      }
+    }
 
     this.activeTrade = null;
     this.freeRoadsRemaining = 0;

@@ -508,7 +508,9 @@ export const STRINGS = {
     ERROR_CANNOT_DOWNGRADE_METROPOLIS: "A metropolis cannot be destroyed by the barbarians.",
     ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Saboteur can only be played if you are tied or behind the leader.",
     ERROR_KNIGHT_NOT_CONNECTED_TO_ROAD: "The knight must be on an intersection connected to your road network.",
-    ERROR_ROAD_NOT_OPEN: "That road is closed (connected at both ends to other roads or buildings)."
+    ERROR_ROAD_NOT_OPEN: "That road is closed (connected at both ends to other roads or buildings).",
+    ERROR_MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN: "You must discard down to 4 progress cards before ending your turn.",
+    ERROR_NO_PROGRESS_DISCARD_NEEDED: "You do not need to discard any progress cards."
 };
 
 class I18nService {

@@ -571,7 +571,18 @@ export class BotAI {
   }
 
   static applyTurnAction(engine, botPlayer, action) {
+    const ensureNoPendingProgressDiscard = () => {
+      if (engine.pendingProgressDiscard?.has(botPlayer.id) || (engine.isCitiesKnights?.() && engine.countUnplayedProgressCards?.(botPlayer) > 4)) {
+        while (engine.pendingProgressDiscard?.has(botPlayer.id) || (engine.isCitiesKnights?.() && engine.countUnplayedProgressCards?.(botPlayer) > 4)) {
+          const cardId = this.decideProgressDiscard(botPlayer);
+          if (!cardId) break;
+          engine.discardProgressCard(botPlayer.id, cardId);
+        }
+      }
+    };
+
     if (!action) {
+      ensureNoPendingProgressDiscard();
       engine.endTurn(botPlayer.id);
       return;
     }
@@ -616,6 +627,7 @@ export class BotAI {
         engine.chaseRobber(botPlayer.id, action.vertexId, action.hexId, action.targetPlayerId);
         break;
       default:
+        ensureNoPendingProgressDiscard();
         engine.endTurn(botPlayer.id);
     }
   }
@@ -627,8 +639,11 @@ export class BotAI {
       for (const pId of Array.from(engine.pendingProgressDiscard)) {
         const p = engine.players.find(x => x.id === pId);
         if (!p) continue;
-        const cardId = this.decideProgressDiscard(p);
-        if (cardId) engine.discardProgressCard(pId, cardId);
+        while (engine.pendingProgressDiscard.has(pId)) {
+          const cardId = this.decideProgressDiscard(p);
+          if (!cardId) break;
+          engine.discardProgressCard(pId, cardId);
+        }
       }
     }
 
