@@ -131,8 +131,6 @@ export class CatanApp {
   }
 
   async init() {
-    // Setup i18n language buttons
-    this.setupLanguageSelector();
     this.setupSoundToggle();
     this.setupRulesModal();
     this.setupModalAccessibility();
@@ -169,7 +167,7 @@ export class CatanApp {
     // Refresh public rooms list
     this.refreshPublicRooms();
 
-    // Initial DOM translation
+    // Initial English copy
     i18n.updateDOM();
   }
 
@@ -199,33 +197,8 @@ export class CatanApp {
   }
 
   /* =========================================================
-   * TOP BAR (Language, Sound, Rules)
+   * TOP BAR (Sound, Rules)
    * ========================================================= */
-  setupLanguageSelector() {
-    const btnEn = document.getElementById('lang-en');
-    const btnRo = document.getElementById('lang-ro');
-    const updateActive = () => {
-      const current = i18n.getLang();
-      btnEn.classList.toggle('active', current === 'en');
-      btnRo.classList.toggle('active', current === 'ro');
-      document.documentElement.lang = current;
-    };
-
-    btnEn.addEventListener('click', () => {
-      i18n.setLang('en');
-      updateActive();
-      this.updateHUDText();
-    });
-
-    btnRo.addEventListener('click', () => {
-      i18n.setLang('ro');
-      updateActive();
-      this.updateHUDText();
-    });
-
-    updateActive();
-  }
-
   setupSoundToggle() {
     const soundBtn = document.getElementById('btn-sound-toggle');
     if (!soundBtn) return;
@@ -1441,7 +1414,7 @@ export class CatanApp {
       const sumDiscarded = Object.values(discarded).reduce((a, b) => a + b, 0);
       const neededCount = parseInt(document.getElementById('discard-needed-count')?.textContent, 10) || 0;
       if (sumDiscarded !== neededCount) {
-        this.showToast(i18n.t('ERROR_MUST_DISCARD_EXACT_AMOUNT') || `Selectează exact ${neededCount} cărți.`, true);
+        this.showToast(i18n.t('ERROR_MUST_DISCARD_EXACT_AMOUNT') || `Select exactly ${neededCount} cards.`, true);
         return;
       }
 
@@ -1596,7 +1569,7 @@ export class CatanApp {
 
     if (adjacentOpponentIds.size === 0) {
       sendMove(null);
-      this.showToast(i18n.t('ROBBER_MOVED_NO_TARGETS') || 'Hoțul a fost mutat. Niciun adversar adiacent.');
+      this.showToast(i18n.t('ROBBER_MOVED_NO_TARGETS') || 'Robber moved. No adjacent opponents to rob.');
       audio.playRobber();
       if (chaseFrom) this.clearActiveAction();
       return;
@@ -1614,7 +1587,7 @@ export class CatanApp {
 
     if (eligible.length === 0) {
       sendMove(null);
-      this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL') || 'Hoțul a fost mutat. Adversarii adiacenți nu au cărți în mână.');
+      this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL') || 'Robber moved. Adjacent opponents have no cards to steal.');
       audio.playRobber();
       if (chaseFrom) this.clearActiveAction();
       return;
@@ -1761,7 +1734,7 @@ export class CatanApp {
       const isSelected = this.bankTrade.give === res;
 
       let ratioClass = '';
-      let ratioTag = `${ratio}:1 Bancă`;
+      let ratioTag = `${ratio}:1 Bank`;
       if (ratio === 2) {
         ratioClass = 'harbor-special';
         ratioTag = `2:1 Port`;
@@ -1797,7 +1770,7 @@ export class CatanApp {
       card.innerHTML = `
         <span class="bank-res-icon">${ico(res)}</span>
         <span class="bank-res-name">${this.cardLabel(res)}</span>
-        <span class="bank-res-have">+1 carte</span>
+        <span class="bank-res-have">+1 card</span>
       `;
 
       if (!isGiveRes) {
@@ -1831,7 +1804,7 @@ export class CatanApp {
       }
 
       if (giveSummaryEl) {
-        giveSummaryEl.innerHTML = `${ratio}x ${giveName} <span style="font-size: 11px; opacity: 0.85;">(Ai ${have})</span>`;
+        giveSummaryEl.innerHTML = `${ratio}x ${giveName} <span style="font-size: 11px; opacity: 0.85;">${i18n.t('AVAILABLE_IN_HAND', { count: have })}</span>`;
       }
       if (wantSummaryEl) wantSummaryEl.textContent = `1x ${recName}`;
 

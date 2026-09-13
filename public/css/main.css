@@ -186,7 +186,6 @@ body::before {
 .btn-glass:focus-visible,
 .btn-primary:focus-visible,
 .btn-danger:focus-visible,
-.lang-btn:focus-visible,
 .lobby-tab-btn:focus-visible,
 .btn-build-action:focus-visible,
 .modal-close-btn:focus-visible,
@@ -292,36 +291,6 @@ body::before {
 
 .btn-danger:active {
   transform: translateY(0.5px);
-}
-
-.lang-selector {
-  display: flex;
-  background: oklch(0 0 0 / 0.28);
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  padding: 2px;
-  gap: 2px;
-}
-
-.lang-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 999px;
-  transition: all var(--transition-fast);
-}
-
-.lang-btn.active {
-  background: var(--gold-primary);
-  color: var(--gold-foreground);
 }
 
 .view-screen {
