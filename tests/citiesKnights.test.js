@@ -1028,16 +1028,50 @@ describe('CK-05: Trade Progress Cards', () => {
     assert.equal(engine.players[0].progressCards[0].type, type);
   });
 
-  it('should enforce 4-card hand limit', () => {
+  it('should enforce 4-card hand limit and reject endTurn until discarded down to 4', () => {
     const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
     for (let i = 0; i < 4; i++) engine.drawProgressCard(engine.players[0], 'trade');
     assert.equal(engine.pendingProgressDiscard.has('p1'), false);
     engine.drawProgressCard(engine.players[0], 'trade');
     assert.equal(engine.players[0].progressCards.length, 5);
     assert.equal(engine.pendingProgressDiscard.has('p1'), true);
+
+    // Ending turn with 5 unplayed cards must throw MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN
+    assert.throws(() => {
+      engine.endTurn('p1');
+    }, /MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN/);
+
+    // Discarding 1 card down to 4 removes pending flag and permits endTurn
     engine.discardProgressCard('p1', engine.players[0].progressCards[0].id);
     assert.equal(engine.players[0].progressCards.length, 4);
     assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    assert.doesNotThrow(() => {
+      engine.endTurn('p1');
+    });
+  });
+
+  it('playing a progress card to drop down to 4 allows ending turn without discard', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    for (let i = 0; i < 4; i++) engine.drawProgressCard(engine.players[0], 'trade');
+    engine.players[0].progressCards.push({
+      id: 'trade-merchant_fleet-test',
+      type: 'merchant_fleet',
+      played: false,
+      revealed: false,
+      boughtTurn: 1
+    });
+    engine.pendingProgressDiscard.add('p1');
+    assert.equal(engine.countUnplayedProgressCards(engine.players[0]), 5);
+
+    // Playing merchant_fleet reduces unplayed to 4
+    engine.playProgressCard('p1', 'trade-merchant_fleet-test');
+    assert.equal(engine.countUnplayedProgressCards(engine.players[0]), 4);
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    assert.doesNotThrow(() => {
+      engine.endTurn('p1');
+    });
   });
 
   it('should execute Resource Monopoly: steal 2 of named resource from each player', () => {

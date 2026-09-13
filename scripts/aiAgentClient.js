@@ -514,6 +514,24 @@ export class CatanAIAgent {
       }
     }
 
+    // Discard excess progress cards before ending turn in C&K mode if needed
+    if (isCk && (state.pendingProgressDiscard?.includes(this.myPlayerId) || (me.progressCards?.filter(c => !c.played).length > 4))) {
+      while (state.pendingProgressDiscard?.includes(this.myPlayerId) || (me.progressCards?.filter(c => !c.played).length > 4)) {
+        const unplayed = (me.progressCards || []).filter(c => !c.played);
+        if (unplayed.length <= 4) break;
+        const discardCard = unplayed[unplayed.length - 1];
+        try {
+          this.log(`[AI-Agent] Discarding excess progress card ${discardCard.type} (${discardCard.id})`);
+          await this.sendAction('discard_progress_card', { cardId: discardCard.id });
+          discardCard.played = true;
+          await this.sleep(this.turnDelay);
+        } catch (err) {
+          this.log(`[AI-Agent] Discard progress card failed: ${err.message}`);
+          break;
+        }
+      }
+    }
+
     // Done with actions: End turn
     try {
       this.log('[AI-Agent] Ending turn');
