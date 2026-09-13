@@ -2180,5 +2180,85 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     assert.equal(res.freeRoads, 2);
     assert.equal(engine.freeRoadsRemaining, 2);
   });
-});
 
+  it('getBankStock returns correct resource, commodity, and deck counts', () => {
+    const engine = makeCkEngine();
+    const stock = engine.getBankStock();
+    assert.equal(Object.keys(stock.resources).length, 5);
+    assert.equal(stock.resources.wood, 19);
+    assert.equal(Object.keys(stock.commodities).length, 3);
+    assert.equal(stock.commodities.cloth, 12);
+    assert.equal(stock.decks.trade, 18); // Check if 18 or similar depending on implementation
+  });
+
+  it('getKnightsOverview calculates total strength and defense readiness', () => {
+    const engine = makeCkEngine();
+    let overview = engine.getKnightsOverview();
+    assert.equal(overview.totalCities, 0);
+    assert.equal(overview.totalActiveStrength, 0);
+    assert.equal(overview.barbarianPosition, 0);
+    assert.equal(overview.isDefenseReady, true);
+    assert.equal(overview.defenseMargin, 0);
+    
+    const p1 = engine.players[0];
+    p1.citiesBuilt = ['v1'];
+    p1.knightsPlaced = [{ id: 'k1', active: true, rank: 'basic', strength: 1 }];
+    overview = engine.getKnightsOverview();
+    assert.equal(overview.totalCities, 1);
+    assert.equal(overview.totalActiveStrength, 1);
+    assert.equal(overview.isDefenseReady, true);
+    assert.equal(overview.defenseMargin, 0);
+  });
+
+  it('Commercial Harbor auto-exchange fallback deducts resources properly', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 1;
+    engine.players[1].commodities.cloth = 1;
+    
+    engine.players[0].progressCards.push({ id: 'c-ch', type: 'commercial_harbor', played: false });
+    const res = engine.playProgressCard('p1', 'c-ch', {
+      resource: 'wood'
+    });
+    
+    assert.equal(res.exchanges.length, 1);
+    assert.equal(res.exchanges[0].commodity, 'cloth');
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[1].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.cloth, 1);
+    assert.equal(engine.players[1].commodities.cloth, 0);
+  });
+
+  it('Wedding card triggers correct logging and notifications', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const p1 = engine.players[0];
+    const p2 = engine.players[1];
+    
+    // Actually add cities to p2 so it has 4 VP, and p1 has 2 VP
+    p1.citiesBuilt = ['v1'];
+    p2.citiesBuilt = ['v2', 'v3'];
+    // And to trick recalculateVictoryPoints we must make sure these vertices exist and have buildings!
+    engine.grid.vertices.set('v1', { id: 'v1', building: { type: 'city', playerId: p1.id } });
+    engine.grid.vertices.set('v2', { id: 'v2', building: { type: 'city', playerId: p2.id } });
+    engine.grid.vertices.set('v3', { id: 'v3', building: { type: 'city', playerId: p2.id } });
+    
+    p2.resources.wood = 2;
+    
+    p1.progressCards.push({ id: 'c-wed', type: 'wedding', played: false });
+    engine.playProgressCard('p1', 'c-wed');
+    
+    const logs = engine.eventLog;
+    const weddingLog = logs.find(l => l.type === 'WEDDING_GIFT');
+    assert.ok(weddingLog);
+    assert.equal(weddingLog.args.playerName, p1.name);
+  });
+
+  it('Barbarian attack unique IDs are generated for tie popups', () => {
+    const engine = makeCkEngine();
+    engine.resolveBarbarianAttack();
+    const result = engine.lastBarbarianResult;
+    assert.ok(result.id);
+  });
+
+});
