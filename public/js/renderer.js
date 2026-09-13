@@ -473,122 +473,125 @@ export class BoardRenderer {
     }
   }
 
+  makeEdgeLine(edge, attrs = {}) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', edge.x1);
+    line.setAttribute('y1', edge.y1);
+    line.setAttribute('x2', edge.x2);
+    line.setAttribute('y2', edge.y2);
+    line.setAttribute('stroke-linecap', 'round');
+    for (const [key, value] of Object.entries(attrs)) {
+      line.setAttribute(key, value);
+    }
+    return line;
+  }
+
   renderEdges() {
     this.handleRoadMouseLeave();
     this.edgeLayer.innerHTML = '';
     const edges = Object.values(this.grid.edges);
+    const casingLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    casingLayer.setAttribute('class', 'road-casing-layer');
+    const bodyLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    bodyLayer.setAttribute('class', 'road-body-layer');
 
-    for (const edge of edges) {
+    const builtRoads = edges.filter((edge) => edge.road);
+    const emptyEdges = edges.filter((edge) => !edge.road);
+
+    // Draw every casing first so later roads cannot cover earlier ones with a thicker outline.
+    for (const edge of builtRoads) {
+      casingLayer.appendChild(this.makeEdgeLine(edge, {
+        class: 'road-casing',
+        'data-edge-id': edge.id,
+        stroke: 'rgba(0,0,0,0.45)',
+        'stroke-width': '12'
+      }));
+    }
+
+    for (const edge of builtRoads) {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'edge-group built-road');
+      g.setAttribute('data-edge-id', edge.id);
+
+      const line = this.makeEdgeLine(edge, {
+        class: 'road-body',
+        stroke: edge.road.color || '#e63946',
+        'stroke-width': '8'
+      });
+      g.appendChild(line);
+
+      g.appendChild(this.makeEdgeLine(edge, {
+        class: 'road-sheen',
+        stroke: 'rgba(255,255,255,0.3)',
+        'stroke-width': '2'
+      }));
+
+      g.appendChild(this.makeEdgeLine(edge, { class: 'road-hit-area' }));
+
+      g.addEventListener('mouseenter', (e) => this.handleRoadMouseEnter(edge.id, e));
+      g.addEventListener('mousemove', (e) => this.handleRoadMouseMove(e));
+      g.addEventListener('mouseleave', () => this.handleRoadMouseLeave());
+
+      if (this.selectedAction && this.selectedAction.type === 'progress_road'
+        && this.selectedAction.validIds && this.selectedAction.validIds.has(edge.id)) {
+        g.style.cursor = 'pointer';
+        g.classList.add('valid-progress-road');
+        line.setAttribute('stroke-width', '11');
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.onEdgeClick) this.onEdgeClick(edge.id);
+        });
+      }
+
+      bodyLayer.appendChild(g);
+    }
+
+    for (const edge of emptyEdges) {
+      const isInteractive = this.selectedAction &&
+        (this.selectedAction.type === 'road' || this.selectedAction.type === 'progress_road_replace') &&
+        this.selectedAction.validIds &&
+        this.selectedAction.validIds.has(edge.id);
+      if (!isInteractive) continue;
+
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('class', 'edge-group');
       g.setAttribute('data-edge-id', edge.id);
 
-      if (edge.road) {
-        g.classList.add('built-road');
+      const roadG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      roadG.setAttribute('class', 'valid-road-group');
 
-        // Dark casing under the road so it stands out on any terrain color
-        const casing = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        casing.setAttribute('x1', edge.x1);
-        casing.setAttribute('y1', edge.y1);
-        casing.setAttribute('x2', edge.x2);
-        casing.setAttribute('y2', edge.y2);
-        casing.setAttribute('stroke', 'rgba(0,0,0,0.45)');
-        casing.setAttribute('stroke-width', '12');
-        casing.setAttribute('stroke-linecap', 'round');
-        g.appendChild(casing);
+      const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      hitArea.setAttribute('x1', edge.x1);
+      hitArea.setAttribute('y1', edge.y1);
+      hitArea.setAttribute('x2', edge.x2);
+      hitArea.setAttribute('y2', edge.y2);
+      hitArea.setAttribute('stroke', 'transparent');
+      hitArea.setAttribute('stroke-width', '18');
+      hitArea.setAttribute('stroke-linecap', 'round');
+      roadG.appendChild(hitArea);
 
-        // Built road: stylized thick wooden beam
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', edge.x1);
-        line.setAttribute('y1', edge.y1);
-        line.setAttribute('x2', edge.x2);
-        line.setAttribute('y2', edge.y2);
-        line.setAttribute('stroke', edge.road.color || '#e63946');
-        line.setAttribute('stroke-width', '8');
-        line.setAttribute('stroke-linecap', 'round');
-        line.setAttribute('filter', 'url(#shadow-building)');
-        g.appendChild(line);
+      const roadLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      roadLine.setAttribute('x1', edge.x1);
+      roadLine.setAttribute('y1', edge.y1);
+      roadLine.setAttribute('x2', edge.x2);
+      roadLine.setAttribute('y2', edge.y2);
+      roadLine.setAttribute('class', 'interactive-edge valid-road-path');
+      roadLine.setAttribute('stroke', '#d97706');
+      roadLine.setAttribute('stroke-width', '6');
+      roadLine.setAttribute('stroke-dasharray', '6,4');
+      roadLine.setAttribute('stroke-linecap', 'round');
+      roadG.appendChild(roadLine);
 
-        // Inner highlight
-        const innerLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        innerLine.setAttribute('x1', edge.x1);
-        innerLine.setAttribute('y1', edge.y1);
-        innerLine.setAttribute('x2', edge.x2);
-        innerLine.setAttribute('y2', edge.y2);
-        innerLine.setAttribute('stroke', 'rgba(255,255,255,0.3)');
-        innerLine.setAttribute('stroke-width', '2');
-        innerLine.setAttribute('stroke-linecap', 'round');
-        g.appendChild(innerLine);
-
-        // Generous transparent hit area for hover inspection
-        const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        hitArea.setAttribute('x1', edge.x1);
-        hitArea.setAttribute('y1', edge.y1);
-        hitArea.setAttribute('x2', edge.x2);
-        hitArea.setAttribute('y2', edge.y2);
-        hitArea.setAttribute('class', 'road-hit-area');
-        g.appendChild(hitArea);
-
-        // Road hover listeners for length inspection & network highlighting
-        g.addEventListener('mouseenter', (e) => this.handleRoadMouseEnter(edge.id, e));
-        g.addEventListener('mousemove', (e) => this.handleRoadMouseMove(e));
-        g.addEventListener('mouseleave', () => this.handleRoadMouseLeave());
-
-        if (this.selectedAction && this.selectedAction.type === 'progress_road'
-          && this.selectedAction.validIds && this.selectedAction.validIds.has(edge.id)) {
-          g.style.cursor = 'pointer';
-          g.classList.add('valid-progress-road');
-          line.setAttribute('stroke-width', '11');
-          g.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (this.onEdgeClick) this.onEdgeClick(edge.id);
-          });
-        }
-      } else {
-        // If interactive road build action is active and valid
-        const isInteractive = this.selectedAction &&
-          (this.selectedAction.type === 'road' || this.selectedAction.type === 'progress_road_replace') &&
-          this.selectedAction.validIds &&
-          this.selectedAction.validIds.has(edge.id);
-
-        if (isInteractive) {
-          const roadG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          roadG.setAttribute('class', 'valid-road-group');
-
-          // Generous transparent click target
-          const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          hitArea.setAttribute('x1', edge.x1);
-          hitArea.setAttribute('y1', edge.y1);
-          hitArea.setAttribute('x2', edge.x2);
-          hitArea.setAttribute('y2', edge.y2);
-          hitArea.setAttribute('stroke', 'transparent');
-          hitArea.setAttribute('stroke-width', '18');
-          hitArea.setAttribute('stroke-linecap', 'round');
-          roadG.appendChild(hitArea);
-
-          // Visible dashed road guide
-          const roadLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          roadLine.setAttribute('x1', edge.x1);
-          roadLine.setAttribute('y1', edge.y1);
-          roadLine.setAttribute('x2', edge.x2);
-          roadLine.setAttribute('y2', edge.y2);
-          roadLine.setAttribute('class', 'interactive-edge valid-road-path');
-          roadLine.setAttribute('stroke', '#d97706');
-          roadLine.setAttribute('stroke-width', '6');
-          roadLine.setAttribute('stroke-dasharray', '6,4');
-          roadLine.setAttribute('stroke-linecap', 'round');
-          roadG.appendChild(roadLine);
-
-          roadG.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (this.onEdgeClick) this.onEdgeClick(edge.id);
-          });
-          g.appendChild(roadG);
-        }
-      }
-
-      this.edgeLayer.appendChild(g);
+      roadG.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.onEdgeClick) this.onEdgeClick(edge.id);
+      });
+      g.appendChild(roadG);
+      bodyLayer.appendChild(g);
     }
+
+    this.edgeLayer.appendChild(casingLayer);
+    this.edgeLayer.appendChild(bodyLayer);
   }
 
   renderVertices() {
@@ -974,19 +977,20 @@ export class BoardRenderer {
 
     if (!data) return;
 
-    // Highlight all connected edges in the player's contiguous road network
+    // Highlight only the longest continuous path, not the whole network
     if (this.edgeLayer) {
-      const allEdgeGroups = this.edgeLayer.querySelectorAll('.edge-group');
-      const connectedSet = new Set(data.connectedEdgeIds);
-      allEdgeGroups.forEach(el => {
+      const highlightSet = new Set(
+        (data.highlightEdgeIds && data.highlightEdgeIds.length)
+          ? data.highlightEdgeIds
+          : (data.connectedEdgeIds || [])
+      );
+      const targets = this.edgeLayer.querySelectorAll('.edge-group[data-edge-id], .road-casing[data-edge-id]');
+      targets.forEach(el => {
         const eid = el.getAttribute('data-edge-id');
-        if (eid === edgeId) {
-          el.classList.add('road-hover-active', 'road-hover-highlight');
-        } else if (connectedSet.has(eid)) {
-          el.classList.add('road-hover-highlight');
-        } else {
-          el.classList.remove('road-hover-active', 'road-hover-highlight');
-        }
+        el.classList.remove('road-hover-active', 'road-hover-highlight');
+        if (!highlightSet.has(eid)) return;
+        el.classList.add('road-hover-highlight');
+        if (eid === edgeId) el.classList.add('road-hover-active');
       });
     }
 
