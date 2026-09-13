@@ -373,6 +373,17 @@ export class BotAI {
     return worst;
   }
 
+  static chooseBarbarianRewardDeck(botPlayer) {
+    const imps = botPlayer?.cityImprovements || {};
+    const tracks = [
+      { deck: 'trade', level: imps.trade || 0 },
+      { deck: 'politics', level: imps.politics || 0 },
+      { deck: 'science', level: imps.science || 0 }
+    ];
+    tracks.sort((a, b) => b.level - a.level);
+    return tracks[0].deck;
+  }
+
   static chooseCityForMetropolis(engine, playerId) {
     const player = engine.players.find(p => p.id === playerId);
     if (!player?.citiesBuilt?.length) return null;
@@ -661,6 +672,16 @@ export class BotAI {
       for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
         const city = this.chooseCityToDowngrade(engine, pId);
         if (city) engine.downgradeCity(pId, city);
+      }
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_BARBARIAN_REWARD) {
+      for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
+        const p = engine.players.find(x => x.id === pId);
+        if (!p) continue;
+        const deck = this.chooseBarbarianRewardDeck(p);
+        engine.chooseBarbarianReward(pId, deck);
       }
       return true;
     }

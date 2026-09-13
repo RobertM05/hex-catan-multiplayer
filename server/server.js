@@ -416,6 +416,14 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb);
   });
 
+  socket.on('choose_barbarian_reward', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+  });
+
+  socket.on('claim_barbarian_progress_card', (data, cb) => {
+    handleGameAction(data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+  });
+
   socket.on('buy_dev_card', (data, cb) => {
     handleGameAction(data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
   });

@@ -86,6 +86,7 @@ export const GAME_PHASES = {
   TURN_ACTION: 'TURN_ACTION',
   TURN_BARBARIAN_RESOLVE: 'TURN_BARBARIAN_RESOLVE',
   TURN_BARBARIAN_DOWNGRADE: 'TURN_BARBARIAN_DOWNGRADE',
+  TURN_BARBARIAN_REWARD: 'TURN_BARBARIAN_REWARD',
   TURN_CHOOSE_METROPOLIS: 'TURN_CHOOSE_METROPOLIS',
   TURN_CHOOSE_KNIGHT_RELOCATE: 'TURN_CHOOSE_KNIGHT_RELOCATE',
   GAME_OVER: 'GAME_OVER'
@@ -146,6 +147,7 @@ export class GameEngine {
     this.barbarianPosition = 0;
     this.defenderOfCatan = null;
     this.pendingBarbarianDowngrades = new Set();
+    this.pendingBarbarianTieDraws = new Set();
     this.pendingProgressCardColor = null;
     this.pendingProgressDraws = [];
     this.lastBarbarianResult = null;
@@ -252,6 +254,12 @@ export class GameEngine {
     }
     this.pendingDiscards.delete(playerId);
     this.pendingBarbarianDowngrades.delete(playerId);
+    if (this.pendingBarbarianTieDraws) {
+      this.pendingBarbarianTieDraws.delete(playerId);
+      if (this.phase === GAME_PHASES.TURN_BARBARIAN_REWARD && this.pendingBarbarianTieDraws.size === 0) {
+        this.continueAfterBarbarian();
+      }
+    }
     if (this.pendingProgressDiscard) {
       this.pendingProgressDiscard.delete(playerId);
     }
@@ -1792,9 +1800,7 @@ export class GameEngine {
           args: { playerName: leaders[0].player.name }
         });
       } else if (leaders.length > 1) {
-        for (const leader of leaders) {
-          this.drawProgressCard(leader.player, 'trade');
-        }
+        this.pendingBarbarianTieDraws = new Set(leaders.map(l => l.player.id));
         this.logEvent({
           type: 'BARBARIAN_VICTORY_TIE',
           messageKey: 'LOG_BARBARIAN_VICTORY_TIE',
@@ -1802,7 +1808,13 @@ export class GameEngine {
         });
       }
       this.pendingBarbarianDowngrades.clear();
-      result = { outcome: 'victory', defenderOfCatan: this.defenderOfCatan, totalActiveKnights, totalCities };
+      result = {
+        outcome: 'victory',
+        defenderOfCatan: this.defenderOfCatan,
+        totalActiveKnights,
+        totalCities,
+        pendingTieDraws: Array.from(this.pendingBarbarianTieDraws)
+      };
     } else {
       const cityOwners = strengths.filter(row => this.hasVulnerableCity(row.player));
       const minStrength = cityOwners.length
@@ -1832,6 +1844,8 @@ export class GameEngine {
 
     if (result.outcome === 'defeat' && this.pendingBarbarianDowngrades.size > 0) {
       this.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    } else if (result.outcome === 'victory' && this.pendingBarbarianTieDraws.size > 0) {
+      this.phase = GAME_PHASES.TURN_BARBARIAN_REWARD;
     } else {
       this.continueAfterBarbarian();
     }
@@ -1892,6 +1906,44 @@ export class GameEngine {
       this.continueAfterBarbarian();
     }
     return { vertexId, remaining: Array.from(this.pendingBarbarianDowngrades) };
+  }
+
+  chooseBarbarianReward(playerId, deck) {
+    if (this.phase !== GAME_PHASES.TURN_BARBARIAN_REWARD) {
+      throw new Error('NOT_IN_BARBARIAN_REWARD_PHASE');
+    }
+    if (!this.pendingBarbarianTieDraws || !this.pendingBarbarianTieDraws.has(playerId)) {
+      throw new Error('NO_BARBARIAN_REWARD_PENDING');
+    }
+    const validDecks = ['trade', 'politics', 'science'];
+    if (!validDecks.includes(deck)) {
+      throw new Error('INVALID_PROGRESS_DECK');
+    }
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+
+    const cardType = this.drawProgressCard(player, deck);
+    this.pendingBarbarianTieDraws.delete(playerId);
+
+    this.logEvent({
+      type: 'BARBARIAN_REWARD_CHOSEN',
+      messageKey: 'LOG_BARBARIAN_REWARD_CHOSEN',
+      args: { playerName: player.name, deck }
+    });
+
+    if (this.pendingBarbarianTieDraws.size === 0) {
+      this.continueAfterBarbarian();
+    }
+
+    return { deck, cardType, remaining: Array.from(this.pendingBarbarianTieDraws) };
+  }
+
+  claimBarbarianReward(playerId, deck) {
+    return this.chooseBarbarianReward(playerId, deck);
+  }
+
+  claimBarbarianProgressCard(playerId, deck) {
+    return this.chooseBarbarianReward(playerId, deck);
   }
 
   buildCityWall(playerId, vertexId, options = {}) {
@@ -2858,6 +2910,7 @@ export class GameEngine {
       pendingDiscards: Array.from(this.pendingDiscards),
       discardDeadline: this.discardDeadline,
       pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
+      pendingBarbarianTieDraws: Array.from(this.pendingBarbarianTieDraws),
       lastBarbarianResult: this.lastBarbarianResult,
       merchantHolder: this.merchantHolder,
       merchantHexId: this.merchantHexId,

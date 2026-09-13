@@ -510,7 +510,15 @@ export const STRINGS = {
     ERROR_KNIGHT_NOT_CONNECTED_TO_ROAD: "The knight must be on an intersection connected to your road network.",
     ERROR_ROAD_NOT_OPEN: "That road is closed (connected at both ends to other roads or buildings).",
     ERROR_MUST_DISCARD_PROGRESS_CARD_BEFORE_ENDING_TURN: "You must discard down to 4 progress cards before ending your turn.",
-    ERROR_NO_PROGRESS_DISCARD_NEEDED: "You do not need to discard any progress cards."
+    ERROR_NO_PROGRESS_DISCARD_NEEDED: "You do not need to discard any progress cards.",
+    BARBARIAN_CHOOSE_REWARD: "Choose a progress card deck (Tie-Breaker Reward):",
+    BARBARIAN_CHOOSE_DECK_TRADE: "Trade (Yellow)",
+    BARBARIAN_CHOOSE_DECK_POLITICS: "Politics (Blue)",
+    BARBARIAN_CHOOSE_DECK_SCIENCE: "Science (Green)",
+    LOG_BARBARIAN_REWARD_CHOSEN: "{playerName} chose a {deck} progress card as barbarian reward.",
+    ERROR_NOT_IN_BARBARIAN_REWARD_PHASE: "Barbarian reward choice is only available after a barbarian victory tie.",
+    ERROR_NO_BARBARIAN_REWARD_PENDING: "You do not have a pending barbarian reward.",
+    ERROR_INVALID_PROGRESS_DECK: "Please select a valid progress card deck."
 };
 
 class I18nService {

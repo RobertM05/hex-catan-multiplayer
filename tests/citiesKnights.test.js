@@ -413,7 +413,7 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     assert.equal(engine.players[0].publicVictoryPoints, engine.players[0].citiesBuilt.length * 2 + engine.players[0].settlementsBuilt.length + 1);
   });
 
-  it('should NOT award Defender on tie', () => {
+  it('should NOT award Defender on tie and transition to TURN_BARBARIAN_REWARD', () => {
     const engine = makeCkEngine();
     attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
     attachBuilding(engine, 'p2', RESOURCE_TYPES.BRICK, 'city');
@@ -425,6 +425,36 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     engine.phase = GAME_PHASES.TURN_ROLL;
     forceRoll(engine, 'p1', 1, 2, 0);
     assert.equal(engine.defenderOfCatan, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_BARBARIAN_REWARD);
+    assert.deepEqual(Array.from(engine.pendingBarbarianTieDraws).sort(), ['p1', 'p2']);
+
+    // Rejects non-tied player
+    assert.throws(() => {
+      engine.chooseBarbarianReward('p3', 'trade');
+    }, /NO_BARBARIAN_REWARD_PENDING/);
+
+    // Rejects invalid deck
+    assert.throws(() => {
+      engine.chooseBarbarianReward('p1', 'invalid_deck');
+    }, /INVALID_PROGRESS_DECK/);
+
+    // p1 chooses politics
+    const p1Before = engine.players[0].progressCards.length;
+    const res1 = engine.chooseBarbarianReward('p1', 'politics');
+    assert.equal(res1.deck, 'politics');
+    assert.equal(engine.players[0].progressCards.length, p1Before + 1);
+    assert.equal(engine.phase, GAME_PHASES.TURN_BARBARIAN_REWARD);
+    assert.deepEqual(Array.from(engine.pendingBarbarianTieDraws), ['p2']);
+
+    // p2 chooses science via alias claimBarbarianProgressCard
+    const p2Before = engine.players[1].progressCards.length;
+    const res2 = engine.claimBarbarianProgressCard('p2', 'science');
+    assert.equal(res2.deck, 'science');
+    assert.equal(engine.players[1].progressCards.length, p2Before + 1);
+
+    // Once all tied players choose, transitions to TURN_ACTION
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.pendingBarbarianTieDraws.size, 0);
   });
 
   it('should declare defeat when active knights < total cities', () => {

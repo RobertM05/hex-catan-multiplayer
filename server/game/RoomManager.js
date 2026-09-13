@@ -443,6 +443,12 @@ export class RoomManager {
           const cityId = p ? engine.getFirstVulnerableCityId(p) : null;
           if (cityId) engine.downgradeCity(pId, cityId);
         }
+      } else if (engine.phase === GAME_PHASES.TURN_BARBARIAN_REWARD) {
+        for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
+          const p = engine.players.find(x => x.id === pId);
+          const deck = p ? BotAI.chooseBarbarianRewardDeck(p) : 'trade';
+          engine.chooseBarbarianReward(pId, deck);
+        }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
         const pending = engine.pendingMetropolisChoice;
         const chooser = pending && engine.players.find(p => p.id === pending.playerId);
@@ -528,6 +534,27 @@ export class RoomManager {
                 this.checkAndTriggerBotTurn(room);
               } catch (err) {
                 console.error('Bot barbarian downgrade error:', err);
+              }
+            }
+          }, 800);
+        }
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_BARBARIAN_REWARD) {
+      for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
+        const p = engine.players.find(x => x.id === pId);
+        if (p && p.isBot) {
+          setTimeout(() => {
+            if (room.isStarted && engine.pendingBarbarianTieDraws?.has(pId)) {
+              try {
+                const deck = BotAI.chooseBarbarianRewardDeck(p);
+                engine.chooseBarbarianReward(pId, deck);
+                this.broadcastState(room);
+                this.checkAndTriggerBotTurn(room);
+              } catch (err) {
+                console.error('Bot barbarian reward error:', err);
               }
             }
           }, 800);

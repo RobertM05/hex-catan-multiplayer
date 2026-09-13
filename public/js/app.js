@@ -1295,16 +1295,18 @@ export class CatanApp {
     if (!modal || !body || !list) return;
 
     const pending = s.pendingBarbarianDowngrades || [];
+    const pendingRewards = s.pendingBarbarianTieDraws || [];
     const result = s.lastBarbarianResult;
     const mustDowngrade = s.phase === 'TURN_BARBARIAN_DOWNGRADE' && me && pending.includes(me.id);
+    const mustChooseReward = s.phase === 'TURN_BARBARIAN_REWARD' && me && pendingRewards.includes(me.id);
 
-    if (!result && !mustDowngrade) {
+    if (!result && !mustDowngrade && !mustChooseReward) {
       modal.classList.remove('active');
       return;
     }
 
-    const key = `${s.turnNumber}-${result?.outcome || 'none'}-${pending.join(',')}`;
-    if (!mustDowngrade && this.barbarianOverlayKey === key) return;
+    const key = `${s.turnNumber}-${result?.outcome || 'none'}-${pending.join(',')}-${pendingRewards.join(',')}-${s.phase}`;
+    if (!mustDowngrade && !mustChooseReward && this.barbarianOverlayKey === key) return;
     this.barbarianOverlayKey = key;
 
     if (result?.outcome === 'victory') {
@@ -1332,6 +1334,37 @@ export class CatanApp {
         btn.addEventListener('click', async () => {
           try {
             await network.sendAction('downgrade_city', { vertexId: vid });
+            modal.classList.remove('active');
+          } catch (err) {
+            this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+          }
+        });
+        list.appendChild(btn);
+      });
+    } else if (mustChooseReward) {
+      closeBtn.style.display = 'none';
+      const promptTitle = document.createElement('div');
+      promptTitle.className = 'barbarian-reward-title';
+      promptTitle.style.fontWeight = 'bold';
+      promptTitle.style.marginBottom = '10px';
+      promptTitle.textContent = i18n.t('BARBARIAN_CHOOSE_REWARD');
+      list.appendChild(promptTitle);
+
+      const decks = [
+        { id: 'trade', label: i18n.t('BARBARIAN_CHOOSE_DECK_TRADE'), icon: '📜' },
+        { id: 'politics', label: i18n.t('BARBARIAN_CHOOSE_DECK_POLITICS'), icon: '🏛️' },
+        { id: 'science', label: i18n.t('BARBARIAN_CHOOSE_DECK_SCIENCE'), icon: '🧪' }
+      ];
+
+      decks.forEach((deck) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-glass barbarian-reward-btn';
+        btn.style.margin = '4px';
+        btn.textContent = `${deck.icon} ${deck.label}`;
+        btn.addEventListener('click', async () => {
+          try {
+            await network.sendAction('choose_barbarian_reward', { deck: deck.id });
             modal.classList.remove('active');
           } catch (err) {
             this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
