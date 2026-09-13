@@ -314,18 +314,22 @@
   cursor: pointer;
 }
 
-.edge-group.built-road.road-hover-highlight > line:nth-child(2) {
-  stroke-width: 11 !important;
-  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85)) drop-shadow(0 0 12px currentColor) !important;
-  transition: stroke-width 0.15s ease, filter 0.15s ease;
+.edge-group.built-road.road-hover-highlight .road-body,
+.road-casing.road-hover-highlight {
+  transition: stroke-width 0.15s ease, filter 0.15s ease, stroke 0.15s ease;
 }
 
-.edge-group.built-road.road-hover-active > line:nth-child(2) {
+.edge-group.built-road.road-hover-highlight .road-body {
+  stroke-width: 11 !important;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85)) drop-shadow(0 0 12px currentColor) !important;
+}
+
+.edge-group.built-road.road-hover-active .road-body {
   stroke-width: 13 !important;
   filter: drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 16px currentColor) !important;
 }
 
-.edge-group.built-road.road-hover-highlight > line:first-child {
+.road-casing.road-hover-highlight {
   stroke: rgba(255, 255, 255, 0.6) !important;
   stroke-width: 15 !important;
 }
