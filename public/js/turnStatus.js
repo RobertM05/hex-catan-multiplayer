@@ -56,3 +56,26 @@ export function mapPhaseToOpponentStateKey(phase, isActivePlayer) {
 export function canPayCost(resources = {}, cost = {}) {
   return Object.entries(cost).every(([res, amt]) => (Number(resources[res]) || 0) >= amt);
 }
+
+export function canBuildWall(player, isCkMode, inActionPhase, grid) {
+  if (!isCkMode) return { allowed: false, reasonKey: 'REASON_WRONG_PHASE' };
+  if (!inActionPhase) return { allowed: false, reasonKey: 'REASON_NOT_YOUR_TURN' };
+  if ((player?.cityWalls ?? 0) <= 0) return { allowed: false, reasonKey: 'ERROR_NO_WALLS_REMAINING' };
+  if (!canPayCost(player?.resources, BUILD_COSTS.WALL)) return { allowed: false, reasonKey: 'REASON_NOT_ENOUGH_RESOURCES' };
+
+  if (grid?.vertices && player) {
+    const citiesBuilt = player.citiesBuilt || [];
+    if (citiesBuilt.length === 0) {
+      return { allowed: false, reasonKey: 'ERROR_WALLS_ONLY_ON_CITIES' };
+    }
+    const hasUnwalledCity = citiesBuilt.some(vId => {
+      const v = typeof grid.vertices.get === 'function' ? grid.vertices.get(vId) : grid.vertices[vId];
+      return v && v.building && v.building.type === 'city' && v.building.playerId === player.id && !v.building.hasWall;
+    });
+    if (!hasUnwalledCity) {
+      return { allowed: false, reasonKey: 'ERROR_CITY_ALREADY_HAS_WALL' };
+    }
+  }
+
+  return { allowed: true, reasonKey: null };
+}

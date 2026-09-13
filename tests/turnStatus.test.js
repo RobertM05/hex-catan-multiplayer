@@ -4,6 +4,7 @@ import {
   mapPhaseToStatusKey,
   mapPhaseToOpponentStateKey,
   canPayCost,
+  canBuildWall,
   BUILD_COSTS
 } from '../public/js/turnStatus.js';
 
@@ -47,5 +48,63 @@ describe('UX-04 phase to status mapping', () => {
     assert.equal(canPayCost({ wood: 1, brick: 0 }, BUILD_COSTS.ROAD), false);
     assert.equal(canPayCost({ brick: 2 }, BUILD_COSTS.WALL), true);
     assert.equal(canPayCost({ brick: 1 }, BUILD_COSTS.WALL), false);
+  });
+});
+
+describe('canBuildWall helper', () => {
+  it('disallows wall building when not in C&K mode', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: false } } } };
+    const res = canBuildWall(player, false, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'REASON_WRONG_PHASE');
+  });
+
+  it('disallows wall building when not in action phase', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: false } } } };
+    const res = canBuildWall(player, true, false, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'REASON_NOT_YOUR_TURN');
+  });
+
+  it('disallows wall building when supply is 0', () => {
+    const player = { id: 'p1', cityWalls: 0, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: false } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'ERROR_NO_WALLS_REMAINING');
+  });
+
+  it('disallows wall building when player does not have enough resources (brick < 2)', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 1 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: false } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'REASON_NOT_ENOUGH_RESOURCES');
+  });
+
+  it('disallows wall building when player has no cities built', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 2 }, citiesBuilt: [] };
+    const grid = { vertices: {} };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'ERROR_WALLS_ONLY_ON_CITIES');
+  });
+
+  it('disallows wall building when all existing cities already have a wall', () => {
+    const player = { id: 'p1', cityWalls: 2, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: true } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'ERROR_CITY_ALREADY_HAS_WALL');
+  });
+
+  it('allows wall building when all requirements are met', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'city', playerId: 'p1', hasWall: false } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, true);
+    assert.equal(res.reasonKey, null);
   });
 });

@@ -9,7 +9,7 @@ import { audio } from './audio.js';
 import { network } from './network.js';
 import { BoardRenderer } from './renderer.js';
 import { ico } from './icons.js';
-import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, BUILD_COSTS } from './turnStatus.js';
+import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, canBuildWall, BUILD_COSTS } from './turnStatus.js';
 import {
   getProgressDeck,
   PROGRESS_CARD_ICONS,
@@ -599,7 +599,8 @@ export class CatanApp {
       }
     });
 
-    document.getElementById('btn-build-city-wall')?.addEventListener('click', () => {
+    document.getElementById('btn-build-city-wall')?.addEventListener('click', (e) => {
+      if (e.currentTarget?.disabled) return;
       if (this.selectedAction && this.selectedAction.type === 'wall') {
         this.clearActiveAction();
       } else {
@@ -957,6 +958,8 @@ export class CatanApp {
 
   activateBuildCityWall() {
     if (!this.gameState || !this.gameState.grid) return;
+    const wallBtn = document.getElementById('btn-build-city-wall');
+    if (wallBtn?.disabled) return;
     const validIds = new Set();
     Object.values(this.gameState.grid.vertices).forEach(v => {
       if (v.building && v.building.type === 'city' && v.building.playerId === this.myPlayerId && !v.building.hasWall) {
@@ -964,7 +967,7 @@ export class CatanApp {
       }
     });
     this.selectedAction = { type: 'wall', validIds };
-    document.getElementById('btn-build-city-wall')?.classList.add('btn-primary');
+    wallBtn?.classList.add('btn-primary');
     this.boardRenderer.render(this.gameState.grid, this.selectedAction);
     this.updateBoardHint();
   }
@@ -1196,12 +1199,31 @@ export class CatanApp {
     this.renderBarbarianTrack(s);
     this.renderImprovementPanel(me, isActionPhase);
     this.renderBarbarianOverlay(s, me);
-    const wallCount = document.getElementById('wall-supply-count');
-    if (wallCount) wallCount.textContent = String(me?.cityWalls ?? 0);
+    this.renderWallSupplyAndButton(s, me, isActionPhase);
     this.renderProgressCardHand();
     this.notifyProgressDraws(s);
     this.checkProgressDiscardState();
     this.renderKnightSupply(me, isActionPhase);
+  }
+
+  renderWallSupplyAndButton(s, me, isActionPhase, notTurnReason) {
+    const wallCount = document.getElementById('wall-supply-count');
+    if (wallCount) wallCount.textContent = String(me?.cityWalls ?? 0);
+
+    const wallBtn = document.getElementById('btn-build-city-wall');
+    if (!wallBtn) return;
+
+    if (!this.isCitiesKnights()) {
+      this.setActionEnabled(wallBtn, false, notTurnReason || 'REASON_WRONG_PHASE');
+      return;
+    }
+
+    const { allowed, reasonKey } = canBuildWall(me, this.isCitiesKnights(), isActionPhase, s?.grid);
+    this.setActionEnabled(wallBtn, allowed, reasonKey || notTurnReason);
+
+    if (!allowed && this.selectedAction && this.selectedAction.type === 'wall') {
+      this.clearActiveAction();
+    }
   }
 
   renderKnightSupply(me, isActionPhase) {
@@ -2835,6 +2857,7 @@ export class CatanApp {
     this.setBuildEnabled('btn-build-settlement', isActionPhase, me, BUILD_COSTS.SETTLEMENT, notTurnReason);
     this.setBuildEnabled('btn-build-city', isActionPhase, me, BUILD_COSTS.CITY, notTurnReason);
     this.setBuildEnabled('btn-buy-dev-card', isActionPhase && !this.isCitiesKnights(), me, BUILD_COSTS.DEV_CARD, notTurnReason);
+    this.renderWallSupplyAndButton(s, me, isActionPhase, notTurnReason);
 
     // Update Dice Values
     if (s.dice) {
