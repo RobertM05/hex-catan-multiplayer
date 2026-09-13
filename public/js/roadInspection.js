@@ -87,10 +87,7 @@ export function getConnectedRoadNetwork(grid, edgeId) {
       const vertex = getVertex(grid, vId);
       if (!vertex) continue;
 
-      // Opponent building or knight blocks road connection through this vertex
-      const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-      const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-      if (blockedByBuilding || blockedByKnight) {
+      if (isVertexBlockedForOwner(vertex, ownerId)) {
         continue;
       }
 
@@ -134,10 +131,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
   const dfsMax = (vertexId, currentLength) => {
     if (currentLength > maxNetworkLength) maxNetworkLength = currentLength;
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (currentLength > 0 && (blockedByBuilding || blockedByKnight)) {
+    if (!vertex || (currentLength > 0 && isVertexBlockedForOwner(vertex, ownerId))) {
       return;
     }
     for (const adjId of vertex.adjacentEdges || []) {
@@ -170,12 +164,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
   const extendV2 = (vertexId, len) => {
     if (len > maxThroughEdge) maxThroughEdge = len;
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (blockedByBuilding || blockedByKnight) {
-      return;
-    }
+    if (!vertex || isVertexBlockedForOwner(vertex, ownerId)) return;
     for (const adjId of vertex.adjacentEdges || []) {
       if (!visitedThrough.has(adjId)) {
         const adj = getEdge(grid, adjId);
@@ -193,12 +182,7 @@ export function calculateContinuousRoadLength(grid, edgeId) {
     extendV2(edge.v2, len);
 
     const vertex = getVertex(grid, vertexId);
-    if (!vertex) return;
-    const blockedByBuilding = vertex.building && vertex.building.playerId !== ownerId;
-    const blockedByKnight = vertex.knight && vertex.knight.playerId !== ownerId;
-    if (blockedByBuilding || blockedByKnight) {
-      return;
-    }
+    if (!vertex || isVertexBlockedForOwner(vertex, ownerId)) return;
     for (const adjId of vertex.adjacentEdges || []) {
       if (!visitedThrough.has(adjId)) {
         const adj = getEdge(grid, adjId);
