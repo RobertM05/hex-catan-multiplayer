@@ -481,6 +481,7 @@ export class BoardRenderer {
     line.setAttribute('y2', edge.y2);
     line.setAttribute('stroke-linecap', 'round');
     for (const [key, value] of Object.entries(attrs)) {
+      if (value == null) continue;
       line.setAttribute(key, value);
     }
     return line;
@@ -988,8 +989,8 @@ export class BoardRenderer {
       targets.forEach(el => {
         const eid = el.getAttribute('data-edge-id');
         el.classList.remove('road-hover-active', 'road-hover-highlight');
-        if (!highlightSet.has(eid)) return;
-        el.classList.add('road-hover-highlight');
+        const onLongestPath = highlightSet.has(eid);
+        if (onLongestPath) el.classList.add('road-hover-highlight');
         if (eid === edgeId) el.classList.add('road-hover-active');
       });
     }
