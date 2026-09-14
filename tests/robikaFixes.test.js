@@ -177,4 +177,19 @@ describe('Robika fixes', () => {
     assert.equal(steal.stolenCard.type, 'crane');
     assert.equal(spy.played, true);
   });
+
+  it('keeps merchantHexId on player state for the map token', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    const hexId = vertex.hexes[0];
+    vertex.building = { type: 'city', playerId: 'p1', color: engine.players[0].color, hasWall: false };
+    engine.players[0].citiesBuilt.push(vertex.id);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const card = { id: 'mer1', type: 'merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { hexId });
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.merchantHexId, hexId);
+    assert.equal(state.merchantHolder, 'p1');
+  });
 });

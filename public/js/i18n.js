@@ -217,6 +217,7 @@ export const STRINGS = {
     PROGRESS_SELECT_STEAL: "Choose 2 cards from the revealed hand",
     PROGRESS_PEEK_HAND: "Opponent hand",
     PROGRESS_SELECT_SPY_CARD: "Choose which progress card to steal",
+    MERCHANT_TOKEN: "Merchant",
     PROGRESS_DIE_1: "Red die",
     PROGRESS_DIE_2: "Yellow die",
     LOG_CITY_WALL_BUILT: "{playerName} built a city wall.",
