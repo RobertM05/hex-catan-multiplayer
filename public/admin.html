@@ -74,20 +74,24 @@
     .controls-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     .btn {
       background-color: var(--card-bg);
       color: var(--text-main);
       border: 1px solid var(--border-color);
-      padding: 8px 16px;
+      padding: 8px 14px;
       border-radius: 6px;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
       transition: background-color 0.15s, border-color 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .btn:hover {
@@ -101,6 +105,17 @@
 
     .btn-primary:hover {
       background-color: #1d4ed8;
+    }
+
+    .refresh-badge {
+      background-color: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #86efac;
+      font-family: monospace;
+      font-size: 0.8rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 700;
     }
 
     .stats-grid {
@@ -197,6 +212,23 @@
       text-transform: uppercase;
     }
 
+    .sortable-th {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s;
+    }
+
+    .sortable-th:hover {
+      color: var(--accent-blue);
+    }
+
+    .sort-indicator {
+      display: inline-block;
+      margin-left: 4px;
+      font-size: 0.75rem;
+      color: var(--accent-blue);
+    }
+
     tbody tr:hover {
       background-color: rgba(255, 255, 255, 0.03);
     }
@@ -256,7 +288,15 @@
         <span>Catan Server Telemetry</span>
       </div>
       <div class="controls-group">
-        <button id="btn-toggle-auto" class="btn">Auto-refresh: ON (2s)</button>
+        <span class="refresh-badge" id="countdown-badge">Auto: 2s</span>
+        <select id="select-interval" class="filter-input" title="Auto-refresh Interval">
+          <option value="1">1s</option>
+          <option value="2" selected>2s</option>
+          <option value="3">3s</option>
+          <option value="5">5s</option>
+          <option value="10">10s</option>
+        </select>
+        <button id="btn-toggle-auto" class="btn">Pause</button>
         <button id="btn-refresh" class="btn btn-primary">Refresh Now</button>
         <a href="/api/admin/traffic" target="_blank" class="btn">Raw JSON</a>
         <a href="/" class="btn">Game Home</a>
@@ -319,18 +359,25 @@
             <option value="CONNECT">Connects</option>
             <option value="DISCONNECT">Disconnects</option>
           </select>
+          <select id="select-sort" class="filter-input">
+            <option value="time_desc">Sort: Newest First</option>
+            <option value="time_asc">Sort: Oldest First</option>
+            <option value="ip">Sort: Group by IP</option>
+            <option value="type">Sort: Group by Type</option>
+            <option value="status">Sort: Status / Duration</option>
+          </select>
         </div>
       </div>
       <div class="table-container">
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Type</th>
-              <th>IP</th>
-              <th>Country</th>
-              <th>Event / URL</th>
-              <th>Details / Duration</th>
+              <th data-column="time" class="sortable-th">Time <span id="sort-ind-time" class="sort-indicator">▼</span></th>
+              <th data-column="type" class="sortable-th">Type <span id="sort-ind-type" class="sort-indicator"></span></th>
+              <th data-column="ip" class="sortable-th">IP <span id="sort-ind-ip" class="sort-indicator"></span></th>
+              <th data-column="country" class="sortable-th">Country <span id="sort-ind-country" class="sort-indicator"></span></th>
+              <th data-column="event" class="sortable-th">Event / URL <span id="sort-ind-event" class="sort-indicator"></span></th>
+              <th data-column="details" class="sortable-th">Details / Duration <span id="sort-ind-details" class="sort-indicator"></span></th>
             </tr>
           </thead>
           <tbody id="traffic-events-tbody">
@@ -355,14 +402,17 @@
 
   <script>
     let autoRefresh = true;
-    let refreshTimer = null;
+    let refreshIntervalSeconds = 2;
+    let secondsLeft = 2;
+    let tickerTimer = null;
+    let currentSort = 'time_desc';
 
     async function fetchTelemetry() {
       try {
         const typeFilter = document.getElementById('filter-type').value;
         const ipFilter = document.getElementById('filter-ip').value.trim();
 
-        let url = '/api/admin/traffic?limit=60';
+        let url = '/api/admin/traffic?limit=80&sort=' + encodeURIComponent(currentSort);
         if (typeFilter) url += '&type=' + encodeURIComponent(typeFilter);
         if (ipFilter) url += '&ip=' + encodeURIComponent(ipFilter);
 
@@ -441,6 +491,26 @@
       }
     }
 
+    function setSort(sortKey) {
+      currentSort = sortKey;
+      document.getElementById('select-sort').value = sortKey;
+
+      // Update column indicators
+      const indicators = { time: '', type: '', ip: '', country: '', event: '', details: '' };
+      if (sortKey === 'time_desc') indicators.time = '▼';
+      else if (sortKey === 'time_asc') indicators.time = '▲';
+      else if (sortKey === 'ip') indicators.ip = '▲';
+      else if (sortKey === 'type') indicators.type = '▲';
+      else if (sortKey === 'status') indicators.details = '▼';
+
+      for (const [col, sym] of Object.entries(indicators)) {
+        const el = document.getElementById('sort-ind-' + col);
+        if (el) el.textContent = sym;
+      }
+
+      fetchTelemetry();
+    }
+
     async function inspectRoom() {
       const codeInput = document.getElementById('inspect-room-code');
       const code = codeInput.value.trim().toUpperCase();
@@ -466,10 +536,38 @@
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    // Column click sorting
+    document.querySelectorAll('.sortable-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.getAttribute('data-column');
+        if (col === 'time') {
+          setSort(currentSort === 'time_desc' ? 'time_asc' : 'time_desc');
+        } else if (col === 'ip') {
+          setSort('ip');
+        } else if (col === 'type') {
+          setSort('type');
+        } else if (col === 'details') {
+          setSort('status');
+        }
+      });
+    });
+
     // Event Listeners
-    document.getElementById('btn-refresh').addEventListener('click', fetchTelemetry);
+    document.getElementById('btn-refresh').addEventListener('click', () => {
+      secondsLeft = refreshIntervalSeconds;
+      fetchTelemetry();
+    });
     document.getElementById('filter-type').addEventListener('change', fetchTelemetry);
     document.getElementById('filter-ip').addEventListener('input', fetchTelemetry);
+    document.getElementById('select-sort').addEventListener('change', (e) => {
+      setSort(e.target.value);
+    });
+    document.getElementById('select-interval').addEventListener('change', (e) => {
+      refreshIntervalSeconds = parseInt(e.target.value, 10) || 2;
+      secondsLeft = refreshIntervalSeconds;
+      updateBadge();
+    });
+
     document.getElementById('btn-inspect-room').addEventListener('click', inspectRoom);
     document.getElementById('inspect-room-code').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') inspectRoom();
@@ -478,24 +576,42 @@
     const toggleBtn = document.getElementById('btn-toggle-auto');
     toggleBtn.addEventListener('click', () => {
       autoRefresh = !autoRefresh;
-      toggleBtn.textContent = autoRefresh ? 'Auto-refresh: ON (2s)' : 'Auto-refresh: OFF';
-      if (autoRefresh) {
-        startTimer();
-      } else if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
+      toggleBtn.textContent = autoRefresh ? 'Pause' : 'Resume';
+      updateBadge();
     });
 
-    function startTimer() {
-      if (refreshTimer) clearInterval(refreshTimer);
-      refreshTimer = setInterval(() => {
-        if (autoRefresh) fetchTelemetry();
-      }, 2000);
+    function updateBadge() {
+      const badge = document.getElementById('countdown-badge');
+      if (!autoRefresh) {
+        badge.textContent = 'Paused';
+        badge.style.color = '#f87171';
+        badge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+        badge.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+      } else {
+        badge.textContent = `Next: ${secondsLeft}s`;
+        badge.style.color = '#86efac';
+        badge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+        badge.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+      }
+    }
+
+    function startTicker() {
+      if (tickerTimer) clearInterval(tickerTimer);
+      tickerTimer = setInterval(() => {
+        if (autoRefresh) {
+          secondsLeft--;
+          if (secondsLeft <= 0) {
+            secondsLeft = refreshIntervalSeconds;
+            fetchTelemetry();
+          }
+          updateBadge();
+        }
+      }, 1000);
     }
 
     fetchTelemetry();
-    startTimer();
+    startTicker();
+    updateBadge();
   </script>
 </body>
 </html>

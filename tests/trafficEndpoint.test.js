@@ -137,4 +137,29 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     const parsed = JSON.parse(rawText);
     assert.equal(parsed.dashboard, '/admin');
   });
+
+  it('GET /api/admin/traffic should support auto-refresh headers and log sorting', async () => {
+    // Test refresh header
+    const resRefresh = await fetch(`${serverUrl}/api/admin/traffic?refresh=4`);
+    assert.equal(resRefresh.headers.get('refresh'), '4');
+    const dataRefresh = await resRefresh.json();
+    assert.equal(dataRefresh.refreshSeconds, 4);
+
+    // Test sort by time_asc
+    const resAsc = await fetch(`${serverUrl}/api/admin/traffic?sort=time_asc&limit=10`);
+    assert.equal(resAsc.status, 200);
+    const dataAsc = await resAsc.json();
+    assert.equal(dataAsc.sort, 'time_asc');
+    if (dataAsc.recentEvents.length >= 2) {
+      const t1 = new Date(dataAsc.recentEvents[0].timestamp).getTime();
+      const t2 = new Date(dataAsc.recentEvents[1].timestamp).getTime();
+      assert.ok(t1 <= t2);
+    }
+
+    // Test sort by ip
+    const resIp = await fetch(`${serverUrl}/api/admin/traffic?sort=ip&limit=10`);
+    assert.equal(resIp.status, 200);
+    const dataIp = await resIp.json();
+    assert.equal(dataIp.sort, 'ip');
+  });
 });

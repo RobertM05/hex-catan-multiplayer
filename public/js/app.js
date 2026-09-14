@@ -1252,16 +1252,11 @@ export class CatanApp {
     const container = document.getElementById('bank-pills-container');
     if (!container || !bank) return;
 
-    const resIcons = {
-      wood: '🌲', brick: '🧱', wool: '🐑', wheat: '🌾', ore: '⛰️',
-      cloth: '🧶', coin: '🪙', paper: '📜'
-    };
-
     let html = '';
-    // Resources
+    // Resources (using exact same vector SVG icons as hexes and player cards)
     for (const [res, count] of Object.entries(bank.resources || {})) {
       html += `<div class="bank-pill bank-res-${res}" title="${i18n.t(`RES_${res.toUpperCase()}`)}: ${count} in bank">
-        <span class="bank-pill-icon">${resIcons[res] || ''}</span>
+        <span class="bank-pill-icon">${ico(res)}</span>
         <span class="bank-pill-label">${this.cardLabel(res)}</span>
         <span class="bank-pill-count">${count}</span>
       </div>`;
@@ -1271,7 +1266,7 @@ export class CatanApp {
     if (isCk && bank.commodities) {
       for (const [com, count] of Object.entries(bank.commodities)) {
         html += `<div class="bank-pill bank-com-${com}" title="${i18n.t(`COMM_${com.toUpperCase()}`)}: ${count} in bank">
-          <span class="bank-pill-icon">${resIcons[com] || ''}</span>
+          <span class="bank-pill-icon">${ico(com)}</span>
           <span class="bank-pill-label">${this.cardLabel(com)}</span>
           <span class="bank-pill-count">${count}</span>
         </div>`;
@@ -1282,28 +1277,28 @@ export class CatanApp {
     if (isCk && bank.decks) {
       if (bank.decks.trade !== undefined) {
         html += `<div class="bank-pill bank-deck-trade" title="Trade Progress Deck: ${bank.decks.trade} cards remaining">
-          <span class="bank-pill-icon">📜</span>
+          <span class="bank-pill-icon">${ico('bookOpen')}</span>
           <span class="bank-pill-label">Trade</span>
           <span class="bank-pill-count">${bank.decks.trade}</span>
         </div>`;
       }
       if (bank.decks.politics !== undefined) {
         html += `<div class="bank-pill bank-deck-politics" title="Politics Progress Deck: ${bank.decks.politics} cards remaining">
-          <span class="bank-pill-icon">🏛️</span>
+          <span class="bank-pill-icon">${ico('city')}</span>
           <span class="bank-pill-label">Politics</span>
           <span class="bank-pill-count">${bank.decks.politics}</span>
         </div>`;
       }
       if (bank.decks.science !== undefined) {
         html += `<div class="bank-pill bank-deck-science" title="Science Progress Deck: ${bank.decks.science} cards remaining">
-          <span class="bank-pill-icon">🧪</span>
+          <span class="bank-pill-icon">${ico('refresh')}</span>
           <span class="bank-pill-label">Science</span>
           <span class="bank-pill-count">${bank.decks.science}</span>
         </div>`;
       }
     } else if (bank.decks?.devCards !== undefined) {
       html += `<div class="bank-pill bank-deck-dev" title="Development Deck: ${bank.decks.devCards} cards remaining">
-        <span class="bank-pill-icon">🃏</span>
+        <span class="bank-pill-icon">${ico('cards')}</span>
         <span class="bank-pill-label">Dev Cards</span>
         <span class="bank-pill-count">${bank.decks.devCards}</span>
       </div>`;

@@ -204,17 +204,50 @@ app.get('/api/admin/traffic', (req, res) => {
   const limit = Math.min(MAX_TRAFFIC_LOGS, parseInt(req.query.limit, 10) || 100);
   const filterType = req.query.type;
   const filterIp = req.query.ip;
+  const sortBy = (req.query.sort || 'time_desc').toLowerCase();
+  const refreshParam = req.query.refresh;
+
+  // Auto-refresh support: if explicitly requested via ?refresh=N or if loaded directly in a browser
+  const isBrowserDoc = req.headers['sec-fetch-dest'] === 'document' || (req.headers.accept && req.headers.accept.includes('text/html') && !req.headers.accept.includes('application/json'));
+  let refreshSec = 0;
+  if (refreshParam !== '0') {
+    if (refreshParam) {
+      refreshSec = Math.max(1, Math.min(60, parseInt(refreshParam, 10) || 3));
+    } else if (isBrowserDoc) {
+      refreshSec = 3;
+    }
+  }
+  if (refreshSec > 0) {
+    res.setHeader('Refresh', String(refreshSec));
+  }
 
   let events = trafficBuffer.slice();
   if (filterType) events = events.filter(e => e.type === filterType);
   if (filterIp) events = events.filter(e => e.ip === filterIp);
 
-  events = events.slice(-limit).reverse();
+  // Sort events based on user selection
+  if (sortBy === 'time_asc') {
+    events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  } else if (sortBy === 'ip') {
+    events.sort((a, b) => String(a.ip || '').localeCompare(String(b.ip || '')) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  } else if (sortBy === 'type') {
+    events.sort((a, b) => String(a.type || '').localeCompare(String(b.type || '')) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  } else if (sortBy === 'status') {
+    events.sort((a, b) => ((b.status || 0) - (a.status || 0)) || (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  } else {
+    // Default: time_desc (newest first)
+    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  events = events.slice(0, limit);
 
   res.json({
     status: 'ok',
     dashboard: '/admin',
     timestamp: new Date().toISOString(),
+    sort: sortBy,
+    availableSorts: ['time_desc', 'time_asc', 'ip', 'type', 'status'],
+    refreshSeconds: refreshSec > 0 ? refreshSec : null,
     stats: {
       totalHttpRequests: trafficStats.totalHttpRequests,
       totalSocketPackets: trafficStats.totalSocketPackets,
