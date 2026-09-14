@@ -2420,6 +2420,12 @@ export class GameEngine {
         if (!unplayedTargetCards.length) {
           throw new Error('TARGET_HAS_NO_PROGRESS_CARDS');
         }
+        if (options.peek) {
+          result.peek = true;
+          result.targetPlayerId = target.id;
+          result.targetProgressCards = unplayedTargetCards.map(c => ({ id: c.id, type: c.type }));
+          break;
+        }
         let stolenCard;
         if (options.stealCardId) {
           stolenCard = unplayedTargetCards.find(c => c.id === options.stealCardId);

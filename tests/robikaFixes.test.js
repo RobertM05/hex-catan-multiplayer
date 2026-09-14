@@ -162,4 +162,19 @@ describe('Robika fixes', () => {
     assert.equal(card.played, true);
     assert.equal(engine.players[0].resources.wool, 1);
   });
+
+  it('lets Spy peek opponent progress cards without consuming the Spy', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const spy = { id: 'c-spy', type: 'spy', played: false };
+    engine.players[0].progressCards.push(spy);
+    engine.players[1].progressCards.push({ id: 'c-crane', type: 'crane', played: false });
+    const peek = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', peek: true });
+    assert.equal(peek.peek, true);
+    assert.equal(spy.played, false);
+    assert.equal(peek.targetProgressCards[0].id, 'c-crane');
+    const steal = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', stealCardId: 'c-crane' });
+    assert.equal(steal.stolenCard.type, 'crane');
+    assert.equal(spy.played, true);
+  });
 });

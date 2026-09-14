@@ -2901,6 +2901,7 @@ export class CatanApp {
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
+          delete this.progressPlay.options.stealCardId;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
           if (playBtn) playBtn.disabled = !isActionPhase;
@@ -3166,6 +3167,9 @@ export class CatanApp {
       options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
       options.d2 = parseInt(document.getElementById('alchemist-d2')?.value, 10);
     }
+    if (play.card.type === 'spy' && !options.stealCardId) {
+      options.peek = true;
+    }
     if (play.card.type === 'master_merchant' && !play.handPeeked) {
       options.peek = true;
       delete options.steal;
@@ -3180,6 +3184,11 @@ export class CatanApp {
     el?.classList.add('playing');
     try {
       const res = await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      if (res?.peek && play.card.type === 'spy') {
+        el?.classList.remove('playing');
+        this.renderSpyStealChoices(res.targetProgressCards || []);
+        return;
+      }
       if (res?.peek && play.card.type === 'master_merchant') {
         el?.classList.remove('playing');
         play.handPeeked = true;
@@ -3196,6 +3205,25 @@ export class CatanApp {
       el?.classList.remove('playing');
       this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
     }
+  }
+
+  renderSpyStealChoices(cards) {
+    const box = document.getElementById('progress-card-target-ui') || document.getElementById('progress-card-options');
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (!box) return;
+    box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_SPY_CARD')}</div>
+      <div class="progress-target-grid" style="margin-top:8px;">
+        ${cards.map(c => `<button type="button" class="btn-glass progress-target-card-btn" data-card-id="${c.id}">${escapeHtml(i18n.t('CARD_' + String(c.type).toUpperCase()) || c.type)}</button>`).join('')}
+      </div>`;
+    if (playBtn) playBtn.disabled = true;
+    box.querySelectorAll('.progress-target-card-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        this.progressPlay.options.stealCardId = b.dataset.cardId;
+        box.querySelectorAll('.progress-target-card-btn').forEach(x => x.classList.remove('btn-primary'));
+        b.classList.add('btn-primary');
+        if (playBtn) playBtn.disabled = false;
+      });
+    });
   }
 
   renderMasterMerchantHand(hand) {
