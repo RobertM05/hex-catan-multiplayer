@@ -27,6 +27,7 @@ export class BoardRenderer {
     this.edgeLayer = null;
     this.vertexLayer = null;
     this.robberLayer = null;
+    this.merchantLayer = null;
     this.particleLayer = null;
 
     this.grid = null;
@@ -122,6 +123,7 @@ export class BoardRenderer {
     this.edgeLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.vertexLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.robberLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.merchantLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.barbarianShipLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.particleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
@@ -130,6 +132,7 @@ export class BoardRenderer {
     this.boardGroup.appendChild(this.edgeLayer);
     this.boardGroup.appendChild(this.vertexLayer);
     this.boardGroup.appendChild(this.robberLayer);
+    this.boardGroup.appendChild(this.merchantLayer);
     this.boardGroup.appendChild(this.barbarianShipLayer);
     this.boardGroup.appendChild(this.particleLayer);
     this.svg.appendChild(this.boardGroup);
@@ -267,6 +270,7 @@ export class BoardRenderer {
     this.renderVertices();
     this.renderKnights();
     this.renderRobber();
+    this.renderMerchant();
     this.renderBarbarianShip();
   }
 
@@ -927,6 +931,39 @@ export class BoardRenderer {
     if (icon) g.appendChild(icon);
 
     this.robberLayer.appendChild(g);
+  }
+
+  renderMerchant() {
+    if (!this.merchantLayer) return;
+    this.merchantLayer.innerHTML = '';
+    const hexId = this.merchantHexId;
+    if (!hexId || !this.grid?.hexes) return;
+    const hex = this.grid.hexes[hexId];
+    if (!hex) return;
+
+    const { x, y } = hex.center;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'merchant-figure');
+    g.setAttribute('transform', `translate(${x + 18}, ${y + 14})`);
+
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = i18n.t('MERCHANT_TOKEN');
+    g.appendChild(title);
+
+    const disc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    disc.setAttribute('cx', '0');
+    disc.setAttribute('cy', '0');
+    disc.setAttribute('r', '13');
+    disc.setAttribute('fill', '#fbbf24');
+    disc.setAttribute('stroke', '#78350f');
+    disc.setAttribute('stroke-width', '2');
+    disc.setAttribute('filter', 'url(#shadow-building)');
+    g.appendChild(disc);
+
+    const icon = svgIconGroup('trade', { x: 0, y: 0, size: 16, fill: '#78350f' });
+    if (icon) g.appendChild(icon);
+
+    this.merchantLayer.appendChild(g);
   }
 
   renderBarbarianShip(pos, isCk) {

@@ -4,9 +4,22 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HexGrid } from '../server/game/HexGrid.js';
+import { GameEngine, GAME_PHASES, GAME_MODES } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+function makeCkEngine() {
+  const engine = new GameEngine({ mode: GAME_MODES.CITIES_KNIGHTS });
+  engine.addPlayer({ id: 'p1', name: 'Alice' });
+  engine.addPlayer({ id: 'p2', name: 'Bob' });
+  engine.startGame('standard');
+  return engine;
+}
+
+function emptyVertex(engine) {
+  return Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+}
 
 describe('Robika fixes', () => {
   it('avoids three mutually adjacent hexes of the same resource', () => {
@@ -70,5 +83,130 @@ describe('Robika fixes', () => {
     assert.match(html, /id="confirm-home-modal"/);
     assert.doesNotMatch(html, /id="btn-leave-match"/);
     assert.match(app, /openHomeConfirm/);
+  });
+
+  it('tracks decline and notifies when a player declines a trade', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 2;
+    engine.players[1].resources.brick = 2;
+    engine.proposeTrade('p1', { wood: 1 }, { brick: 1 });
+    const res = engine.respondToTrade('p2', false);
+    assert.equal(res.declined, true);
+    // Trade stays active — a single decline doesn't kill the offer for other players
+    assert.notEqual(engine.activeTrade, null);
+    assert.equal(engine.activeTrade.declinedBy.has('p2'), true);
+    assert.equal(engine.lastTradeEvent.type, 'declined');
+    assert.equal(engine.lastTradeEvent.playerId, 'p2');
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.lastTradeEvent.type, 'declined');
+  });
+
+  it('lets barbarians pillage a walled city and returns the wall to supply', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    vertex.building = { type: 'city', playerId: 'p1', color: engine.players[0].color, hasWall: true };
+    engine.players[0].citiesBuilt.push(vertex.id);
+    engine.players[0].cityWalls = 2;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    assert.equal(engine.hasVulnerableCity(engine.players[0]), true, 'walls do not protect from barbarians');
+    engine.downgradeCity('p1', vertex.id);
+    assert.equal(vertex.building.hasWall, false);
+    assert.equal(vertex.building.type, 'settlement');
+    assert.equal(engine.players[0].cityWalls, 3);
+  });
+
+  it('Diplomat relocates an own open road and rolls back if the new edge is invalid', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    vertex.building = { type: 'settlement', playerId: 'p1', color: engine.players[0].color };
+    engine.players[0].settlementsBuilt.push(vertex.id);
+    const edgeId = vertex.adjacentEdges[0];
+    const edge = engine.grid.edges.get(edgeId);
+    edge.road = { playerId: 'p1', color: engine.players[0].color };
+    engine.players[0].roadsBuilt.push(edgeId);
+    const newEdgeId = vertex.adjacentEdges.find(id => id !== edgeId);
+    const card = { id: 'dip1', type: 'diplomat', played: false };
+    engine.players[0].progressCards.push(card);
+
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { edgeId, newEdgeId: 'missing-edge' }),
+      /EDGE_OCCUPIED/
+    );
+    assert.ok(engine.grid.edges.get(edgeId).road, 'original road restored');
+    assert.equal(card.played, false);
+
+    engine.playProgressCard('p1', card.id, { edgeId, newEdgeId });
+    assert.equal(engine.grid.edges.get(edgeId).road, null);
+    assert.ok(engine.grid.edges.get(newEdgeId).road);
+    assert.equal(card.played, true);
+  });
+
+  it('lets Master Merchant peek a richer hand before stealing', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].victoryPoints = 1;
+    engine.players[1].victoryPoints = 4;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    const card = { id: 'mm1', type: 'master_merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    const peek = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true });
+    assert.equal(peek.peek, true);
+    assert.equal(card.played, false);
+    assert.equal(peek.revealedHand.resources.wool, 1);
+    engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
+    assert.equal(card.played, true);
+    assert.equal(engine.players[0].resources.wool, 1);
+  });
+
+  it('lets Spy peek opponent progress cards without consuming the Spy', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const spy = { id: 'c-spy', type: 'spy', played: false };
+    engine.players[0].progressCards.push(spy);
+    engine.players[1].progressCards.push({ id: 'c-crane', type: 'crane', played: false });
+    const peek = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', peek: true });
+    assert.equal(peek.peek, true);
+    assert.equal(spy.played, false);
+    assert.equal(peek.targetProgressCards[0].id, 'c-crane');
+    const steal = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', stealCardId: 'c-crane' });
+    assert.equal(steal.stolenCard.type, 'crane');
+    assert.equal(spy.played, true);
+  });
+
+  it('keeps merchantHexId on player state for the map token', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    const hexId = vertex.hexes[0];
+    vertex.building = { type: 'city', playerId: 'p1', color: engine.players[0].color, hasWall: false };
+    engine.players[0].citiesBuilt.push(vertex.id);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const card = { id: 'mer1', type: 'merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { hexId });
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.merchantHexId, hexId);
+    assert.equal(state.merchantHolder, 'p1');
+  });
+
+  it('does not apply Inventor until both hexes are provided', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const hexes = Array.from(engine.grid.hexes.values()).filter(h => h.token && ![2, 6, 8, 12].includes(h.token));
+    const card = { id: 'inv1', type: 'inventor', played: false };
+    engine.players[0].progressCards.push(card);
+    const token = hexes[0].token;
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { hexId1: hexes[0].id }),
+      /INVALID_HEX/
+    );
+    assert.equal(hexes[0].token, token);
+    assert.equal(card.played, false);
   });
 });

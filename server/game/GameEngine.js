@@ -172,6 +172,7 @@ export class GameEngine {
 
     // Trade state
     this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
+    this.lastTradeEvent = null;
 
     // Road building state
     this.freeRoadsRemaining = 0;
@@ -2154,7 +2155,16 @@ export class GameEngine {
           throw new Error('TARGET_NOT_AHEAD_IN_VP');
         }
         const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
-        if (steal.length !== 2) throw new Error('STEAL_TWO_CARDS');
+        if (options.peek || steal.length !== 2) {
+          if (!options.peek && steal.length) throw new Error('STEAL_TWO_CARDS');
+          result.peek = true;
+          result.targetPlayerId = target.id;
+          result.revealedHand = {
+            resources: { ...target.resources },
+            commodities: { ...target.commodities }
+          };
+          break;
+        }
         const taken = [];
         for (const type of steal) {
           if (this.getPlayerCardCount(target, type) < 1) throw new Error('TARGET_MISSING_CARDS');
@@ -2290,12 +2300,27 @@ export class GameEngine {
         if (!edge?.road) throw new Error('INVALID_TARGET');
         if (!this.isOpenRoad(edgeId)) throw new Error('ROAD_NOT_OPEN');
         const wasOwn = edge.road.playerId === playerId;
+        const snapshot = edge.road ? { playerId: edge.road.playerId, color: edge.road.color } : null;
         this.removeRoadSegment(edgeId);
         result.removedEdgeId = edgeId;
         if (wasOwn && options.newEdgeId) {
-          this.freeRoadsRemaining++;
-          this.buildRoad(playerId, options.newEdgeId);
-          result.newEdgeId = options.newEdgeId;
+          const prevFree = this.freeRoadsRemaining;
+          try {
+            this.freeRoadsRemaining = (this.freeRoadsRemaining || 0) + 1;
+            this.buildRoad(playerId, options.newEdgeId);
+            result.newEdgeId = options.newEdgeId;
+          } catch (err) {
+            this.freeRoadsRemaining = prevFree;
+            const owner = this.players.find(p => p.id === snapshot.playerId);
+            edge.road = { ...snapshot };
+            if (owner) {
+              owner.roadsRemaining = Math.max(0, (owner.roadsRemaining || 0) - 1);
+              if (!owner.roadsBuilt.includes(edgeId)) owner.roadsBuilt.push(edgeId);
+            }
+            this.recalculateLongestRoad();
+            this.recalculateVictoryPoints();
+            throw err;
+          }
         }
         break;
       }
@@ -2395,6 +2420,12 @@ export class GameEngine {
         const unplayedTargetCards = target.progressCards.filter(c => !c.played);
         if (!unplayedTargetCards.length) {
           throw new Error('TARGET_HAS_NO_PROGRESS_CARDS');
+        }
+        if (options.peek) {
+          result.peek = true;
+          result.targetPlayerId = target.id;
+          result.targetProgressCards = unplayedTargetCards.map(c => ({ id: c.id, type: c.type }));
+          break;
         }
         let stolenCard;
         if (options.stealCardId) {
@@ -2503,6 +2534,10 @@ export class GameEngine {
         break;
       default:
         throw new Error('UNKNOWN_PROGRESS_CARD');
+    }
+
+    if (result.peek) {
+      return result;
     }
 
     card.played = true;
@@ -2639,13 +2674,27 @@ export class GameEngine {
       }
       this.activeTrade.acceptedBy.add(playerId);
       if (this.activeTrade.declinedBy) this.activeTrade.declinedBy.delete(playerId);
+      return { trade: this.activeTrade, accepted: true, playerId };
     } else {
       this.activeTrade.acceptedBy.delete(playerId);
       if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
       this.activeTrade.declinedBy.add(playerId);
-    }
 
-    return { trade: this.activeTrade, accepted: accept, playerId };
+      const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
+      this.lastTradeEvent = {
+        id: `trade_declined_${Date.now()}`,
+        type: 'declined',
+        playerId,
+        playerName: responder.name,
+        fromPlayerId: this.activeTrade.fromPlayerId
+      };
+      this.logEvent({
+        type: 'TRADE_DECLINED',
+        messageKey: 'LOG_TRADE_DECLINED',
+        args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
+      });
+      return { trade: this.activeTrade, accepted: false, playerId, declined: true };
+    }
   }
 
   confirmTrade(playerId, targetPlayerId) {
@@ -3147,6 +3196,7 @@ export class GameEngine {
         acceptedBy: Array.from(this.activeTrade.acceptedBy),
         declinedBy: Array.from(this.activeTrade.declinedBy || [])
       } : null,
+      lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,
       longestRoadHolder: this.longestRoadHolder,
       largestArmyHolder: this.largestArmyHolder,

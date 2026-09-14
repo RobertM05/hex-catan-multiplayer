@@ -89,6 +89,8 @@ export class CatanApp {
     this.seenProgressDrawKeys = new Set();
     this._myPlayerId = null;
     this.leavingMatch = false;
+    this.seenTradeEventId = null;
+    this.lastRenderedPhase = null;
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -919,6 +921,10 @@ export class CatanApp {
     };
 
     this.boardRenderer.onHexClick = async (hexId) => {
+      if (this.gameState && this.gameState.phase === 'TURN_ROBBER') {
+        this.openRobberTargetModal(hexId);
+        return;
+      }
       if (this.selectedAction && this.selectedAction.type === 'progress_hex') {
         this.onProgressHexPicked(hexId);
         return;
@@ -1619,6 +1625,10 @@ export class CatanApp {
         btn.type = 'button';
         btn.className = 'btn-glass barbarian-city-btn';
         btn.textContent = i18n.t('BARBARIAN_DOWNGRADE_CITY', { hexes: hexes.map((r) => this.cardLabel(r)).join(', ') || vid });
+        if (vertex?.building?.hasWall) {
+          btn.title = i18n.t('BARBARIAN_WALL_NOTE');
+          btn.textContent += ' 🛡️';
+        }
         btn.addEventListener('click', async () => {
           try {
             await network.sendAction('downgrade_city', { vertexId: vid });
@@ -2896,6 +2906,7 @@ export class CatanApp {
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
+          delete this.progressPlay.options.stealCardId;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
           if (playBtn) playBtn.disabled = !isActionPhase;
@@ -2910,13 +2921,13 @@ export class CatanApp {
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;">
           ${opponents.map(p => `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join('')}
         </div>
-        <div>${i18n.t('PROGRESS_SELECT_STEAL')}</div>
-        <select id="mm-steal-1">${this.handTypeOptions()}</select>
-        <select id="mm-steal-2">${this.handTypeOptions()}</select>`;
+        <div id="mm-hand-reveal"></div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
+          this.progressPlay.handPeeked = false;
+          delete this.progressPlay.options.steal;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
           if (playBtn) playBtn.disabled = !isActionPhase;
@@ -3161,16 +3172,34 @@ export class CatanApp {
       options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
       options.d2 = parseInt(document.getElementById('alchemist-d2')?.value, 10);
     }
-    if (play.card.type === 'master_merchant') {
+    if (play.card.type === 'spy' && !options.stealCardId) {
+      options.peek = true;
+    }
+    if (play.card.type === 'master_merchant' && !play.handPeeked) {
+      options.peek = true;
+      delete options.steal;
+    }
+    if (play.card.type === 'master_merchant' && play.handPeeked) {
       options.steal = [
         document.getElementById('mm-steal-1')?.value,
         document.getElementById('mm-steal-2')?.value
-      ];
+      ].filter(Boolean);
     }
     const el = document.querySelector(`.progress-card[data-card-id="${play.card.id}"]`);
     el?.classList.add('playing');
     try {
-      await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      const res = await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      if (res?.peek && play.card.type === 'spy') {
+        el?.classList.remove('playing');
+        this.renderSpyStealChoices(res.targetProgressCards || []);
+        return;
+      }
+      if (res?.peek && play.card.type === 'master_merchant') {
+        el?.classList.remove('playing');
+        play.handPeeked = true;
+        this.renderMasterMerchantHand(res.revealedHand);
+        return;
+      }
       audio.playBuild();
       this.closeProgressCardModal();
       if (play.card.type === 'road_building') {
@@ -3181,6 +3210,47 @@ export class CatanApp {
       el?.classList.remove('playing');
       this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
     }
+  }
+
+  renderSpyStealChoices(cards) {
+    const box = document.getElementById('progress-card-target-ui') || document.getElementById('progress-card-options');
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (!box) return;
+    box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_SPY_CARD')}</div>
+      <div class="progress-target-grid" style="margin-top:8px;">
+        ${cards.map(c => `<button type="button" class="btn-glass progress-target-card-btn" data-card-id="${c.id}">${escapeHtml(i18n.t('CARD_' + String(c.type).toUpperCase()) || c.type)}</button>`).join('')}
+      </div>`;
+    if (playBtn) playBtn.disabled = true;
+    box.querySelectorAll('.progress-target-card-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        this.progressPlay.options.stealCardId = b.dataset.cardId;
+        box.querySelectorAll('.progress-target-card-btn').forEach(x => x.classList.remove('btn-primary'));
+        b.classList.add('btn-primary');
+        if (playBtn) playBtn.disabled = false;
+      });
+    });
+  }
+
+  renderMasterMerchantHand(hand) {
+    const box = document.getElementById('mm-hand-reveal')
+      || document.getElementById('progress-card-target-ui')
+      || document.getElementById('progress-card-options');
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (!box) return;
+    const types = [];
+    for (const [res, n] of Object.entries(hand?.resources || {})) {
+      for (let i = 0; i < n; i++) types.push(res);
+    }
+    for (const [com, n] of Object.entries(hand?.commodities || {})) {
+      for (let i = 0; i < n; i++) types.push(com);
+    }
+    const opts = [...new Set(types)].map(t => `<option value="${t}">${escapeHtml(this.cardLabel(t) || t)}</option>`).join('');
+    const list = types.map(t => this.cardLabel(t) || t).join(', ') || '—';
+    box.innerHTML = `<div>${i18n.t('PROGRESS_PEEK_HAND')}: ${escapeHtml(list)}</div>
+      <div style="margin-top:8px;">${i18n.t('PROGRESS_SELECT_STEAL')}</div>
+      <select id="mm-steal-1">${opts}</select>
+      <select id="mm-steal-2">${opts}</select>`;
+    if (playBtn) playBtn.disabled = types.length < 2;
   }
 
   /* =========================================================
@@ -3257,9 +3327,27 @@ export class CatanApp {
     const s = this.gameState;
     if (!s) return;
 
+    if (this.lastRenderedPhase && this.lastRenderedPhase !== s.phase) {
+      if (this.selectedAction?.type === 'progress_hex' || s.phase === 'TURN_ROBBER' || this.lastRenderedPhase === 'TURN_ACTION') {
+        if (s.phase !== 'TURN_ACTION') {
+          this.clearActiveAction();
+          this.closeProgressCardModal();
+        }
+      }
+    }
+    this.lastRenderedPhase = s.phase;
+
+    if (s.lastTradeEvent?.id && s.lastTradeEvent.id !== this.seenTradeEventId) {
+      this.seenTradeEventId = s.lastTradeEvent.id;
+      if (s.lastTradeEvent.type === 'declined' && s.lastTradeEvent.fromPlayerId === this.myPlayerId) {
+        this.showToast(i18n.t('TRADE_DECLINED_TOAST', { name: s.lastTradeEvent.playerName }));
+      }
+    }
+
     this.boardRenderer.currentPlayerId = this.myPlayerId;
     this.boardRenderer.gameStatePlayers = s.players;
     this.boardRenderer.longestRoadHolder = s.longestRoadHolder;
+    this.boardRenderer.merchantHexId = s.merchantHexId;
 
     // Render SVG Board
     if (s.phase === 'SETUP_ROUND_1' || s.phase === 'SETUP_ROUND_2') {
@@ -3839,7 +3927,13 @@ export class CatanApp {
     const declineBtn = banner.querySelector('.btn-decline-trade');
     if (declineBtn) {
       declineBtn.addEventListener('click', async () => {
-        await network.sendAction('respond_trade', { accept: false });
+        try {
+          await network.sendAction('respond_trade', { accept: false });
+          banner.classList.remove('is-visible');
+          banner.innerHTML = '';
+        } catch (err) {
+          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+        }
       });
     }
 
