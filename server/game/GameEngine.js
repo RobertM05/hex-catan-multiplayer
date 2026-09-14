@@ -2290,12 +2290,27 @@ export class GameEngine {
         if (!edge?.road) throw new Error('INVALID_TARGET');
         if (!this.isOpenRoad(edgeId)) throw new Error('ROAD_NOT_OPEN');
         const wasOwn = edge.road.playerId === playerId;
+        const snapshot = edge.road ? { playerId: edge.road.playerId, color: edge.road.color } : null;
         this.removeRoadSegment(edgeId);
         result.removedEdgeId = edgeId;
         if (wasOwn && options.newEdgeId) {
-          this.freeRoadsRemaining++;
-          this.buildRoad(playerId, options.newEdgeId);
-          result.newEdgeId = options.newEdgeId;
+          const prevFree = this.freeRoadsRemaining;
+          try {
+            this.freeRoadsRemaining = (this.freeRoadsRemaining || 0) + 1;
+            this.buildRoad(playerId, options.newEdgeId);
+            result.newEdgeId = options.newEdgeId;
+          } catch (err) {
+            this.freeRoadsRemaining = prevFree;
+            const owner = this.players.find(p => p.id === snapshot.playerId);
+            edge.road = { ...snapshot };
+            if (owner) {
+              owner.roadsRemaining = Math.max(0, (owner.roadsRemaining || 0) - 1);
+              if (!owner.roadsBuilt.includes(edgeId)) owner.roadsBuilt.push(edgeId);
+            }
+            this.recalculateLongestRoad();
+            this.recalculateVictoryPoints();
+            throw err;
+          }
         }
         break;
       }
