@@ -1,8 +1,13 @@
 import { describe, it } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GameEngine, GAME_PHASES, GAME_MODES } from '../server/game/GameEngine.js';
 import { BotAI } from '../server/game/BotAI.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const outDir = path.resolve(__dirname, '../scratch');
 
 describe('Monte Carlo Simulation', () => {
   it('Simulates Base Game matches', function() {
@@ -130,9 +135,10 @@ describe('Monte Carlo Simulation', () => {
          totalTurns += turns;
        }
     }
-    const outDir = '/Users/robert/Catan/scratch';
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, 'sim-results-base.json'), JSON.stringify({ mode: 'base', completed, errors, deadlocks, totalTurns, count }));
+    try {
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(path.join(outDir, 'sim-results-base.json'), JSON.stringify({ mode: 'base', completed, errors, deadlocks, totalTurns, count }));
+    } catch {}
   });
 
   it('Simulates C&K Matches', function() {
@@ -259,8 +265,9 @@ describe('Monte Carlo Simulation', () => {
          totalTurns += turns;
        }
     }
-    const outDir = '/Users/robert/Catan/scratch';
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, 'sim-results-ck.json'), JSON.stringify({ mode: 'ck', completed, errors, deadlocks, totalTurns, count }));
+    try {
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(path.join(outDir, 'sim-results-ck.json'), JSON.stringify({ mode: 'ck', completed, errors, deadlocks, totalTurns, count }));
+    } catch {}
   });
 });

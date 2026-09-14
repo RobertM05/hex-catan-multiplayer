@@ -254,6 +254,7 @@ export class GameEngine {
         this.activeTrade = null;
       } else {
         this.activeTrade.acceptedBy.delete(playerId);
+        this.activeTrade.declinedBy?.delete(playerId);
       }
     }
     this.pendingDiscards.delete(playerId);
@@ -2612,7 +2613,8 @@ export class GameEngine {
       fromPlayerId: playerId,
       give,
       want,
-      acceptedBy: new Set()
+      acceptedBy: new Set(),
+      declinedBy: new Set()
     };
 
     this.logEvent({
@@ -2636,8 +2638,11 @@ export class GameEngine {
         if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
       }
       this.activeTrade.acceptedBy.add(playerId);
+      if (this.activeTrade.declinedBy) this.activeTrade.declinedBy.delete(playerId);
     } else {
       this.activeTrade.acceptedBy.delete(playerId);
+      if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
+      this.activeTrade.declinedBy.add(playerId);
     }
 
     return { trade: this.activeTrade, accepted: accept, playerId };
@@ -2715,6 +2720,7 @@ export class GameEngine {
     player.merchantFleetActive = false;
     player.craneDiscount = false;
     player.medicineActive = false;
+    player.hasProposedTradeThisTurn = false;
     this.alchemistDice = null;
 
     // Check victory
@@ -3138,7 +3144,8 @@ export class GameEngine {
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
-        acceptedBy: Array.from(this.activeTrade.acceptedBy)
+        acceptedBy: Array.from(this.activeTrade.acceptedBy),
+        declinedBy: Array.from(this.activeTrade.declinedBy || [])
       } : null,
       freeRoadsRemaining: this.freeRoadsRemaining,
       longestRoadHolder: this.longestRoadHolder,

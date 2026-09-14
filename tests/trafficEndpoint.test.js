@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
+import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
 
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
@@ -372,5 +372,79 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     const resDelete = await fetch(`${serverUrl}/api/admin/traffic`, { method: 'DELETE' });
     assert.equal(resDelete.status, 200);
     assert.equal(trafficBuffer.length, 0);
+  });
+
+  it('recordPlayerIp and playerIps directory should track usernames to IPs', async () => {
+    // Record actions with usernames and IPs
+    recordTrafficEvent({
+      type: 'ACTION_SUCCESS',
+      action: 'roll_dice',
+      playerName: 'AliceSettler',
+      roomCode: 'RM101',
+      ip: '10.0.0.15',
+      country: 'US'
+    });
+    recordTrafficEvent({
+      type: 'CHAT_MESSAGE',
+      playerName: 'AliceSettler',
+      roomCode: 'RM101',
+      text: 'Good luck everyone!',
+      ip: '10.0.0.15',
+      country: 'US'
+    });
+    // Alice reconnects from a secondary IP
+    recordTrafficEvent({
+      type: 'ACTION_SUCCESS',
+      action: 'build_road',
+      playerName: 'AliceSettler',
+      roomCode: 'RM101',
+      ip: '10.0.0.16',
+      country: 'US'
+    });
+    // Bob joins
+    recordTrafficEvent({
+      type: 'ROOM_JOIN',
+      playerName: 'BobKnight',
+      roomCode: 'RM101',
+      ip: '86.120.10.22',
+      country: 'RO'
+    });
+
+    assert.ok(trafficStats.playerIps.has('AliceSettler'));
+    assert.ok(trafficStats.playerIps.has('BobKnight'));
+
+    const alice = trafficStats.playerIps.get('AliceSettler');
+    assert.equal(alice.ip, '10.0.0.16'); // latest IP
+    assert.ok(alice.ips.has('10.0.0.15'));
+    assert.ok(alice.ips.has('10.0.0.16'));
+    assert.equal(alice.country, 'US');
+    assert.equal(alice.roomCode, 'RM101');
+
+    // Fetch via GET /api/admin/traffic
+    const res = await fetch(`${serverUrl}/api/admin/traffic?limit=50`);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(Array.isArray(data.playerIps));
+    const aliceApi = data.playerIps.find(p => p.name === 'AliceSettler');
+    assert.ok(aliceApi);
+    assert.equal(aliceApi.ip, '10.0.0.16');
+    assert.deepEqual(aliceApi.ips.sort(), ['10.0.0.15', '10.0.0.16'].sort());
+    assert.equal(aliceApi.country, 'US');
+
+    // Test filter by player query parameter: ?player=Alice
+    const resFilterPlayer = await fetch(`${serverUrl}/api/admin/traffic?player=alice`);
+    assert.equal(resFilterPlayer.status, 200);
+    const dataFilter = await resFilterPlayer.json();
+    for (const ev of dataFilter.recentEvents) {
+      assert.ok(ev.story?.toLowerCase().includes('alice') || ev.player?.toLowerCase().includes('alice'));
+    }
+
+    // Verify admin.html contains Player & IP directory UI elements
+    const resHtml = await fetch(`${serverUrl}/admin`);
+    const html = await resHtml.text();
+    assert.ok(html.includes('id="player-directory-tbody"'));
+    assert.ok(html.includes('id="stat-identified-players"'));
+    assert.ok(html.includes('id="filter-player-directory"'));
+    assert.ok(html.includes('badge-ip'));
   });
 });
