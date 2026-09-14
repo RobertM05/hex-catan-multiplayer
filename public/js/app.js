@@ -432,11 +432,10 @@ export class CatanApp {
     });
 
     // Ready Check
-    let isReady = false;
     document.getElementById('btn-toggle-ready').addEventListener('click', () => {
-      isReady = !isReady;
-      network.setReady(isReady);
-      document.getElementById('btn-toggle-ready').classList.toggle('btn-primary', !isReady);
+      const me = this.currentRoom?.players?.find(p => p.id === this.myPlayerId);
+      const nextReady = !(me?.isReady);
+      network.setReady(nextReady);
     });
 
     // Add Bot
@@ -489,6 +488,18 @@ export class CatanApp {
     const btnSpawnAgent = document.getElementById('btn-spawn-agent');
     if (btnSpawnAgent) {
       btnSpawnAgent.classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
+    }
+
+    const me = lobbyData.players.find(p => p.id === this.myPlayerId);
+    const readyBtn = document.getElementById('btn-toggle-ready');
+    if (readyBtn && me) {
+      readyBtn.classList.toggle('btn-primary', !me.isReady);
+    }
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn && isHost) {
+      const humansReady = lobbyData.players.filter(p => !p.isBot).every(p => p.isReady);
+      startBtn.disabled = !humansReady;
+      startBtn.title = humansReady ? '' : i18n.t('ERROR_PLAYERS_NOT_READY');
     }
 
     lobbyData.players.forEach(p => {

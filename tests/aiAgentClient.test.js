@@ -75,6 +75,9 @@ describe('AI-01: Autonomous AI Agent Client & Room Summoning', () => {
 
     // Agent joins room
     await agent.joinRoom(room.code);
+    for (const p of room.players) {
+      if (!p.isBot) roomManager.setPlayerReady(room.code, p.id, true);
+    }
 
     // Start game
     roomManager.startGame(room.code, hostData.id);
@@ -153,6 +156,9 @@ describe('AI-01: Autonomous AI Agent Client & Room Summoning', () => {
 
     await agent.connect();
     await agent.joinRoom(room.code);
+    for (const p of room.players) {
+      if (!p.isBot) roomManager.setPlayerReady(room.code, p.id, true);
+    }
 
     roomManager.startGame(room.code, hostData.id);
     const engine = room.engine;
@@ -229,6 +235,9 @@ describe('AI-01: Autonomous AI Agent Client & Room Summoning', () => {
 
     await agent.connect();
     await agent.joinRoom(room.code);
+    for (const p of room.players) {
+      if (!p.isBot) roomManager.setPlayerReady(room.code, p.id, true);
+    }
 
     roomManager.startGame(room.code, hostData.id);
     const engine = room.engine;

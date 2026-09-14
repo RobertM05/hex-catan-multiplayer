@@ -309,6 +309,11 @@ export class RoomManager {
       if (p.isBot) p.isReady = true;
     }
 
+    const notReady = room.players.filter(p => !p.isBot && !p.isReady);
+    if (notReady.length > 0) {
+      throw new Error('PLAYERS_NOT_READY');
+    }
+
     const mapSize = room.mapSize === 'auto'
       ? (room.players.length <= 4 ? 'standard' : room.players.length <= 6 ? 'extended' : 'large')
       : room.mapSize;

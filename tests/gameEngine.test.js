@@ -257,6 +257,7 @@ describe('Discard timer on 7 roll', () => {
     const roomManager = new RoomManager(mockIo);
     const room = roomManager.createRoom({ id: 'h1', name: 'Host1', socketId: 's1' });
     roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
     roomManager.startGame(room.code, 'h1');
 
     const engine = room.engine;
