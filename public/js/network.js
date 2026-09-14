@@ -15,6 +15,7 @@ export class NetworkClient {
     this.onTimerTick = null;
     this.onChatReceived = null;
     this.onError = null;
+    this.onKicked = null;
   }
 
   connect() {
@@ -45,6 +46,10 @@ export class NetworkClient {
 
       this.socket.on('chat_received', (data) => {
         if (this.onChatReceived) this.onChatReceived(data);
+      });
+
+      this.socket.on('player_kicked', (data) => {
+        if (this.onKicked) this.onKicked(data);
       });
     });
   }
