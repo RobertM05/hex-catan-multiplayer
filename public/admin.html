@@ -814,13 +814,21 @@
 
       lastEvents = events || [];
 
-      let filtered = lastEvents;
+      // Filter out internal dashboard polling so chat feed remains focused on real gameplay and messages
+      const meaningfulEvents = lastEvents.filter(e => {
+        if (e.type === 'HTTP' && (e.url?.startsWith('/api/admin/traffic') || e.story?.includes('/api/admin/traffic'))) {
+          return false;
+        }
+        return true;
+      });
+
+      let filtered = meaningfulEvents;
       if (feedFilter === 'chat') {
-        filtered = lastEvents.filter(e => e.type === 'CHAT_MESSAGE' || e.event === 'send_chat' || (e.story && e.story.startsWith('💬')));
+        filtered = meaningfulEvents.filter(e => e.type === 'CHAT_MESSAGE' || e.event === 'send_chat' || (e.story && e.story.startsWith('💬')));
       } else if (feedFilter === 'actions') {
-        filtered = lastEvents.filter(e => e.type === 'ACTION_SUCCESS');
+        filtered = meaningfulEvents.filter(e => e.type === 'ACTION_SUCCESS');
       } else if (feedFilter === 'errors') {
-        filtered = lastEvents.filter(e => e.type === 'ACTION_ERROR' || Boolean(e.error));
+        filtered = meaningfulEvents.filter(e => e.type === 'ACTION_ERROR' || Boolean(e.error));
       }
 
       if (countBadge) {
