@@ -21,12 +21,12 @@
 
   <!-- Header & Navigation Bar -->
   <header class="app-header">
-    <div class="brand-section">
+    <button type="button" class="brand-section" id="btn-brand-home" data-i18n-title="GO_HOME_TITLE" title="Go to homepage">
       <span class="brand-logo">
         <span class="ico" data-icon="hexagon"></span>
       </span>
-      <h1 class="brand-title" data-i18n="APP_TITLE">HexSettlers Online</h1>
-    </div>
+      <span class="brand-title" data-i18n="APP_TITLE">HexSettlers Online</span>
+    </button>
 
     <div class="header-actions">
       <!-- Sound Toggle -->
@@ -1193,6 +1193,17 @@
       </div>
       <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite & Lorc.</p>
       <button id="btn-close-rules" class="btn-glass btn-primary btn-after-copy" data-i18n="CANCEL_ACTION">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Confirm leave / homepage -->
+  <div id="confirm-home-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-home-title">
+    <div class="modal-box modal-confirm-home">
+      <h3 id="confirm-home-title" class="modal-title" data-i18n="GO_HOME_CONFIRM">Are you sure you wanna go back to the homepage?</h3>
+      <div class="confirm-home-actions">
+        <button type="button" id="btn-confirm-home-stay" class="btn-glass" data-i18n="GO_HOME_STAY">Stay</button>
+        <button type="button" id="btn-confirm-home-leave" class="btn-glass btn-danger" data-i18n="GO_HOME_LEAVE">Go back</button>
+      </div>
     </div>
   </div>
 

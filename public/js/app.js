@@ -88,6 +88,7 @@ export class CatanApp {
     this.progressPlay = null;
     this.seenProgressDrawKeys = new Set();
     this._myPlayerId = null;
+    this.leavingMatch = false;
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -169,6 +170,28 @@ export class CatanApp {
 
     // Initial English copy
     i18n.updateDOM();
+
+    document.getElementById('btn-brand-home')?.addEventListener('click', () => {
+      this.goToHomepageFromBrand();
+    });
+    document.getElementById('btn-confirm-home-stay')?.addEventListener('click', () => {
+      this.closeHomeConfirm();
+    });
+    document.getElementById('btn-confirm-home-leave')?.addEventListener('click', () => {
+      this.closeHomeConfirm();
+      this.leaveMatchOrLobby();
+    });
+    document.getElementById('confirm-home-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'confirm-home-modal') this.closeHomeConfirm();
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (this.leavingMatch) return;
+      if (this.gameState && this.currentRoom) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   }
 
   /* =========================================================
@@ -194,6 +217,54 @@ export class CatanApp {
       toast.style.transform = 'translateY(-10px)';
       setTimeout(() => toast.remove(), 300);
     }, 3500);
+  }
+
+  isOnHomepage() {
+    const lobby = document.getElementById('view-lobby');
+    return Boolean(lobby?.classList.contains('active')) && !this.currentRoom && !this.gameState;
+  }
+
+  goToHomepageFromBrand() {
+    if (this.isOnHomepage()) return;
+    this.openHomeConfirm();
+  }
+
+  openHomeConfirm() {
+    const modal = document.getElementById('confirm-home-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+    document.getElementById('btn-confirm-home-leave')?.focus();
+  }
+
+  closeHomeConfirm() {
+    document.getElementById('confirm-home-modal')?.classList.remove('active');
+  }
+
+  async leaveMatchOrLobby() {
+    this.leavingMatch = true;
+    try {
+      await network.leaveRoom();
+    } catch {
+      // still return home
+    }
+    this.returnToHomepage();
+  }
+
+  returnToHomepage({ kicked = false } = {}) {
+    this.leavingMatch = true;
+    this.gameState = null;
+    this.currentRoom = null;
+    this.selectedAction = null;
+    this.progressPlay = null;
+    network.currentRoomCode = null;
+    const path = window.location.pathname;
+    if (window.location.search) {
+      window.history.replaceState({}, '', path);
+    }
+    this.showView('view-lobby');
+    if (kicked) this.showToast(i18n.t('YOU_WERE_KICKED'), true);
+    this.refreshPublicRooms();
+    i18n.updateDOM();
   }
 
   /* =========================================================
@@ -471,7 +542,7 @@ export class CatanApp {
 
     // Leave Room
     document.getElementById('btn-leave-waiting').addEventListener('click', () => {
-      window.location.href = window.location.pathname;
+      this.leaveMatchOrLobby();
     });
   }
 
