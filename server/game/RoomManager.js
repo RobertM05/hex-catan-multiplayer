@@ -662,10 +662,25 @@ export class RoomManager {
           const robAction = BotAI.decideRobberMove(engine, curPlayer);
           engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
         } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+          if (engine.activeTrade && engine.activeTrade.fromPlayerId === curPlayer.id) {
+            if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
+              const partnerId = Array.from(engine.activeTrade.acceptedBy)[0];
+              this.resolveBotTrade(room, partnerId);
+              return;
+            }
+            return;
+          }
+
           const action = BotAI.decideTurnAction(engine, curPlayer);
           if (action.action === 'end_turn') {
             engine.endTurn(curPlayer.id);
             this.resetTurnTimer(room);
+          } else if (action.action === 'propose_trade') {
+            BotAI.applyTurnAction(engine, curPlayer, action);
+            this.broadcastState(room);
+            this.evaluateBotsTrade(room);
+            this.startBotTradeTimer(room, curPlayer.id);
+            return;
           } else {
             BotAI.applyTurnAction(engine, curPlayer, action);
             if (action.action === 'end_turn') this.resetTurnTimer(room);
@@ -696,75 +711,113 @@ export class RoomManager {
     }, 900);
   }
 
+  startBotTradeTimer(room, botPlayerId) {
+    if (room.botTradeTimer) {
+      clearTimeout(room.botTradeTimer);
+      room.botTradeTimer = null;
+    }
+    room.botTradeTimer = setTimeout(() => {
+      room.botTradeTimer = null;
+      const engine = room.engine;
+      if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId === botPlayerId) {
+        if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
+          const partnerId = Array.from(engine.activeTrade.acceptedBy)[0];
+          this.resolveBotTrade(room, partnerId);
+        } else {
+          try {
+            engine.cancelTrade(botPlayerId);
+          } catch (e) {}
+          this.broadcastState(room);
+          this.checkAndTriggerBotTurn(room);
+        }
+      }
+    }, 6000);
+  }
+
+  resolveBotTrade(room, partnerId) {
+    if (room.botTradeTimer) {
+      clearTimeout(room.botTradeTimer);
+      room.botTradeTimer = null;
+    }
+    if (room.isResolvingBotTrade) return;
+    room.isResolvingBotTrade = true;
+
+    setTimeout(() => {
+      room.isResolvingBotTrade = false;
+      const engine = room.engine;
+      if (!room.isStarted || !engine.activeTrade) return;
+
+      const proposerId = engine.activeTrade.fromPlayerId;
+      try {
+        engine.confirmTrade(proposerId, partnerId);
+      } catch (err) {
+        console.warn('Bot trade confirmation failed:', err.message);
+      }
+
+      this.broadcastState(room);
+      this.checkAndTriggerBotTurn(room);
+    }, 400);
+  }
+
+  checkBotTradeDeclines(room) {
+    const engine = room.engine;
+    if (!engine.activeTrade) return;
+    const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+    if (!proposer?.isBot) return;
+
+    const otherPlayers = engine.players.filter(p => p.id !== proposer.id);
+    const allDeclinedOrUnviable = otherPlayers.every(p => {
+      const hasDeclined = engine.activeTrade.declinedBy?.has(p.id);
+      const canAfford = Object.entries(engine.activeTrade.want).every(
+        ([res, amt]) => engine.getPlayerCardCount(p, res) >= amt
+      );
+      return hasDeclined || !canAfford;
+    });
+
+    if (allDeclinedOrUnviable) {
+      if (room.botTradeTimer) {
+        clearTimeout(room.botTradeTimer);
+        room.botTradeTimer = null;
+      }
+      setTimeout(() => {
+        if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId === proposer.id) {
+          try {
+            engine.cancelTrade(proposer.id);
+          } catch (e) {}
+          this.broadcastState(room);
+          this.checkAndTriggerBotTurn(room);
+        }
+      }, 300);
+    }
+  }
+
   evaluateBotsTrade(room) {
     const engine = room.engine;
     if (!engine.activeTrade) return;
-
-    const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
-    const vpTarget = engine.vpTarget || 10;
-    // Kingmaking protection: reject trading to a leader who is within 2 VP of victory
-    if (proposer && (proposer.victoryPoints || 0) >= vpTarget - 2) {
-      return;
-    }
-
-    const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
-    const getCardValue = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
 
     for (const player of room.players) {
       if (player.isBot && player.id !== engine.activeTrade.fromPlayerId) {
         const botPlayer = engine.players.find(p => p.id === player.id);
         if (!botPlayer) continue;
 
-        let canAfford = true;
-        for (const [res, amt] of Object.entries(engine.activeTrade.want)) {
-          if (amt > 0 && engine.getPlayerCardCount(botPlayer, res) < amt) {
-            canAfford = false;
-            break;
-          }
-        }
-
-        if (canAfford) {
-          let giveValue = 0;
-          let giveTotal = 0;
-          for (const [res, amt] of Object.entries(engine.activeTrade.give)) {
-            if (amt > 0) {
-              giveTotal += amt;
-              giveValue += amt * getCardValue(res);
-            }
-          }
-
-          let wantValue = 0;
-          let wantTotal = 0;
-          for (const [res, amt] of Object.entries(engine.activeTrade.want)) {
-            if (amt > 0) {
-              wantTotal += amt;
-              wantValue += amt * getCardValue(res);
-            }
-          }
-
-          // Reject 1:2 rip-offs (proposer must offer at least as many cards as asked)
-          if (giveTotal < wantTotal) continue;
-
-          // Reject commodity milking (value offered must be at least value demanded)
-          if (giveValue < wantValue) continue;
-
-          // Bot only gives away cards if it has a comfortable surplus or if the trade is strictly profitable
-          const hasSurplus = Object.entries(engine.activeTrade.want).every(([res, amt]) =>
-            amt <= 0 || engine.getPlayerCardCount(botPlayer, res) >= amt + 1
-          );
-          const isProfitable = giveValue > wantValue;
-
-          if (isProfitable || hasSurplus) {
-            setTimeout(() => {
-              if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId !== botPlayer.id) {
-                try {
-                  engine.respondToTrade(botPlayer.id, true);
-                  this.broadcastState(room);
-                } catch (e) {
-                  // ignore
+        if (BotAI.canBotAcceptTrade(engine, botPlayer, engine.activeTrade)) {
+          setTimeout(() => {
+            if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId !== botPlayer.id) {
+              try {
+                engine.respondToTrade(botPlayer.id, true);
+                this.broadcastState(room);
+                const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+                if (proposer?.isBot) {
+                  this.resolveBotTrade(room, botPlayer.id);
                 }
+              } catch (e) {
+                // ignore
               }
-            }, 600);
+            }
+          }, 600);
+        } else {
+          if (engine.activeTrade.declinedBy) {
+            engine.activeTrade.declinedBy.add(botPlayer.id);
           }
         }
       }
@@ -811,6 +864,7 @@ export class RoomManager {
     if (room) {
       if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
       if (room.discardTimer) clearTimeout(room.discardTimer);
+      if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
     }
     this.rooms.delete(code);
   }

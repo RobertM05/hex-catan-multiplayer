@@ -825,6 +825,27 @@ describe('AI-02 & UX-09: Bot Trade Balancing & Goal-Oriented Bank Trading', () =
     assert.equal(room.engine.activeTrade.acceptedBy.has(bot.id), false);
   });
 
+  it('BotAI proposes fair 1:1 player trade to fulfill city deficit before bank trade', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'bot1', name: 'Bot', isBot: true });
+    engine.addPlayer({ id: 'p2', name: 'Human' });
+    engine.startGame('standard');
+
+    const bot = engine.players[0];
+    const vId = Array.from(engine.grid.vertices.keys())[0];
+    engine.grid.vertices.get(vId).building = { type: 'settlement', playerId: bot.id };
+    bot.settlementsBuilt.push(vId);
+
+    // Needs 3 ore + 2 wheat for city. Has 2 ore, 2 wheat, and 4 brick surplus.
+    bot.resources = { wood: 0, brick: 4, wool: 0, wheat: 2, ore: 2 };
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    const action = BotAI.decideTurnAction(engine, bot);
+    assert.equal(action.action, 'propose_trade');
+    assert.deepEqual(action.give, { brick: 1 });
+    assert.deepEqual(action.want, { ore: 1 });
+  });
+
   it('BotAI executes goal-oriented bank trade to fulfill city deficit', () => {
     const engine = new GameEngine({ mode: 'base' });
     engine.addPlayer({ id: 'bot1', name: 'Bot', isBot: true });
@@ -839,6 +860,7 @@ describe('AI-02 & UX-09: Bot Trade Balancing & Goal-Oriented Bank Trading', () =
     // Needs 3 ore + 2 wheat for city. Has 2 ore, 2 wheat, and 4 brick surplus.
     bot.resources = { wood: 0, brick: 4, wool: 0, wheat: 2, ore: 2 };
     engine.phase = GAME_PHASES.TURN_ACTION;
+    bot.hasProposedTradeThisTurn = true;
 
     const action = BotAI.decideTurnAction(engine, bot);
     assert.equal(action.action, 'bank_trade');

@@ -255,6 +255,7 @@ export class GameEngine {
         this.activeTrade = null;
       } else {
         this.activeTrade.acceptedBy.delete(playerId);
+        this.activeTrade.declinedBy?.delete(playerId);
       }
     }
     this.pendingDiscards.delete(playerId);
@@ -2647,7 +2648,8 @@ export class GameEngine {
       fromPlayerId: playerId,
       give,
       want,
-      acceptedBy: new Set()
+      acceptedBy: new Set(),
+      declinedBy: new Set()
     };
 
     this.logEvent({
@@ -2671,24 +2673,28 @@ export class GameEngine {
         if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
       }
       this.activeTrade.acceptedBy.add(playerId);
+      if (this.activeTrade.declinedBy) this.activeTrade.declinedBy.delete(playerId);
       return { trade: this.activeTrade, accepted: true, playerId };
-    }
+    } else {
+      this.activeTrade.acceptedBy.delete(playerId);
+      if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
+      this.activeTrade.declinedBy.add(playerId);
 
-    const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
-    this.lastTradeEvent = {
-      id: `trade_declined_${Date.now()}`,
-      type: 'declined',
-      playerId,
-      playerName: responder.name,
-      fromPlayerId: this.activeTrade.fromPlayerId
-    };
-    this.logEvent({
-      type: 'TRADE_DECLINED',
-      messageKey: 'LOG_TRADE_DECLINED',
-      args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
-    });
-    this.activeTrade = null;
-    return { trade: null, accepted: false, playerId, declined: true };
+      const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
+      this.lastTradeEvent = {
+        id: `trade_declined_${Date.now()}`,
+        type: 'declined',
+        playerId,
+        playerName: responder.name,
+        fromPlayerId: this.activeTrade.fromPlayerId
+      };
+      this.logEvent({
+        type: 'TRADE_DECLINED',
+        messageKey: 'LOG_TRADE_DECLINED',
+        args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
+      });
+      return { trade: this.activeTrade, accepted: false, playerId, declined: true };
+    }
   }
 
   confirmTrade(playerId, targetPlayerId) {
@@ -2763,6 +2769,7 @@ export class GameEngine {
     player.merchantFleetActive = false;
     player.craneDiscount = false;
     player.medicineActive = false;
+    player.hasProposedTradeThisTurn = false;
     this.alchemistDice = null;
 
     // Check victory
@@ -3186,7 +3193,8 @@ export class GameEngine {
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
-        acceptedBy: Array.from(this.activeTrade.acceptedBy)
+        acceptedBy: Array.from(this.activeTrade.acceptedBy),
+        declinedBy: Array.from(this.activeTrade.declinedBy || [])
       } : null,
       lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,

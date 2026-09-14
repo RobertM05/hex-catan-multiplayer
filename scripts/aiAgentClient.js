@@ -41,6 +41,7 @@ export class CatanAIAgent {
     this.isActing = false;
     this.hasJoined = false;
     this.spawnedAgent = spawnedAgent;
+    this.hasProposedTradeThisTurn = false;
   }
 
   async connect() {
@@ -158,6 +159,13 @@ export class CatanAIAgent {
 
     const curPlayer = state.players[state.currentTurnPlayerIndex];
     const isMyTurn = curPlayer?.id === this.myPlayerId;
+    if (!isMyTurn) {
+      this.hasProposedTradeThisTurn = false;
+    }
+
+    if (state.activeTrade && state.activeTrade.fromPlayerId !== this.myPlayerId) {
+      this.handleIncomingTrade(state, me);
+    }
 
     const hasAction = (
       ((state.phase === 'SETUP_ROUND_1' || state.phase === 'SETUP_ROUND_2') && isMyTurn) ||
@@ -319,6 +327,7 @@ export class CatanAIAgent {
   }
 
   async handleRoll() {
+    this.hasProposedTradeThisTurn = false;
     this.log('[AI-Agent] Rolling dice...');
     await this.sendAction('roll_dice', {});
   }
@@ -539,6 +548,97 @@ export class CatanAIAgent {
       }
     }
 
+    // 8. Goal-oriented player trade proposal: if missing 1 card for a build goal and have surplus
+    if (!this.hasProposedTradeThisTurn && !state.activeTrade) {
+      const goals = [];
+      if ((me.citiesRemaining || 0) > 0 && me.settlementsBuilt?.length > 0) {
+        goals.push({ ore: 3, wheat: 2 });
+      }
+      if ((me.settlementsRemaining || 0) > 0) {
+        goals.push({ wood: 1, brick: 1, wool: 1, wheat: 1 });
+      }
+      if ((me.roadsRemaining || 0) > 0) {
+        goals.push({ wood: 1, brick: 1 });
+      }
+
+      const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
+      const getVal = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
+
+      const tradeCandidates = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+      if (isCk) {
+        tradeCandidates.push('cloth', 'coin', 'paper');
+      }
+
+      for (const goal of goals) {
+        const deficits = {};
+        let totalDeficit = 0;
+        for (const [r, needed] of Object.entries(goal)) {
+          const have = this.getCardCount(me, r);
+          if (have < needed) {
+            deficits[r] = needed - have;
+            totalDeficit += deficits[r];
+          }
+        }
+
+        if (totalDeficit === 1) {
+          const wantRes = Object.keys(deficits)[0];
+          let bestGive = null;
+          let maxSurplus = 0;
+
+          for (const give of tradeCandidates) {
+            if (give === wantRes) continue;
+            const count = this.getCardCount(me, give);
+            const neededForGoal = goal[give] || 0;
+            const surplus = count - neededForGoal;
+
+            if (getVal(give) < getVal(wantRes)) continue;
+
+            if (surplus >= 1 && surplus > maxSurplus) {
+              maxSurplus = surplus;
+              bestGive = give;
+            }
+          }
+
+          if (bestGive) {
+            this.hasProposedTradeThisTurn = true;
+            this.log(`[AI-Agent] Proposing trade: offering 1 ${bestGive} for 1 ${wantRes}`);
+            try {
+              await this.sendAction('propose_trade', {
+                give: { [bestGive]: 1 },
+                want: { [wantRes]: 1 }
+              });
+
+              // Wait up to 3.5 seconds for responses
+              let waited = 0;
+              while (waited < 3500) {
+                await this.sleep(400);
+                waited += 400;
+                const curTrade = this.gameState?.activeTrade;
+                if (!curTrade || curTrade.fromPlayerId !== this.myPlayerId) break;
+                if (curTrade.acceptedBy && curTrade.acceptedBy.length > 0) {
+                  const partner = curTrade.acceptedBy[0];
+                  this.log(`[AI-Agent] Confirming trade with accepted player ${partner}`);
+                  await this.sendAction('confirm_trade', { targetPlayerId: partner });
+                  await this.sleep(this.turnDelay);
+                  return; // Re-evaluate so agent immediately builds its goal
+                }
+              }
+
+              // If still active and not accepted, cancel trade proposal
+              if (this.gameState?.activeTrade?.fromPlayerId === this.myPlayerId) {
+                this.log('[AI-Agent] No acceptances received, canceling trade proposal');
+                await this.sendAction('cancel_trade', {});
+                await this.sleep(this.turnDelay);
+              }
+            } catch (err) {
+              this.log(`[AI-Agent] Trade proposal error: ${err.message}`);
+            }
+            break;
+          }
+        }
+      }
+    }
+
     // Done with actions: End turn
     try {
       this.log('[AI-Agent] Ending turn');
@@ -546,6 +646,68 @@ export class CatanAIAgent {
     } catch (err) {
       this.log(`[AI-Agent] End turn error: ${err.message}`);
     }
+  }
+
+  getCardCount(player, type) {
+    if (!player) return 0;
+    if (['cloth', 'coin', 'paper'].includes(type)) {
+      return player.commodities?.[type] || 0;
+    }
+    return player.resources?.[type] || 0;
+  }
+
+  async handleIncomingTrade(state, me) {
+    const trade = state.activeTrade;
+    if (!trade) return;
+    const hasAccepted = trade.acceptedBy?.includes(this.myPlayerId);
+    const hasDeclined = trade.declinedBy?.includes(this.myPlayerId);
+    if (hasAccepted || hasDeclined) return;
+
+    const canAfford = Object.entries(trade.want || {}).every(
+      ([res, amt]) => this.getCardCount(me, res) >= amt
+    );
+    if (!canAfford) {
+      try {
+        await this.sendAction('respond_trade', { accept: false });
+      } catch (e) {}
+      return;
+    }
+
+    const proposer = state.players.find(p => p.id === trade.fromPlayerId);
+    const vpTarget = state.vpTarget || 10;
+    const isLeader = proposer && (proposer.victoryPoints || 0) >= vpTarget - 2;
+
+    const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
+    const getVal = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
+
+    let giveVal = 0;
+    let giveTot = 0;
+    for (const [r, amt] of Object.entries(trade.give || {})) {
+      giveTot += amt;
+      giveVal += amt * getVal(r);
+    }
+    let wantVal = 0;
+    let wantTot = 0;
+    for (const [r, amt] of Object.entries(trade.want || {})) {
+      wantTot += amt;
+      wantVal += amt * getVal(r);
+    }
+
+    if (giveTot < wantTot || giveVal < wantVal) {
+      try {
+        await this.sendAction('respond_trade', { accept: false });
+      } catch (e) {}
+      return;
+    }
+
+    const hasSurplus = Object.entries(trade.want || {}).every(
+      ([r, amt]) => this.getCardCount(me, r) >= amt + 1
+    );
+    const isFair = !isLeader && (hasSurplus || giveVal > wantVal);
+
+    try {
+      await this.sendAction('respond_trade', { accept: isFair });
+    } catch (e) {}
   }
 
   async handleMetropolis(state, me) {

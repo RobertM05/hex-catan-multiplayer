@@ -185,6 +185,13 @@ export class BotAI {
   }
 
   static decideTurnAction(engine, botPlayer) {
+    if (engine.activeTrade && engine.activeTrade.fromPlayerId === botPlayer.id) {
+      if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
+        return { action: 'confirm_trade', targetPlayerId: Array.from(engine.activeTrade.acceptedBy)[0] };
+      }
+      return { action: 'cancel_trade' };
+    }
+
     if (engine.mode === GAME_MODES.CITIES_KNIGHTS || engine.isCitiesKnights?.()) {
       const ck = this.decideCkTurnAction(engine, botPlayer);
       if (ck) return ck;
@@ -236,6 +243,12 @@ export class BotAI {
     // 5. Try buying a Dev Card
     if (engine.canBuyDevCard(botPlayer.id).ok) {
       return { action: 'buy_dev_card' };
+    }
+
+    // 5.5 Propose fair 1:1 trade with other players if missing 1 card for a build goal
+    const playerTrade = this.decidePlayerTrade(engine, botPlayer);
+    if (playerTrade) {
+      return playerTrade;
     }
 
     // 6. Goal-oriented bank trading (considering 2:1 and 3:1 harbors and Trade Level 5)
@@ -300,6 +313,127 @@ export class BotAI {
 
     // Nothing left to build or trade -> End turn
     return { action: 'end_turn' };
+  }
+
+  static canBotAcceptTrade(engine, botPlayer, activeTrade) {
+    if (!activeTrade || activeTrade.fromPlayerId === botPlayer.id) return false;
+
+    const proposer = engine.players.find(p => p.id === activeTrade.fromPlayerId);
+    const vpTarget = engine.vpTarget || 10;
+    // Kingmaking protection: reject trading to a leader who is within 2 VP of victory
+    if (proposer && (proposer.victoryPoints || 0) >= vpTarget - 2) {
+      return false;
+    }
+
+    const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
+    const getCardValue = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
+
+    for (const [res, amt] of Object.entries(activeTrade.want || {})) {
+      if (amt > 0 && engine.getPlayerCardCount(botPlayer, res) < amt) {
+        return false;
+      }
+    }
+
+    let giveValue = 0;
+    let giveTotal = 0;
+    for (const [res, amt] of Object.entries(activeTrade.give || {})) {
+      if (amt > 0) {
+        giveTotal += amt;
+        giveValue += amt * getCardValue(res);
+      }
+    }
+
+    let wantValue = 0;
+    let wantTotal = 0;
+    for (const [res, amt] of Object.entries(activeTrade.want || {})) {
+      if (amt > 0) {
+        wantTotal += amt;
+        wantValue += amt * getCardValue(res);
+      }
+    }
+
+    if (giveTotal <= 0 || wantTotal <= 0) return false;
+    // Reject 1:2 rip-offs (proposer must offer at least as many cards as asked)
+    if (giveTotal < wantTotal) return false;
+    // Reject commodity milking (value offered must be at least value demanded)
+    if (giveValue < wantValue) return false;
+
+    // Bot only gives away cards if it has a comfortable surplus or if the trade is strictly profitable
+    const hasSurplus = Object.entries(activeTrade.want).every(([res, amt]) =>
+      amt <= 0 || engine.getPlayerCardCount(botPlayer, res) >= amt + 1
+    );
+    const isProfitable = giveValue > wantValue;
+
+    return isProfitable || hasSurplus;
+  }
+
+  static decidePlayerTrade(engine, botPlayer) {
+    if (botPlayer.hasProposedTradeThisTurn) return null;
+    if (engine.activeTrade) return null;
+
+    // Prioritized build goals: City -> Settlement -> Road
+    const goals = [];
+    if (botPlayer.citiesRemaining > 0 && (botPlayer.settlementsBuilt?.length > 0 || botPlayer.settlements?.length > 0)) {
+      goals.push({ ore: 3, wheat: 2 });
+    }
+    if (botPlayer.settlementsRemaining > 0) {
+      goals.push({ wood: 1, brick: 1, wool: 1, wheat: 1 });
+    }
+    if (botPlayer.roadsRemaining > 0) {
+      goals.push({ wood: 1, brick: 1 });
+    }
+
+    const COMMODITY_KEYS = ['cloth', 'coin', 'paper'];
+    const getCardValue = (type) => (COMMODITY_KEYS.includes(type) ? 2.5 : 1.0);
+
+    const tradeCandidates = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    if (this.isCk(engine)) {
+      tradeCandidates.push('cloth', 'coin', 'paper');
+    }
+
+    for (const goal of goals) {
+      const deficits = {};
+      let totalDeficit = 0;
+      for (const [res, needed] of Object.entries(goal)) {
+        const have = engine.getPlayerCardCount(botPlayer, res);
+        if (have < needed) {
+          deficits[res] = needed - have;
+          totalDeficit += deficits[res];
+        }
+      }
+
+      // Propose player trade if exactly 1 card away from completing the build goal
+      if (totalDeficit === 1) {
+        const wantRes = Object.keys(deficits)[0];
+        let bestGive = null;
+        let maxSurplus = 0;
+
+        for (const give of tradeCandidates) {
+          if (give === wantRes) continue;
+          const count = engine.getPlayerCardCount(botPlayer, give);
+          const neededForGoal = goal[give] || 0;
+          const surplus = count - neededForGoal;
+
+          // Fair trade constraint: do not offer lower tier for higher tier (e.g. resource for commodity)
+          if (getCardValue(give) < getCardValue(wantRes)) continue;
+
+          if (surplus >= 1 && surplus > maxSurplus) {
+            maxSurplus = surplus;
+            bestGive = give;
+          }
+        }
+
+        if (bestGive) {
+          return {
+            action: 'propose_trade',
+            give: { [bestGive]: 1 },
+            want: { [wantRes]: 1 }
+          };
+        }
+      }
+    }
+
+    return null;
   }
 
   static getBestBankTradeRatio(engine, botPlayer, giveRes) {
@@ -615,11 +749,33 @@ export class BotAI {
     };
 
     if (!action) {
+      botPlayer.hasProposedTradeThisTurn = false;
       ensureNoPendingProgressDiscard();
       engine.endTurn(botPlayer.id);
       return;
     }
     switch (action.action) {
+      case 'propose_trade':
+        botPlayer.hasProposedTradeThisTurn = true;
+        engine.proposeTrade(botPlayer.id, action.give, action.want);
+        for (const other of engine.players) {
+          if (other.id !== botPlayer.id && other.isBot && this.canBotAcceptTrade(engine, other, engine.activeTrade)) {
+            try { engine.respondToTrade(other.id, true); } catch (e) {}
+            break;
+          }
+        }
+        break;
+      case 'confirm_trade':
+        engine.confirmTrade(botPlayer.id, action.targetPlayerId);
+        break;
+      case 'cancel_trade':
+        engine.cancelTrade(botPlayer.id);
+        break;
+      case 'end_turn':
+        botPlayer.hasProposedTradeThisTurn = false;
+        ensureNoPendingProgressDiscard();
+        engine.endTurn(botPlayer.id);
+        break;
       case 'build_city':
         engine.buildCity(botPlayer.id, action.vertexId);
         break;
@@ -660,6 +816,7 @@ export class BotAI {
         engine.chaseRobber(botPlayer.id, action.vertexId, action.hexId, action.targetPlayerId);
         break;
       default:
+        botPlayer.hasProposedTradeThisTurn = false;
         ensureNoPendingProgressDiscard();
         engine.endTurn(botPlayer.id);
     }
@@ -731,6 +888,7 @@ export class BotAI {
     }
 
     if (engine.phase === GAME_PHASES.TURN_ROLL) {
+      cur.hasProposedTradeThisTurn = false;
       const alchemist = this.decideProgressCardPlay(engine, cur);
       if (alchemist) engine.playProgressCard(cur.id, alchemist.cardId, alchemist.options);
       engine.rollDice(cur.id);
@@ -744,6 +902,17 @@ export class BotAI {
     }
 
     if (engine.phase === GAME_PHASES.TURN_ACTION) {
+      if (engine.activeTrade && engine.activeTrade.fromPlayerId === cur.id) {
+        if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
+          const target = Array.from(engine.activeTrade.acceptedBy)[0];
+          engine.confirmTrade(cur.id, target);
+          return true;
+        } else {
+          engine.cancelTrade(cur.id);
+          return true;
+        }
+      }
+
       const action = this.decideTurnAction(engine, cur);
       try {
         this.applyTurnAction(engine, cur, action);

@@ -85,7 +85,7 @@ describe('Robika fixes', () => {
     assert.match(app, /openHomeConfirm/);
   });
 
-  it('clears the trade and notifies when a player declines', () => {
+  it('tracks decline and notifies when a player declines a trade', () => {
     const engine = new GameEngine({ mode: 'base' });
     engine.addPlayer({ id: 'p1', name: 'Alice' });
     engine.addPlayer({ id: 'p2', name: 'Bob' });
@@ -96,7 +96,9 @@ describe('Robika fixes', () => {
     engine.proposeTrade('p1', { wood: 1 }, { brick: 1 });
     const res = engine.respondToTrade('p2', false);
     assert.equal(res.declined, true);
-    assert.equal(engine.activeTrade, null);
+    // Trade stays active — a single decline doesn't kill the offer for other players
+    assert.notEqual(engine.activeTrade, null);
+    assert.equal(engine.activeTrade.declinedBy.has('p2'), true);
     assert.equal(engine.lastTradeEvent.type, 'declined');
     assert.equal(engine.lastTradeEvent.playerId, 'p2');
     const state = engine.getStateForPlayer('p1');
