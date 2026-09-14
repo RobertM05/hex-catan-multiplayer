@@ -1139,7 +1139,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('respond_trade', (data, cb) => {
-    handleGameAction('respond_trade', data.code, (engine) => engine.respondToTrade(currentPlayerId, data.accept), cb, data);
+    handleGameAction('respond_trade', data.code, (engine) => {
+      const res = engine.respondToTrade(currentPlayerId, data.accept);
+      const room = roomManager.getRoom(currentRoomCode || data.code);
+      if (room && engine.activeTrade) {
+        const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+        if (proposer && proposer.isBot) {
+          if (data.accept) {
+            roomManager.resolveBotTrade(room, currentPlayerId);
+          } else {
+            roomManager.checkBotTradeDeclines(room);
+          }
+        }
+      }
+      return res;
+    }, cb, data);
   });
 
   socket.on('confirm_trade', (data, cb) => {
