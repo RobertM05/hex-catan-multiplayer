@@ -91,4 +91,32 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
       assert.equal(event.type, 'HTTP');
     }
   });
+
+  it('GET /api/admin/room/:code should return 404 for non-existent room and 200 with debug state for active room', async () => {
+    // 404 case
+    const res404 = await fetch(`${serverUrl}/api/admin/room/NONEXISTENT`);
+    assert.equal(res404.status, 404);
+    const data404 = await res404.json();
+    assert.equal(data404.error, 'ROOM_NOT_FOUND');
+
+    // Create a room via roomManager and test 200 case
+    const { roomManager } = await import('../server/server.js');
+    const session = roomManager.createPlayerSession();
+    const testRoom = roomManager.createRoom(
+      { id: session.id, name: 'DebugTester', socketId: 'test_sock' },
+      { name: 'Debug Room', mode: 'cities_knights' }
+    );
+
+    const res200 = await fetch(`${serverUrl}/api/admin/room/${testRoom.code}`);
+    assert.equal(res200.status, 200);
+    const data200 = await res200.json();
+    assert.equal(data200.status, 'ok');
+    assert.equal(data200.roomCode, testRoom.code);
+    assert.equal(data200.mode, 'cities_knights');
+    assert.ok(Array.isArray(data200.players));
+    assert.equal(data200.players[0].name, 'DebugTester');
+
+    // Cleanup
+    roomManager.rooms.delete(testRoom.code);
+  });
 });

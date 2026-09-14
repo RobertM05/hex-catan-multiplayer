@@ -221,6 +221,57 @@ app.get('/api/admin/traffic', (req, res) => {
   });
 });
 
+// API: Admin Room Inspection (Complete Authoritative Debug State)
+app.get('/api/admin/room/:code', (req, res) => {
+  const roomCode = req.params.code?.toUpperCase();
+  const room = roomManager.getRoom(roomCode);
+  if (!room) return res.status(404).json({ status: 'error', error: 'ROOM_NOT_FOUND' });
+
+  res.json({
+    status: 'ok',
+    roomCode: room.code,
+    name: room.name,
+    mode: room.mode,
+    isStarted: room.isStarted,
+    turnDuration: room.turnDuration,
+    mapSize: room.mapSize,
+    hostId: room.hostId,
+    playerCount: room.players.length,
+    maxPlayers: room.maxPlayers,
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      isBot: Boolean(p.isBot),
+      hasActiveSocket: Boolean(p.socketId),
+      victoryPoints: p.victoryPoints,
+      resources: p.resources,
+      commodities: p.commodities,
+      cityImprovements: p.cityImprovements,
+      cityWalls: p.cityWalls,
+      knightsAvailable: p.knightsAvailable,
+      knightsPlaced: p.knightsPlaced,
+      citiesBuilt: p.citiesBuilt,
+      settlementsBuilt: p.settlementsBuilt,
+      roadsBuilt: p.roadsBuilt
+    })),
+    engine: room.engine ? {
+      phase: room.engine.phase,
+      turnNumber: room.engine.turnNumber,
+      currentPlayerIndex: room.engine.currentTurnPlayerIndex,
+      currentPlayerId: room.engine.getCurrentPlayer()?.id,
+      currentPlayerName: room.engine.getCurrentPlayer()?.name,
+      barbarianPosition: room.engine.barbarianPosition,
+      eventDie: room.engine.eventDie,
+      bankStock: room.engine.getBankStock?.(),
+      knightsOverview: room.engine.getKnightsOverview?.(),
+      pendingDiscards: Array.from(room.engine.pendingDiscards || []),
+      pendingBarbarianDowngrades: Array.from(room.engine.pendingBarbarianDowngrades || []),
+      recentEventLog: room.engine.eventLog?.slice(-25)
+    } : null
+  });
+});
+
 // API: Spawn external AI agent into a room
 app.post('/api/rooms/:code/spawn-agent', (req, res) => {
   let reservedRoomCode = null;
@@ -327,9 +378,21 @@ io.on('connection', (socket) => {
         active.playerName = data.hostName || 'Host';
       }
 
+      console.log(`[${new Date().toLocaleTimeString()}] [ROOM CREATE] [${room.code}] Host: "${data.hostName || 'Host'}" (${ip} ${countryTag}) | Mode: ${room.mode} | Max: ${room.maxPlayers} | Turn: ${room.turnDuration}s | VP: ${room.engine?.vpTarget || 10}`);
+
+      recordTrafficEvent({
+        type: 'ROOM_CREATE',
+        roomCode: room.code,
+        hostName: data.hostName || 'Host',
+        mode: room.mode,
+        ip,
+        country
+      });
+
       if (callback) callback({ success: true, roomCode: room.code, playerId, reconnectToken: session.reconnectToken });
       roomManager.broadcastLobbyState(room);
     } catch (err) {
+      console.warn(`[${new Date().toLocaleTimeString()}] [ROOM CREATE FAIL] Host: "${data?.hostName}" | Error: ${err.message}`);
       if (callback) callback({ success: false, error: err.message });
     }
   });
@@ -349,6 +412,15 @@ io.on('connection', (socket) => {
       });
 
       if (result.error) {
+        console.warn(`[${new Date().toLocaleTimeString()}] [ROOM JOIN FAIL] [${roomCode}] Player: "${data?.playerName}" (${ip} ${countryTag}) | Error: ${result.error}`);
+        recordTrafficEvent({
+          type: 'ROOM_JOIN_ERROR',
+          roomCode,
+          playerName: data?.playerName,
+          error: result.error,
+          ip,
+          country
+        });
         if (callback) callback({ success: false, error: result.error });
         return;
       }
@@ -365,6 +437,18 @@ io.on('connection', (socket) => {
         active.playerName = data.playerName;
       }
 
+      console.log(`[${new Date().toLocaleTimeString()}] [ROOM JOIN] [${room.code}] Player: "${data.playerName}" ${result.reconnected ? '(RECONNECTED)' : '(NEW)'} (${ip} ${countryTag}) | Players: ${room.players.length}/${room.maxPlayers}`);
+
+      recordTrafficEvent({
+        type: 'ROOM_JOIN',
+        roomCode: room.code,
+        playerName: data.playerName,
+        reconnected: Boolean(result.reconnected),
+        playerCount: room.players.length,
+        ip,
+        country
+      });
+
       if (callback) callback({ success: true, roomCode: room.code, playerId: result.playerId, isStarted: room.isStarted, reconnectToken: result.reconnected ? undefined : session.reconnectToken });
 
       if (room.isStarted) {
@@ -373,6 +457,7 @@ io.on('connection', (socket) => {
         roomManager.broadcastLobbyState(room);
       }
     } catch (err) {
+      console.warn(`[${new Date().toLocaleTimeString()}] [ROOM JOIN ERROR] [${data?.code || data?.roomCode}] | Error: ${err.message}`);
       if (callback) callback({ success: false, error: err.message });
     }
   });
@@ -472,10 +557,26 @@ io.on('connection', (socket) => {
       if (!roomCode) throw new Error('ROOM_CODE_REQUIRED');
       if (currentRoomCode && roomCode !== currentRoomCode) throw new Error('ROOM_MISMATCH');
       const room = roomManager.startGame(roomCode, currentPlayerId);
+      const starterName = room.players.find(p => p.id === currentPlayerId)?.name || 'Host';
+      const firstTurnName = room.engine?.getCurrentPlayer()?.name || 'Player 1';
+
+      console.log(`[${new Date().toLocaleTimeString()}] [GAME START] [${room.code}] Started by "${starterName}" (${ip} ${countryTag}) | Mode: ${room.mode} | Players (${room.players.length}): ${room.players.map(p => p.name).join(', ')} | First turn: "${firstTurnName}"`);
+
+      recordTrafficEvent({
+        type: 'GAME_START',
+        roomCode: room.code,
+        mode: room.mode,
+        startedBy: starterName,
+        players: room.players.map(p => p.name),
+        ip,
+        country
+      });
+
       io.to(room.code).emit('game_started', { code: room.code });
       roomManager.broadcastState(room);
       if (callback) callback({ success: true });
     } catch (err) {
+      console.warn(`[${new Date().toLocaleTimeString()}] [GAME START FAIL] [${currentRoomCode}] Error: ${err.message}`);
       if (callback) callback({ success: false, error: err.message });
     }
   });
@@ -496,6 +597,9 @@ io.on('connection', (socket) => {
       };
       room.chatMessages.push(chatMsg);
       if (room.chatMessages.length > 50) room.chatMessages.shift();
+
+      console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${roomCode}] ${sender.name}: "${chatMsg.text}"`);
+
       io.to(room.code).emit('chat_received', chatMsg);
     }
   });
@@ -504,149 +608,226 @@ io.on('connection', (socket) => {
    * IN-GAME TURNS & ACTIONS
    * ========================================================= */
 
-  const handleGameAction = (code, actionFn, callback) => {
+  const handleGameAction = (actionNameOrCode, codeOrFn, actionFnOrCallback, maybeCallback) => {
+    let actionName = 'game_action';
+    let code = currentRoomCode;
+    let actionFn = null;
+    let callback = null;
+
+    if (typeof codeOrFn === 'function') {
+      // Called as: handleGameAction(code, actionFn, callback)
+      code = actionNameOrCode;
+      actionFn = codeOrFn;
+      callback = actionFnOrCallback;
+    } else {
+      // Called as: handleGameAction(actionName, code, actionFn, callback)
+      actionName = actionNameOrCode;
+      code = codeOrFn;
+      actionFn = actionFnOrCallback;
+      callback = maybeCallback;
+    }
+
     const roomCode = (code || currentRoomCode)?.toUpperCase();
     if (!roomCode || (currentRoomCode && code && currentRoomCode !== code.toUpperCase())) {
-      if (callback) callback({ success: false, error: 'ROOM_MISMATCH' });
+      const err = 'ROOM_MISMATCH';
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] "${actionName}" on room "${code}" (current: "${currentRoomCode}"): ${err}`);
+      if (callback) callback({ success: false, error: err });
       return;
     }
     const room = roomManager.getRoom(roomCode);
     if (!room || !room.isStarted) {
-      if (callback) callback({ success: false, error: 'ROOM_NOT_ACTIVE' });
+      const err = 'ROOM_NOT_ACTIVE';
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] [${roomCode}] "${actionName}": ${err}`);
+      if (callback) callback({ success: false, error: err });
       return;
     }
 
+    const player = room.players.find(p => p.id === currentPlayerId);
+    const pName = player ? player.name : (currentPlayerId || 'Unknown');
+    const phaseBefore = room.engine?.phase || 'UNKNOWN';
+    const turnBefore = room.engine?.turnNumber ?? '?';
+
     try {
       const result = actionFn(room.engine);
+      const timeStr = new Date().toLocaleTimeString();
+
+      if (actionName === 'roll_dice' && room.engine?.dice) {
+        const d = room.engine.dice;
+        const sum = (d.d1 || 0) + (d.d2 || 0);
+        const eventDieInfo = room.engine.eventDie ? ` | Event Die: ${room.engine.eventDie} (Fleet: ${room.engine.barbarianPosition}/7)` : '';
+        console.log(`[${timeStr}] [DICE ROLL] [${roomCode}] ${pName} rolled [${d.d1}, ${d.d2}] = ${sum}${eventDieInfo}`);
+      } else {
+        console.log(`[${timeStr}] [ACTION OK] [${roomCode}] Turn ${turnBefore} (${phaseBefore}) | ${pName} -> "${actionName}"`);
+      }
+
+      recordTrafficEvent({
+        type: 'ACTION_SUCCESS',
+        action: actionName,
+        roomCode,
+        playerId: currentPlayerId,
+        playerName: pName,
+        turn: turnBefore,
+        phase: phaseBefore,
+        ip,
+        country
+      });
+
+      if (room.engine?.isGameOver) {
+        const winner = room.engine.winner;
+        console.log(`[${timeStr}] [GAME OVER] [${roomCode}] 🏆 WINNER: ${winner?.name} with ${winner?.victoryPoints} VP!`);
+        recordTrafficEvent({
+          type: 'GAME_OVER',
+          roomCode,
+          winnerName: winner?.name,
+          winnerPoints: winner?.victoryPoints
+        });
+      }
+
       roomManager.resetTurnTimer(room);
       roomManager.broadcastState(room);
       roomManager.checkAndTriggerBotTurn(room);
       roomManager.checkDiscardTimer(room);
       if (callback) callback({ success: true, ...result });
     } catch (err) {
+      const timeStr = new Date().toLocaleTimeString();
+      console.warn(`[${timeStr}] [ACTION FAIL] [${roomCode}] Turn ${turnBefore} (${phaseBefore}) | ${pName} (${ip} ${countryTag}) -> "${actionName}" REJECTED: ${err.message}`);
+
+      recordTrafficEvent({
+        type: 'ACTION_ERROR',
+        action: actionName,
+        error: err.message,
+        roomCode,
+        playerId: currentPlayerId,
+        playerName: pName,
+        turn: turnBefore,
+        phase: phaseBefore,
+        ip,
+        country
+      });
+
       if (callback) callback({ success: false, error: err.message });
     }
   };
 
   socket.on('place_setup_settlement', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_setup_settlement', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('place_setup_city', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_setup_city', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('place_setup_road', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.placeSetupRoad(currentPlayerId, data?.edgeId), cb);
+    handleGameAction('place_setup_road', data?.code, (engine) => engine.placeSetupRoad(currentPlayerId, data?.edgeId), cb);
   });
 
   socket.on('roll_dice', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.rollDice(currentPlayerId), cb);
+    handleGameAction('roll_dice', data?.code, (engine) => engine.rollDice(currentPlayerId), cb);
   });
 
   socket.on('discard_cards', (data, cb) => {
     const discardedCards = data?.discarded || { ...(data?.resources || {}), ...(data?.commodities || {}) };
-    handleGameAction(data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb);
+    handleGameAction('discard_cards', data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb);
   });
 
   socket.on('move_robber', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb);
+    handleGameAction('move_robber', data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb);
   });
 
   socket.on('build_road', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.buildRoad(currentPlayerId, data.edgeId), cb);
+    handleGameAction('build_road', data.code, (engine) => engine.buildRoad(currentPlayerId, data.edgeId), cb);
   });
 
   socket.on('build_settlement', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.buildSettlement(currentPlayerId, data.vertexId), cb);
+    handleGameAction('build_settlement', data.code, (engine) => engine.buildSettlement(currentPlayerId, data.vertexId), cb);
   });
 
   socket.on('build_city', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('build_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('upgrade_city', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('upgrade_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('build_city_wall', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.buildCityWall(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('build_city_wall', data?.code, (engine) => engine.buildCityWall(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('improve_city', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.improveCityTrack(currentPlayerId, data?.track), cb);
+    handleGameAction('improve_city', data?.code, (engine) => engine.improveCityTrack(currentPlayerId, data?.track), cb);
   });
 
   socket.on('claim_aqueduct_resource', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.claimAqueductResource(currentPlayerId, data?.resource), cb);
+    handleGameAction('claim_aqueduct_resource', data?.code, (engine) => engine.claimAqueductResource(currentPlayerId, data?.resource), cb);
   });
 
   socket.on('choose_metropolis', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.chooseMetropolis(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('choose_metropolis', data?.code, (engine) => engine.chooseMetropolis(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('place_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.placeKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_knight', data?.code, (engine) => engine.placeKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('activate_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.activateKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('activate_knight', data?.code, (engine) => engine.activateKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('promote_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.promoteKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('promote_knight', data?.code, (engine) => engine.promoteKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('move_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.moveKnight(currentPlayerId, data?.fromVertexId, data?.toVertexId), cb);
+    handleGameAction('move_knight', data?.code, (engine) => engine.moveKnight(currentPlayerId, data?.fromVertexId, data?.toVertexId), cb);
   });
 
   socket.on('relocate_displaced_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('relocate_displaced_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('relocate_knight', (data, cb) => {
-    handleGameAction(data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('relocate_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
   });
 
   socket.on('chase_robber', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb);
+    handleGameAction('chase_robber', data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb);
   });
 
   socket.on('downgrade_city', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb);
+    handleGameAction('downgrade_city', data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb);
   });
 
   socket.on('choose_barbarian_reward', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+    handleGameAction('choose_barbarian_reward', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
   });
 
   socket.on('claim_barbarian_progress_card', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+    handleGameAction('claim_barbarian_progress_card', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
   });
 
   socket.on('buy_dev_card', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
+    handleGameAction('buy_dev_card', data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
   });
 
   socket.on('play_dev_card', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb);
+    handleGameAction('play_dev_card', data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb);
   });
 
   socket.on('play_progress_card', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb);
+    handleGameAction('play_progress_card', data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb);
   });
 
   socket.on('discard_progress_card', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb);
+    handleGameAction('discard_progress_card', data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb);
   });
 
   socket.on('bank_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb);
+    handleGameAction('bank_trade', data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb);
   });
 
   socket.on('propose_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => {
+    handleGameAction('propose_trade', data.code, (engine) => {
       const trade = engine.proposeTrade(currentPlayerId, data.give, data.want);
       const room = roomManager.getRoom(currentRoomCode || data.code);
       if (room) {
@@ -657,15 +838,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('respond_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.respondToTrade(currentPlayerId, data.accept), cb);
+    handleGameAction('respond_trade', data.code, (engine) => engine.respondToTrade(currentPlayerId, data.accept), cb);
   });
 
   socket.on('confirm_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.confirmTrade(currentPlayerId, data.targetPlayerId), cb);
+    handleGameAction('confirm_trade', data.code, (engine) => engine.confirmTrade(currentPlayerId, data.targetPlayerId), cb);
   });
 
   socket.on('cancel_trade', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.cancelTrade(currentPlayerId), cb);
+    handleGameAction('cancel_trade', data.code, (engine) => engine.cancelTrade(currentPlayerId), cb);
   });
 
   socket.on('leave_room', (data, cb) => {
@@ -685,7 +866,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_turn', (data, cb) => {
-    handleGameAction(data.code, (engine) => engine.endTurn(currentPlayerId), cb);
+    handleGameAction('end_turn', data.code, (engine) => engine.endTurn(currentPlayerId), cb);
   });
 
   socket.on('disconnect', (reason) => {
