@@ -439,6 +439,7 @@ describe('Player Removal & Disconnect Safety', () => {
     const roomManager = new RoomManager(mockIo);
     const room = roomManager.createRoom({ id: 'p1', name: 'Alice' });
     roomManager.joinRoom(room.code, { id: 'p2', name: 'Bob' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
     roomManager.startGame(room.code, 'p1');
 
     // Disconnect Alice

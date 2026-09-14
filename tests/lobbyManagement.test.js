@@ -97,6 +97,11 @@ describe('LOBBY: Socket Bot Spawning, Case-Insensitive Codes & Host Authorizatio
     assert.equal(fullAddBotRes.success, false);
     assert.equal(fullAddBotRes.error, 'ROOM_FULL');
 
+    // 6. Guest must ready up before start
+    await new Promise((resolve) => {
+      guestSocket.emit('set_ready', { code: createdRoomCode, isReady: true }, resolve);
+    });
+
     // 7. Host starts game
     const startRes = await new Promise((resolve) => {
       hostSocket.emit('start_game', { code: createdRoomCode }, resolve);

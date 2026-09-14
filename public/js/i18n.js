@@ -414,6 +414,7 @@ export const STRINGS = {
 
     // Errors & Tips
     ERROR_NOT_YOUR_TURN: "It is not your turn.",
+    ERROR_PLAYERS_NOT_READY: "All players must be ready before the host can start.",
     ERROR_NOT_ENOUGH_RESOURCES: "Not enough resources.",
     ERROR_DISTANCE_RULE_VIOLATION: "Distance rule violation: settlements must be at least 2 intersections apart.",
     ERROR_MUST_CONNECT_TO_ROAD: "Settlement must connect to your road.",
