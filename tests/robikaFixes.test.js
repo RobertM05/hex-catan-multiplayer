@@ -117,4 +117,31 @@ describe('Robika fixes', () => {
     assert.equal(vertex.building.type, 'settlement');
     assert.equal(engine.players[0].cityWalls, 3);
   });
+
+  it('Diplomat relocates an own open road and rolls back if the new edge is invalid', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    vertex.building = { type: 'settlement', playerId: 'p1', color: engine.players[0].color };
+    engine.players[0].settlementsBuilt.push(vertex.id);
+    const edgeId = vertex.adjacentEdges[0];
+    const edge = engine.grid.edges.get(edgeId);
+    edge.road = { playerId: 'p1', color: engine.players[0].color };
+    engine.players[0].roadsBuilt.push(edgeId);
+    const newEdgeId = vertex.adjacentEdges.find(id => id !== edgeId);
+    const card = { id: 'dip1', type: 'diplomat', played: false };
+    engine.players[0].progressCards.push(card);
+
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { edgeId, newEdgeId: 'missing-edge' }),
+      /EDGE_OCCUPIED/
+    );
+    assert.ok(engine.grid.edges.get(edgeId).road, 'original road restored');
+    assert.equal(card.played, false);
+
+    engine.playProgressCard('p1', card.id, { edgeId, newEdgeId });
+    assert.equal(engine.grid.edges.get(edgeId).road, null);
+    assert.ok(engine.grid.edges.get(newEdgeId).road);
+    assert.equal(card.played, true);
+  });
 });
