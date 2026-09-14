@@ -15,6 +15,9 @@ export const STRINGS = {
     GO_HOME_STAY: "Stay",
     GO_HOME_LEAVE: "Go back",
     YOU_WERE_KICKED: "You were kicked from the lobby.",
+    ERROR_KICKED_FROM_ROOM: "You were kicked from this room and cannot rejoin this session.",
+    ERROR_MUST_PEEK_FIRST: "Look at the cards first, then choose what to take.",
+    ERROR_TRADE_ALREADY_DECLINED: "You already declined this trade.",
     TOGGLE_SIDEBAR: "Players & chat",
 
     // Lobby

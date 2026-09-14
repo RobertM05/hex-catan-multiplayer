@@ -167,36 +167,42 @@ export class HexGrid {
       tokenPool = tokenPool.slice(0, hexCount - 2);
     }
 
-    // Shuffle arrays
     this.shuffle(resourcePool);
     this.shuffle(tokenPool);
 
-    // Assign to hexes, keeping 6 and 8 from being adjacent if possible
-    const hexList = Array.from(this.hexes.values());
-    let tokenIndex = 0;
-
-    for (let i = 0; i < hexList.length; i++) {
-      const hex = hexList[i];
-      const res = resourcePool[i] || RESOURCE_TYPES.WOOD;
-      hex.resource = res;
-      if (res === RESOURCE_TYPES.DESERT) {
-        hex.token = null;
-        if (!this.robberHexId) {
-          this.robberHexId = hex.id;
+    const applyPools = (resources, tokens) => {
+      const hexList = Array.from(this.hexes.values());
+      let tokenIndex = 0;
+      this.robberHexId = null;
+      for (let i = 0; i < hexList.length; i++) {
+        const hex = hexList[i];
+        const res = resources[i] || RESOURCE_TYPES.WOOD;
+        hex.resource = res;
+        if (res === RESOURCE_TYPES.DESERT) {
+          hex.token = null;
+          if (!this.robberHexId) this.robberHexId = hex.id;
+        } else {
+          hex.token = tokens[tokenIndex++] || 6;
         }
-      } else {
-        hex.token = tokenPool[tokenIndex++] || 6;
       }
-    }
+      if (!this.robberHexId && hexList.length > 0) this.robberHexId = hexList[0].id;
+    };
 
-    if (!this.robberHexId && hexList.length > 0) {
-      this.robberHexId = hexList[0].id;
+    let placed = false;
+    for (let attempt = 0; attempt < 60 && !placed; attempt++) {
+      const resources = resourcePool.slice();
+      const tokens = tokenPool.slice();
+      this.shuffle(resources);
+      this.shuffle(tokens);
+      applyPools(resources, tokens);
+      this.resolveRedNumberAdjacencies();
+      this.resolveSameResourceClusters();
+      if (!this.hasTightSameResourceCluster()) placed = true;
     }
-
-    // Enforce official Red Number Rule (no adjacent 6 and 8)
-    this.resolveRedNumberAdjacencies();
-    // Avoid three of the same resource meeting at a hex (no tight same-type clusters)
-    this.resolveSameResourceClusters();
+    if (!placed) {
+      this.resolveRedNumberAdjacencies();
+      this.resolveSameResourceClusters();
+    }
   }
 
   buildGraph() {
@@ -386,40 +392,39 @@ export class HexGrid {
     return Array.from(this.hexes.values()).some(hex => this.sameResourceNeighborCount(hex) >= 2);
   }
 
+  clusterScore() {
+    return Array.from(this.hexes.values()).reduce((n, hex) => n + (this.sameResourceNeighborCount(hex) >= 2 ? 1 : 0), 0);
+  }
+
   resolveSameResourceClusters() {
-    const maxAttempts = 800;
-    let attempts = 0;
-    while (this.hasTightSameResourceCluster() && attempts < maxAttempts) {
-      attempts++;
+    for (let attempts = 0; attempts < 2500; attempts++) {
+      if (!this.hasTightSameResourceCluster()) return true;
       const crowded = Array.from(this.hexes.values()).find(hex => this.sameResourceNeighborCount(hex) >= 2);
-      if (!crowded) break;
+      if (!crowded) return true;
       const candidates = Array.from(this.hexes.values()).filter(h =>
         h.id !== crowded.id
         && h.resource
         && h.resource !== crowded.resource
         && h.resource !== RESOURCE_TYPES.DESERT
       );
-      this.shuffle(candidates);
-      let swapped = false;
+      let best = null;
+      let bestScore = this.clusterScore();
       for (const candidate of candidates) {
         const tmp = crowded.resource;
         crowded.resource = candidate.resource;
         candidate.resource = tmp;
-        const stillCrowded = this.sameResourceNeighborCount(crowded) >= 2
-          || this.sameResourceNeighborCount(candidate) >= 2;
-        if (!stillCrowded) {
-          swapped = true;
-          break;
-        }
+        const score = this.clusterScore();
         candidate.resource = crowded.resource;
         crowded.resource = tmp;
+        if (score < bestScore) {
+          bestScore = score;
+          best = candidate;
+        }
       }
-      if (!swapped && candidates.length > 0) {
-        const fallback = candidates[0];
-        const tmp = crowded.resource;
-        crowded.resource = fallback.resource;
-        fallback.resource = tmp;
-      }
+      if (!best) return false;
+      const tmp = crowded.resource;
+      crowded.resource = best.resource;
+      best.resource = tmp;
     }
     return !this.hasTightSameResourceCluster();
   }

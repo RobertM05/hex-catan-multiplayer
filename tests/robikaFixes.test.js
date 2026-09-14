@@ -23,8 +23,12 @@ function emptyVertex(engine) {
 
 describe('Robika fixes', () => {
   it('avoids three mutually adjacent hexes of the same resource', () => {
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 80; i++) {
       const grid = new HexGrid({ mapSize: 'standard' });
+      assert.equal(grid.hasTightSameResourceCluster(), false);
+    }
+    for (let i = 0; i < 20; i++) {
+      const grid = new HexGrid({ mapSize: 'extended' });
       assert.equal(grid.hasTightSameResourceCluster(), false);
     }
   });
@@ -85,22 +89,47 @@ describe('Robika fixes', () => {
     assert.match(app, /openHomeConfirm/);
   });
 
-  it('clears the trade and notifies when a player declines', () => {
+  it('keeps a trade open when one opponent declines so others can still accept', () => {
     const engine = new GameEngine({ mode: 'base' });
     engine.addPlayer({ id: 'p1', name: 'Alice' });
     engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Cara' });
     engine.startGame('standard');
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.wood = 2;
     engine.players[1].resources.brick = 2;
+    engine.players[2].resources.brick = 2;
     engine.proposeTrade('p1', { wood: 1 }, { brick: 1 });
     const res = engine.respondToTrade('p2', false);
     assert.equal(res.declined, true);
-    assert.equal(engine.activeTrade, null);
+    assert.ok(engine.activeTrade, 'offer stays open for other players');
     assert.equal(engine.lastTradeEvent.type, 'declined');
     assert.equal(engine.lastTradeEvent.playerId, 'p2');
     const state = engine.getStateForPlayer('p1');
     assert.equal(state.lastTradeEvent.type, 'declined');
+    assert.deepEqual(state.activeTrade.declinedBy, ['p2']);
+    assert.throws(() => engine.respondToTrade('p2', true), /TRADE_ALREADY_DECLINED/);
+    engine.respondToTrade('p3', true);
+    engine.confirmTrade('p1', 'p3');
+    assert.equal(engine.activeTrade, null);
+    assert.equal(engine.players[2].resources.wood, 1);
+  });
+
+  it('closes the trade only after every other player declines', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Cara' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 2;
+    engine.players[1].resources.brick = 2;
+    engine.players[2].resources.brick = 2;
+    engine.proposeTrade('p1', { wood: 1 }, { brick: 1 });
+    engine.respondToTrade('p2', false);
+    assert.ok(engine.activeTrade);
+    engine.respondToTrade('p3', false);
+    assert.equal(engine.activeTrade, null);
   });
 
   it('lets barbarians pillage a walled city and returns the wall to supply', () => {
@@ -163,6 +192,21 @@ describe('Robika fixes', () => {
     assert.equal(engine.players[0].resources.wool, 1);
   });
 
+  it('rejects Master Merchant steal until the hand has been peeked', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].victoryPoints = 1;
+    engine.players[1].victoryPoints = 4;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    const card = { id: 'mm2', type: 'master_merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    const first = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
+    assert.equal(first.peek, true);
+    assert.equal(card.played, false);
+    assert.equal(engine.players[0].resources.wool || 0, 0);
+  });
+
   it('lets Spy peek opponent progress cards without consuming the Spy', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
@@ -206,5 +250,40 @@ describe('Robika fixes', () => {
     );
     assert.equal(hexes[0].token, token);
     assert.equal(card.played, false);
+  });
+
+  it('blocks a kicked session from rejoining the same room', () => {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const host = rm.createPlayerSession();
+    const guest = rm.createPlayerSession();
+    const room = rm.createRoom({
+      id: host.id,
+      name: 'Host',
+      socketId: 's1',
+      reconnectTokenHash: host.reconnectTokenHash
+    });
+    rm.joinRoom(room.code, {
+      id: guest.id,
+      name: 'Guest',
+      socketId: 's2',
+      reconnectTokenHash: guest.reconnectTokenHash
+    });
+    rm.removePlayerOrBot(room.code, guest.id, { kicked: true });
+    const again = rm.joinRoom(room.code, {
+      socketId: 's2-new',
+      reconnectToken: guest.reconnectToken,
+      allowLegacyId: false,
+      name: 'Guest'
+    });
+    assert.equal(again.error, 'KICKED_FROM_ROOM');
+    rm.destroyRoom(room.code);
+  });
+
+  it('keeps robber hex clicks ahead of leftover Inventor targeting', () => {
+    const app = readFileSync(join(root, 'public/js/app.js'), 'utf8');
+    const clickHandler = app.slice(app.indexOf('this.boardRenderer.onHexClick'));
+    const robberIdx = clickHandler.indexOf("phase === 'TURN_ROBBER'");
+    const progressIdx = clickHandler.indexOf("progress_hex");
+    assert.ok(robberIdx >= 0 && progressIdx > robberIdx);
   });
 });

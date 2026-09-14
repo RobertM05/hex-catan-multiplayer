@@ -171,8 +171,9 @@ export class GameEngine {
     this.discardDeadline = null; // timestamp by which pending players must discard
 
     // Trade state
-    this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
+    this.activeTrade = null; // { fromPlayerId, give, want, acceptedBy, declinedBy }
     this.lastTradeEvent = null;
+    this.pendingProgressPeek = null;
 
     // Road building state
     this.freeRoadsRemaining = 0;
@@ -255,7 +256,12 @@ export class GameEngine {
         this.activeTrade = null;
       } else {
         this.activeTrade.acceptedBy.delete(playerId);
+        this.activeTrade.declinedBy?.delete(playerId);
+        this.closeTradeIfEveryoneDeclined();
       }
+    }
+    if (this.pendingProgressPeek?.playerId === playerId || this.pendingProgressPeek?.targetPlayerId === playerId) {
+      this.pendingProgressPeek = null;
     }
     this.pendingDiscards.delete(playerId);
     this.pendingBarbarianDowngrades.delete(playerId);
@@ -2154,8 +2160,18 @@ export class GameEngine {
           throw new Error('TARGET_NOT_AHEAD_IN_VP');
         }
         const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
-        if (options.peek || steal.length !== 2) {
-          if (!options.peek && steal.length) throw new Error('STEAL_TWO_CARDS');
+        const peeked = this.pendingProgressPeek?.playerId === playerId
+          && this.pendingProgressPeek?.cardId === cardId
+          && this.pendingProgressPeek?.cardType === 'master_merchant'
+          && this.pendingProgressPeek?.targetPlayerId === target.id;
+        if (options.peek || !peeked || steal.length !== 2) {
+          if (steal.length && steal.length !== 2 && peeked && !options.peek) throw new Error('STEAL_TWO_CARDS');
+          this.pendingProgressPeek = {
+            playerId,
+            cardId,
+            cardType: 'master_merchant',
+            targetPlayerId: target.id
+          };
           result.peek = true;
           result.targetPlayerId = target.id;
           result.revealedHand = {
@@ -2164,6 +2180,7 @@ export class GameEngine {
           };
           break;
         }
+        this.pendingProgressPeek = null;
         const taken = [];
         for (const type of steal) {
           if (this.getPlayerCardCount(target, type) < 1) throw new Error('TARGET_MISSING_CARDS');
@@ -2420,19 +2437,27 @@ export class GameEngine {
         if (!unplayedTargetCards.length) {
           throw new Error('TARGET_HAS_NO_PROGRESS_CARDS');
         }
-        if (options.peek) {
+        const peeked = this.pendingProgressPeek?.playerId === playerId
+          && this.pendingProgressPeek?.cardId === cardId
+          && this.pendingProgressPeek?.cardType === 'spy'
+          && this.pendingProgressPeek?.targetPlayerId === target.id;
+        if (options.peek || !options.stealCardId || !peeked) {
+          if (options.stealCardId && !peeked && !options.peek) throw new Error('MUST_PEEK_FIRST');
+          this.pendingProgressPeek = {
+            playerId,
+            cardId,
+            cardType: 'spy',
+            targetPlayerId: target.id
+          };
           result.peek = true;
           result.targetPlayerId = target.id;
           result.targetProgressCards = unplayedTargetCards.map(c => ({ id: c.id, type: c.type }));
           break;
         }
+        this.pendingProgressPeek = null;
         let stolenCard;
-        if (options.stealCardId) {
-          stolenCard = unplayedTargetCards.find(c => c.id === options.stealCardId);
-          if (!stolenCard) throw new Error('CARD_NOT_FOUND_IN_TARGET_HAND');
-        } else {
-          stolenCard = unplayedTargetCards[0];
-        }
+        stolenCard = unplayedTargetCards.find(c => c.id === options.stealCardId);
+        if (!stolenCard) throw new Error('CARD_NOT_FOUND_IN_TARGET_HAND');
         const stolenIdx = target.progressCards.findIndex(c => c.id === stolenCard.id);
         target.progressCards.splice(stolenIdx, 1);
         if (this.pendingProgressDiscard && this.countUnplayedProgressCards(target) <= PROGRESS_CARD_HAND_LIMIT) {
@@ -2647,7 +2672,8 @@ export class GameEngine {
       fromPlayerId: playerId,
       give,
       want,
-      acceptedBy: new Set()
+      acceptedBy: new Set(),
+      declinedBy: new Set()
     };
 
     this.logEvent({
@@ -2666,6 +2692,7 @@ export class GameEngine {
     const responder = this.players.find(p => p.id === playerId);
     if (!responder) throw new Error('PLAYER_NOT_FOUND');
     if (accept) {
+      if (this.activeTrade.declinedBy?.has(playerId)) throw new Error('TRADE_ALREADY_DECLINED');
       // Check responder has what the current player wants
       for (const [res, amount] of Object.entries(this.activeTrade.want)) {
         if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
@@ -2675,6 +2702,9 @@ export class GameEngine {
     }
 
     const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
+    this.activeTrade.acceptedBy.delete(playerId);
+    if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
+    this.activeTrade.declinedBy.add(playerId);
     this.lastTradeEvent = {
       id: `trade_declined_${Date.now()}`,
       type: 'declined',
@@ -2687,14 +2717,30 @@ export class GameEngine {
       messageKey: 'LOG_TRADE_DECLINED',
       args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
     });
-    this.activeTrade = null;
-    return { trade: null, accepted: false, playerId, declined: true };
+    const closed = this.closeTradeIfEveryoneDeclined();
+    return { trade: this.activeTrade, accepted: false, playerId, declined: true, closed };
+  }
+
+  closeTradeIfEveryoneDeclined() {
+    if (!this.activeTrade) return true;
+    const others = this.players.filter(p => p.id !== this.activeTrade.fromPlayerId);
+    if (!others.length) {
+      this.activeTrade = null;
+      return true;
+    }
+    const declined = this.activeTrade.declinedBy || new Set();
+    if (others.every(p => declined.has(p.id))) {
+      this.activeTrade = null;
+      return true;
+    }
+    return false;
   }
 
   confirmTrade(playerId, targetPlayerId) {
     if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
     if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
     if (!this.activeTrade.acceptedBy.has(targetPlayerId)) throw new Error('PLAYER_DID_NOT_ACCEPT');
+    if (this.activeTrade.declinedBy?.has(targetPlayerId)) throw new Error('TRADE_ALREADY_DECLINED');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
     const initiator = this.players.find(p => p.id === playerId);
@@ -2757,6 +2803,7 @@ export class GameEngine {
     }
 
     this.activeTrade = null;
+    this.pendingProgressPeek = null;
     this.freeRoadsRemaining = 0;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
@@ -3185,8 +3232,11 @@ export class GameEngine {
       pendingKnightRelocation: this.pendingKnightRelocation,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
-        ...this.activeTrade,
-        acceptedBy: Array.from(this.activeTrade.acceptedBy)
+        fromPlayerId: this.activeTrade.fromPlayerId,
+        give: this.activeTrade.give,
+        want: this.activeTrade.want,
+        acceptedBy: Array.from(this.activeTrade.acceptedBy || []),
+        declinedBy: Array.from(this.activeTrade.declinedBy || [])
       } : null,
       lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,

@@ -445,7 +445,7 @@ export class CatanApp {
           this.enterWaitingRoom(res.roomCode);
         }
       } catch (err) {
-        this.showToast(err.message, true);
+        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
       }
     });
   }
@@ -932,9 +932,6 @@ export class CatanApp {
       if (this.selectedAction && this.selectedAction.type === 'chase_robber') {
         this.openRobberTargetModal(hexId, { chaseFrom: this.selectedAction.fromVertexId });
         return;
-      }
-      if (this.gameState && this.gameState.phase === 'TURN_ROBBER') {
-        this.openRobberTargetModal(hexId);
       }
     };
 
@@ -3328,14 +3325,17 @@ export class CatanApp {
     if (!s) return;
 
     if (this.lastRenderedPhase && this.lastRenderedPhase !== s.phase) {
-      if (this.selectedAction?.type === 'progress_hex' || s.phase === 'TURN_ROBBER' || this.lastRenderedPhase === 'TURN_ACTION') {
-        if (s.phase !== 'TURN_ACTION') {
-          this.clearActiveAction();
+      if (s.phase !== 'TURN_ACTION') {
+        if (this.progressPlay || this.selectedAction?.type === 'progress_hex' || String(this.selectedAction?.type || '').startsWith('progress_')) {
           this.closeProgressCardModal();
         }
       }
     }
     this.lastRenderedPhase = s.phase;
+
+    if (s.phase === 'TURN_ROBBER' && s.players[s.currentTurnPlayerIndex]?.id === this.myPlayerId) {
+      this.selectedAction = { type: 'robber' };
+    }
 
     if (s.lastTradeEvent?.id && s.lastTradeEvent.id !== this.seenTradeEventId) {
       this.seenTradeEventId = s.lastTradeEvent.id;
@@ -3777,6 +3777,12 @@ export class CatanApp {
     }
 
     const isMine = activeTrade.fromPlayerId === this.myPlayerId;
+    const iDeclined = !isMine && (activeTrade.declinedBy || []).includes(this.myPlayerId);
+    if (iDeclined) {
+      banner.classList.remove('is-visible');
+      banner.innerHTML = '';
+      return;
+    }
     banner.classList.add('is-visible');
 
     const from = this.gameState ? this.gameState.players.find(p => p.id === activeTrade.fromPlayerId) : null;

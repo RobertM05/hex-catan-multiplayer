@@ -638,9 +638,33 @@ export class BotAI {
       case 'play_dev_card':
         engine.playDevCard(botPlayer.id, action.cardId);
         break;
-      case 'play_progress_card':
-        engine.playProgressCard(botPlayer.id, action.cardId, action.options || {});
+      case 'play_progress_card': {
+        const result = engine.playProgressCard(botPlayer.id, action.cardId, action.options || {});
+        if (result?.peek && result.cardType === 'spy') {
+          const stealCardId = result.targetProgressCards?.[0]?.id;
+          if (stealCardId) {
+            engine.playProgressCard(botPlayer.id, action.cardId, {
+              targetPlayerId: action.options?.targetPlayerId || result.targetPlayerId,
+              stealCardId
+            });
+          }
+        } else if (result?.peek && result.cardType === 'master_merchant') {
+          const steal = [];
+          for (const [res, n] of Object.entries(result.revealedHand?.resources || {})) {
+            for (let i = 0; i < n && steal.length < 2; i++) steal.push(res);
+          }
+          for (const [com, n] of Object.entries(result.revealedHand?.commodities || {})) {
+            for (let i = 0; i < n && steal.length < 2; i++) steal.push(com);
+          }
+          if (steal.length === 2) {
+            engine.playProgressCard(botPlayer.id, action.cardId, {
+              targetPlayerId: action.options?.targetPlayerId || result.targetPlayerId,
+              steal
+            });
+          }
+        }
         break;
+      }
       case 'place_knight':
         engine.placeKnight(botPlayer.id, action.vertexId);
         break;

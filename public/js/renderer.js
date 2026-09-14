@@ -944,7 +944,7 @@ export class BoardRenderer {
     const { x, y } = hex.center;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'merchant-figure');
-    g.setAttribute('transform', `translate(${x + 18}, ${y + 14})`);
+    g.setAttribute('transform', `translate(${x - 26}, ${y + 20})`);
 
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     title.textContent = i18n.t('MERCHANT_TOKEN');

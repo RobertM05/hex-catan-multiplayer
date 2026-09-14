@@ -1176,6 +1176,8 @@ describe('CK-05: Trade Progress Cards', () => {
     engine.players[1].resources.wool = 1;
     engine.players[1].commodities.cloth = 1;
     const card = giveCard(engine.players[0], 'master_merchant');
+    const peek = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
+    assert.equal(peek.peek, true);
     const res = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
     assert.deepEqual(res.stolen, ['wool', 'cloth']);
     assert.equal(engine.players[0].resources.wool, 1);
@@ -2162,6 +2164,11 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     const opponentCard = { id: 'c-opp-1', type: 'crane', played: false };
     p2.progressCards.push(opponentCard);
 
+    assert.throws(() => {
+      engine.playProgressCard('p1', cardSpy.id, { targetPlayerId: 'p2', stealCardId: 'c-opp-1' });
+    }, /MUST_PEEK_FIRST/);
+    const peek = engine.playProgressCard('p1', cardSpy.id, { targetPlayerId: 'p2', peek: true });
+    assert.equal(peek.peek, true);
     const res = engine.playProgressCard('p1', cardSpy.id, { targetPlayerId: 'p2', stealCardId: 'c-opp-1' });
     assert.equal(res.stolenCard.type, 'crane');
     assert.equal(p2.progressCards.some(c => c.id === 'c-opp-1'), false);

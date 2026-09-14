@@ -94,7 +94,8 @@ export class RoomManager {
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
-      agentSpawnTimestamps: []
+      agentSpawnTimestamps: [],
+      kickedTokenHashes: new Set()
     };
 
     // Add host as first player
@@ -144,6 +145,13 @@ export class RoomManager {
   joinRoom(code, playerData) {
     const room = this.getRoom(code);
     if (!room) return { error: 'ROOM_NOT_FOUND' };
+
+    if (typeof playerData.reconnectToken === 'string' && room.kickedTokenHashes?.size) {
+      const incomingHash = createHash('sha256').update(playerData.reconnectToken).digest('hex');
+      if (room.kickedTokenHashes.has(incomingHash)) {
+        return { error: 'KICKED_FROM_ROOM' };
+      }
+    }
 
     // Check if player is already in the room (by ID or socketId)
     const existing = room.players.find(p => this.matchesReconnectToken(p, playerData.reconnectToken)
@@ -224,7 +232,7 @@ export class RoomManager {
     return botPlayer;
   }
 
-  removePlayerOrBot(code, id) {
+  removePlayerOrBot(code, id, options = {}) {
     const room = this.getRoom(code);
     if (!room) return null;
 
@@ -232,6 +240,10 @@ export class RoomManager {
     if (pIndex === -1) return null;
 
     const removed = room.players.splice(pIndex, 1)[0];
+    if (options.kicked && removed.reconnectTokenHash) {
+      room.kickedTokenHashes = room.kickedTokenHashes || new Set();
+      room.kickedTokenHashes.add(removed.reconnectTokenHash);
+    }
     room.engine.removePlayer(id);
 
     // If host left and players remain, promote next human
@@ -639,6 +651,9 @@ export class RoomManager {
     const curPlayer = engine.getCurrentPlayer();
     if (!curPlayer || !curPlayer.isBot) return;
 
+    const seat = room.players.find(p => p.id === curPlayer.id);
+    const standIn = Boolean(seat?.isStandInBot);
+
     setTimeout(() => {
       if (!room.isStarted || engine.phase === GAME_PHASES.GAME_OVER) return;
 
@@ -653,22 +668,29 @@ export class RoomManager {
             }
           }
         } else if (engine.phase === GAME_PHASES.TURN_ROLL) {
-          const alchemist = BotAI.decideProgressCardPlay(engine, curPlayer);
-          if (alchemist?.action === 'play_progress_card') {
-            engine.playProgressCard(curPlayer.id, alchemist.cardId, alchemist.options);
+          if (!standIn) {
+            const alchemist = BotAI.decideProgressCardPlay(engine, curPlayer);
+            if (alchemist?.action === 'play_progress_card') {
+              engine.playProgressCard(curPlayer.id, alchemist.cardId, alchemist.options);
+            }
           }
           engine.rollDice(curPlayer.id);
         } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
           const robAction = BotAI.decideRobberMove(engine, curPlayer);
           engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
         } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
-          const action = BotAI.decideTurnAction(engine, curPlayer);
-          if (action.action === 'end_turn') {
+          if (standIn) {
             engine.endTurn(curPlayer.id);
             this.resetTurnTimer(room);
           } else {
-            BotAI.applyTurnAction(engine, curPlayer, action);
-            if (action.action === 'end_turn') this.resetTurnTimer(room);
+            const action = BotAI.decideTurnAction(engine, curPlayer);
+            if (action.action === 'end_turn') {
+              engine.endTurn(curPlayer.id);
+              this.resetTurnTimer(room);
+            } else {
+              BotAI.applyTurnAction(engine, curPlayer, action);
+              if (action.action === 'end_turn') this.resetTurnTimer(room);
+            }
           }
         }
 
