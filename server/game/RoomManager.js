@@ -150,6 +150,9 @@ export class RoomManager {
       || (playerData.allowLegacyId !== false && (p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId))));
     if (existing) {
       existing.socketId = playerData.socketId;
+      if (existing.isStandInBot) {
+        this.reclaimStandInBot(room, existing);
+      }
       return { room, reconnected: playerData.allowLegacyId === false, playerId: existing.id };
     }
 
@@ -249,12 +252,38 @@ export class RoomManager {
       this.broadcastState(room);
     }
 
-    // If room is now empty, destroy it
-    if (room.players.filter(p => !p.isBot).length === 0) {
+    // Keep in-game rooms if a disconnected human may still rejoin via a stand-in bot.
+    const hasHumanOrStandIn = room.players.some(p => !p.isBot || p.isStandInBot);
+    if (!hasHumanOrStandIn) {
       this.destroyRoom(code);
     }
 
     return removed;
+  }
+
+  replaceDisconnectedPlayerWithBot(code, playerId) {
+    const room = this.getRoom(code);
+    if (!room || !room.isStarted) return null;
+    const p = room.players.find(x => x.id === playerId);
+    if (!p || p.isBot) return null;
+
+    p.isBot = true;
+    p.isStandInBot = true;
+    p.socketId = null;
+    const enginePlayer = room.engine.players.find(x => x.id === playerId);
+    if (enginePlayer) enginePlayer.isBot = true;
+
+    this.resetTurnTimer(room);
+    this.checkAndTriggerBotTurn(room);
+    this.broadcastState(room);
+    return p;
+  }
+
+  reclaimStandInBot(room, player) {
+    player.isBot = false;
+    player.isStandInBot = false;
+    const enginePlayer = room.engine.players.find(x => x.id === player.id);
+    if (enginePlayer) enginePlayer.isBot = false;
   }
 
   setPlayerReady(code, playerId, isReady) {

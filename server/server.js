@@ -1095,12 +1095,16 @@ io.on('connection', (socket) => {
     if (code && currentPlayerId) {
       const room = roomManager.getRoom(code);
       if (room) {
-        roomManager.removePlayerOrBot(code, currentPlayerId);
+        if (room.isStarted) {
+          roomManager.replaceDisconnectedPlayerWithBot(code, currentPlayerId);
+        } else {
+          roomManager.removePlayerOrBot(code, currentPlayerId);
+          if (roomManager.getRoom(code)) {
+            roomManager.broadcastLobbyState(room);
+          }
+        }
         socket.leave(code);
         currentRoomCode = null;
-        if (!room.isStarted) {
-          roomManager.broadcastLobbyState(room);
-        }
       }
     }
     if (cb) cb({ success: true });
@@ -1145,8 +1149,8 @@ io.on('connection', (socket) => {
             if (curRoom && curRoom.isStarted) {
               const p = curRoom.players.find(x => x.id === pId);
               if (p && !p.socketId && !p.isBot) {
-                console.log(`Player ${p.name} (${pId}) disconnected permanently, removing from game.`);
-                roomManager.removePlayerOrBot(code, pId);
+                console.log(`Player ${p.name} (${pId}) disconnected permanently, replacing with bot.`);
+                roomManager.replaceDisconnectedPlayerWithBot(code, pId);
               }
             }
           }, 10000);
