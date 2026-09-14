@@ -727,7 +727,19 @@ io.on('connection', (socket) => {
       if (!currentPlayerId || (room.hostId !== currentPlayerId && data?.id !== currentPlayerId)) {
         throw new Error('NOT_AUTHORIZED');
       }
+      const target = room.players.find(p => p.id === data?.id);
+      const targetSocketId = target?.socketId;
+      const kickedSelf = data?.id === currentPlayerId;
       roomManager.removePlayerOrBot(roomCode, data.id);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('player_kicked', { reason: 'KICKED_FROM_LOBBY' });
+        const targetSock = io.sockets.sockets.get(targetSocketId);
+        targetSock?.leave(roomCode);
+      }
+      if (kickedSelf) {
+        socket.leave(roomCode);
+        currentRoomCode = null;
+      }
       const updated = roomManager.getRoom(roomCode);
       if (updated) {
         roomManager.broadcastLobbyState(updated);

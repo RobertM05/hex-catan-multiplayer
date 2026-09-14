@@ -606,6 +606,7 @@ export class CatanApp {
       const kickBtn = card.querySelector('.btn-kick-player');
       if (kickBtn) {
         kickBtn.addEventListener('click', () => {
+          if (!window.confirm(i18n.t('KICK_PLAYER') + '?')) return;
           network.removePlayer(p.id);
         });
       }
@@ -3187,7 +3188,12 @@ export class CatanApp {
    * ========================================================= */
   bindNetworkEvents() {
     network.onLobbyUpdate = (lobbyData) => {
+      if (this.leavingMatch) return;
       this.myPlayerId = network.currentPlayerId || this.myPlayerId;
+      if (this.myPlayerId && lobbyData?.players && !lobbyData.players.some(p => p.id === this.myPlayerId)) {
+        this.returnToHomepage({ kicked: true });
+        return;
+      }
       this.renderWaitingRoom(lobbyData);
     };
 
@@ -3219,6 +3225,10 @@ export class CatanApp {
 
     network.onChatReceived = (msg) => {
       this.appendChatMessage(msg);
+    };
+
+    network.onKicked = () => {
+      this.returnToHomepage({ kicked: true });
     };
   }
 

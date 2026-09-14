@@ -14,6 +14,7 @@ export const STRINGS = {
     GO_HOME_CONFIRM: "Are you sure you wanna go back to the homepage?",
     GO_HOME_STAY: "Stay",
     GO_HOME_LEAVE: "Go back",
+    YOU_WERE_KICKED: "You were kicked from the lobby.",
     TOGGLE_SIDEBAR: "Players & chat",
 
     // Lobby
