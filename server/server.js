@@ -17,6 +17,8 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, '..', 'public');
 
 const app = express();
+app.set('trust proxy', true);
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : false }
@@ -24,6 +26,115 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager(io);
 const spawnedAgents = new Map(); // roomCode -> childProcess[]
+
+// --- Real-time IP & Traffic Telemetry Infrastructure ---
+export const MAX_TRAFFIC_LOGS = 200;
+export const trafficBuffer = [];
+export const trafficStats = {
+  totalHttpRequests: 0,
+  totalSocketPackets: 0,
+  uniqueIps: new Set(),
+  activeSockets: new Map() // socketId -> { id, ip, country, connectedAt, lastSeen, roomCode, playerName }
+};
+
+export function extractClientIp(reqOrSocket) {
+  const headers = reqOrSocket.headers || reqOrSocket.handshake?.headers || {};
+  const cfConnectingIp = headers['cf-connecting-ip'];
+  if (cfConnectingIp && typeof cfConnectingIp === 'string') return cfConnectingIp.trim();
+
+  const xRealIp = headers['x-real-ip'];
+  if (xRealIp && typeof xRealIp === 'string') return xRealIp.trim();
+
+  const xForwardedFor = headers['x-forwarded-for'];
+  if (xForwardedFor && typeof xForwardedFor === 'string') {
+    const first = xForwardedFor.split(',')[0].trim();
+    if (first) return first;
+  }
+
+  const raw = reqOrSocket.ip || reqOrSocket.connection?.remoteAddress || reqOrSocket.socket?.remoteAddress || reqOrSocket.handshake?.address;
+  if (!raw) return 'unknown';
+  return String(raw).replace(/^::ffff:/, '');
+}
+
+export function extractClientCountry(reqOrSocket) {
+  const headers = reqOrSocket.headers || reqOrSocket.handshake?.headers || {};
+  return headers['cf-ipcountry'] || null;
+}
+
+export function recordTrafficEvent(entry) {
+  const record = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: new Date().toISOString(),
+    ...entry
+  };
+  trafficBuffer.push(record);
+  if (trafficBuffer.length > MAX_TRAFFIC_LOGS) {
+    trafficBuffer.shift();
+  }
+  if (entry.ip && entry.ip !== 'unknown') {
+    trafficStats.uniqueIps.add(entry.ip);
+  }
+  return record;
+}
+
+export function summarizePacketPayload(event, data) {
+  if (!data || typeof data !== 'object') return '';
+  try {
+    if (event === 'join_room') {
+      return `(Room: ${data.code || data.roomCode || '?'}, Player: ${data.playerName || '?'})`;
+    }
+    if (event === 'create_room') {
+      return `(Room: ${data.roomName || '?'}, Host: ${data.hostName || '?'}, Mode: ${data.mode || 'base'})`;
+    }
+    if (event === 'send_chat') {
+      const msg = typeof data.message === 'string' ? data.message.slice(0, 35) : '';
+      return `(Msg: "${msg}")`;
+    }
+    if (event === 'propose_trade') {
+      return `(Give: ${JSON.stringify(data.give || {})}, Get: ${JSON.stringify(data.get || {})})`;
+    }
+    const copy = { ...data };
+    delete copy.reconnectToken;
+    delete copy.reconnectTokenHash;
+    const str = JSON.stringify(copy);
+    return str.length > 70 ? str.slice(0, 67) + '...' : str;
+  } catch {
+    return '';
+  }
+}
+
+// HTTP request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  const ip = extractClientIp(req);
+  const country = extractClientCountry(req);
+  const countryTag = country ? `[${country}]` : '';
+
+  trafficStats.totalHttpRequests++;
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const url = req.originalUrl || req.url;
+    const isStatic = url.startsWith('/css/') || url.startsWith('/js/') || url.startsWith('/assets/') || url.startsWith('/sounds/') || url.endsWith('.ico') || url.endsWith('.png') || url.endsWith('.svg');
+
+    recordTrafficEvent({
+      type: 'HTTP',
+      method: req.method,
+      url,
+      ip,
+      country,
+      status: res.statusCode,
+      durationMs: duration
+    });
+
+    const timeStr = new Date().toLocaleTimeString();
+    if (!isStatic || res.statusCode >= 400 || url === '/' || url.startsWith('/api')) {
+      console.log(`[${timeStr}] [HTTP] ${ip} ${countryTag} ${req.method} ${url} - ${res.statusCode} (${duration}ms)`);
+    }
+  });
+
+  next();
+});
 
 export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
   const code = roomCode.toUpperCase();
@@ -82,6 +193,34 @@ app.get('/api/rooms', (req, res) => {
   res.json(roomManager.getPublicRooms());
 });
 
+// API: Real-time IP & Traffic Telemetry
+app.get('/api/admin/traffic', (req, res) => {
+  const limit = Math.min(MAX_TRAFFIC_LOGS, parseInt(req.query.limit, 10) || 100);
+  const filterType = req.query.type;
+  const filterIp = req.query.ip;
+
+  let events = trafficBuffer.slice();
+  if (filterType) events = events.filter(e => e.type === filterType);
+  if (filterIp) events = events.filter(e => e.ip === filterIp);
+
+  events = events.slice(-limit).reverse();
+
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    stats: {
+      totalHttpRequests: trafficStats.totalHttpRequests,
+      totalSocketPackets: trafficStats.totalSocketPackets,
+      uniqueIpCount: trafficStats.uniqueIps.size,
+      uniqueIps: Array.from(trafficStats.uniqueIps),
+      activeConnectionCount: trafficStats.activeSockets.size
+    },
+    activeConnections: Array.from(trafficStats.activeSockets.values()),
+    recentEventsCount: events.length,
+    recentEvents: events
+  });
+});
+
 // API: Spawn external AI agent into a room
 app.post('/api/rooms/:code/spawn-agent', (req, res) => {
   let reservedRoomCode = null;
@@ -111,6 +250,56 @@ io.on('connection', (socket) => {
   let currentRoomCode = null;
   let currentPlayerId = null;
 
+  const ip = extractClientIp(socket);
+  const country = extractClientCountry(socket);
+  const countryTag = country ? `[${country}]` : '';
+  const connectTime = new Date().toLocaleTimeString();
+
+  trafficStats.activeSockets.set(socket.id, {
+    id: socket.id,
+    ip,
+    country,
+    connectedAt: new Date().toISOString(),
+    lastSeen: new Date().toISOString(),
+    roomCode: null,
+    playerName: null
+  });
+
+  recordTrafficEvent({
+    type: 'SOCKET_CONNECT',
+    socketId: socket.id,
+    ip,
+    country
+  });
+
+  console.log(`[${connectTime}] [SOCKET CONNECT] ${ip} ${countryTag} (socketId: ${socket.id})`);
+
+  // Real-time packet logging for all incoming client events
+  socket.onAny((eventName, ...args) => {
+    trafficStats.totalSocketPackets++;
+    const active = trafficStats.activeSockets.get(socket.id);
+    if (active) {
+      active.lastSeen = new Date().toISOString();
+      if (currentRoomCode) active.roomCode = currentRoomCode;
+    }
+
+    const payloadSummary = summarizePacketPayload(eventName, args[0]);
+
+    recordTrafficEvent({
+      type: 'SOCKET_PACKET',
+      socketId: socket.id,
+      ip,
+      country,
+      event: eventName,
+      details: payloadSummary,
+      roomCode: currentRoomCode || null,
+      playerId: currentPlayerId || null
+    });
+
+    const nowTime = new Date().toLocaleTimeString();
+    console.log(`[${nowTime}] [SOCKET PACKET] ${ip} ${countryTag} [${socket.id.slice(0, 6)}] -> "${eventName}" ${payloadSummary}`);
+  });
+
   socket.on('create_room', (data, callback) => {
     try {
       if (!data || typeof data !== 'object') throw new Error('INVALID_PAYLOAD');
@@ -131,6 +320,12 @@ io.on('connection', (socket) => {
       currentRoomCode = room.code;
       currentPlayerId = playerId;
       socket.join(room.code);
+
+      const active = trafficStats.activeSockets.get(socket.id);
+      if (active) {
+        active.roomCode = room.code;
+        active.playerName = data.hostName || 'Host';
+      }
 
       if (callback) callback({ success: true, roomCode: room.code, playerId, reconnectToken: session.reconnectToken });
       roomManager.broadcastLobbyState(room);
@@ -163,6 +358,12 @@ io.on('connection', (socket) => {
       currentPlayerId = result.playerId;
       socket.join(room.code);
       if (data.isSpawnedAgent) roomManager.releaseAgentSpawn(room.code);
+
+      const active = trafficStats.activeSockets.get(socket.id);
+      if (active) {
+        active.roomCode = room.code;
+        active.playerName = data.playerName;
+      }
 
       if (callback) callback({ success: true, roomCode: room.code, playerId: result.playerId, isStarted: room.isStarted, reconnectToken: result.reconnected ? undefined : session.reconnectToken });
 
@@ -487,7 +688,20 @@ io.on('connection', (socket) => {
     handleGameAction(data.code, (engine) => engine.endTurn(currentPlayerId), cb);
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
+    const discTime = new Date().toLocaleTimeString();
+    console.log(`[${discTime}] [SOCKET DISCONNECT] ${ip} ${countryTag} (socketId: ${socket.id}, reason: ${reason})`);
+
+    recordTrafficEvent({
+      type: 'SOCKET_DISCONNECT',
+      socketId: socket.id,
+      ip,
+      country,
+      details: `reason: ${reason}`
+    });
+
+    trafficStats.activeSockets.delete(socket.id);
+
     if (currentRoomCode && currentPlayerId) {
       const room = roomManager.getRoom(currentRoomCode);
       if (room) {
