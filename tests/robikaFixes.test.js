@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HexGrid } from '../server/game/HexGrid.js';
+import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -70,5 +71,23 @@ describe('Robika fixes', () => {
     assert.match(html, /id="confirm-home-modal"/);
     assert.doesNotMatch(html, /id="btn-leave-match"/);
     assert.match(app, /openHomeConfirm/);
+  });
+
+  it('clears the trade and notifies when a player declines', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 2;
+    engine.players[1].resources.brick = 2;
+    engine.proposeTrade('p1', { wood: 1 }, { brick: 1 });
+    const res = engine.respondToTrade('p2', false);
+    assert.equal(res.declined, true);
+    assert.equal(engine.activeTrade, null);
+    assert.equal(engine.lastTradeEvent.type, 'declined');
+    assert.equal(engine.lastTradeEvent.playerId, 'p2');
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.lastTradeEvent.type, 'declined');
   });
 });

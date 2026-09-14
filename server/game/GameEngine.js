@@ -172,6 +172,7 @@ export class GameEngine {
 
     // Trade state
     this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
+    this.lastTradeEvent = null;
 
     // Road building state
     this.freeRoadsRemaining = 0;
@@ -2636,11 +2637,24 @@ export class GameEngine {
         if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
       }
       this.activeTrade.acceptedBy.add(playerId);
-    } else {
-      this.activeTrade.acceptedBy.delete(playerId);
+      return { trade: this.activeTrade, accepted: true, playerId };
     }
 
-    return { trade: this.activeTrade, accepted: accept, playerId };
+    const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
+    this.lastTradeEvent = {
+      id: `trade_declined_${Date.now()}`,
+      type: 'declined',
+      playerId,
+      playerName: responder.name,
+      fromPlayerId: this.activeTrade.fromPlayerId
+    };
+    this.logEvent({
+      type: 'TRADE_DECLINED',
+      messageKey: 'LOG_TRADE_DECLINED',
+      args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
+    });
+    this.activeTrade = null;
+    return { trade: null, accepted: false, playerId, declined: true };
   }
 
   confirmTrade(playerId, targetPlayerId) {
@@ -3140,6 +3154,7 @@ export class GameEngine {
         ...this.activeTrade,
         acceptedBy: Array.from(this.activeTrade.acceptedBy)
       } : null,
+      lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,
       longestRoadHolder: this.longestRoadHolder,
       largestArmyHolder: this.largestArmyHolder,

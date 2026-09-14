@@ -89,6 +89,7 @@ export class CatanApp {
     this.seenProgressDrawKeys = new Set();
     this._myPlayerId = null;
     this.leavingMatch = false;
+    this.seenTradeEventId = null;
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -3257,6 +3258,13 @@ export class CatanApp {
     const s = this.gameState;
     if (!s) return;
 
+    if (s.lastTradeEvent?.id && s.lastTradeEvent.id !== this.seenTradeEventId) {
+      this.seenTradeEventId = s.lastTradeEvent.id;
+      if (s.lastTradeEvent.type === 'declined' && s.lastTradeEvent.fromPlayerId === this.myPlayerId) {
+        this.showToast(i18n.t('TRADE_DECLINED_TOAST', { name: s.lastTradeEvent.playerName }));
+      }
+    }
+
     this.boardRenderer.currentPlayerId = this.myPlayerId;
     this.boardRenderer.gameStatePlayers = s.players;
     this.boardRenderer.longestRoadHolder = s.longestRoadHolder;
@@ -3839,7 +3847,13 @@ export class CatanApp {
     const declineBtn = banner.querySelector('.btn-decline-trade');
     if (declineBtn) {
       declineBtn.addEventListener('click', async () => {
-        await network.sendAction('respond_trade', { accept: false });
+        try {
+          await network.sendAction('respond_trade', { accept: false });
+          banner.classList.remove('is-visible');
+          banner.innerHTML = '';
+        } catch (err) {
+          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+        }
       });
     }
 

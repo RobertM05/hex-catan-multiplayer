@@ -379,6 +379,8 @@ export const STRINGS = {
     LOG_BANK_TRADE: "{playerName} traded {ratio} {give} for 1 {receive} with the bank.",
     LOG_TRADE_PROPOSED: "{playerName} proposed a trade.",
     LOG_TRADE_COMPLETED: "Trade completed between {initiator} and {partner}.",
+    LOG_TRADE_DECLINED: "{playerName} declined {initiator}'s trade.",
+    TRADE_DECLINED_TOAST: "{name} declined your trade.",
     LOG_TURN_CHANGED: "Turn passed to {playerName} (Round {turnNumber}).",
     LOG_LONGEST_ROAD: "{playerName} took Longest Road ({length} segments).",
     LOG_LARGEST_ARMY: "{playerName} took Largest Army ({count} knights).",
