@@ -144,4 +144,22 @@ describe('Robika fixes', () => {
     assert.ok(engine.grid.edges.get(newEdgeId).road);
     assert.equal(card.played, true);
   });
+
+  it('lets Master Merchant peek a richer hand before stealing', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].victoryPoints = 1;
+    engine.players[1].victoryPoints = 4;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    const card = { id: 'mm1', type: 'master_merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    const peek = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true });
+    assert.equal(peek.peek, true);
+    assert.equal(card.played, false);
+    assert.equal(peek.revealedHand.resources.wool, 1);
+    engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
+    assert.equal(card.played, true);
+    assert.equal(engine.players[0].resources.wool, 1);
+  });
 });
