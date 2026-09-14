@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, trafficBuffer, trafficStats } from '../server/server.js';
+import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, trafficBuffer, trafficStats, formatEventStory, capitalizeWord } from '../server/server.js';
 
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
@@ -161,5 +161,187 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.equal(resIp.status, 200);
     const dataIp = await resIp.json();
     assert.equal(dataIp.sort, 'ip');
+  });
+
+  it('formatEventStory should accurately translate game events into human-readable narratives', () => {
+    assert.equal(capitalizeWord('cities_knights'), 'Cities knights');
+    assert.equal(capitalizeWord('science'), 'Science');
+
+    // Dice roll with barbarian & event die
+    const rollStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'roll_dice',
+      playerName: 'Alice',
+      dice: { d1: 5, d2: 3, sum: 8 },
+      eventDie: 'barbarian',
+      barbarianPosition: 4
+    });
+    assert.ok(rollStory.includes('Alice rolled [5, 3] = 8'));
+    assert.ok(rollStory.includes('Barbarian'));
+    assert.ok(rollStory.includes('4/7'));
+
+    // Building settlements and cities
+    const settleStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'build_settlement',
+      playerName: 'Bob',
+      vertexId: 24
+    });
+    assert.ok(settleStory.includes('Bob built a Settlement at intersection #24'));
+
+    const cityStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'build_city',
+      playerName: 'Bob',
+      vertexId: 24
+    });
+    assert.ok(cityStory.includes('Bob upgraded Settlement to City at intersection #24'));
+
+    // Road and City Wall
+    const roadStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'build_road',
+      playerName: 'Charlie',
+      edgeId: 10
+    });
+    assert.ok(roadStory.includes('Charlie paved a Road on path #10'));
+
+    const wallStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'build_city_wall',
+      playerName: 'Charlie',
+      vertexId: 24
+    });
+    assert.ok(wallStory.includes('Charlie fortified City with a Wall at intersection #24'));
+
+    // City Improvement
+    const improveStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'improve_city',
+      playerName: 'Diana',
+      track: 'politics'
+    });
+    assert.ok(improveStory.includes('Diana upgraded City Improvement: Politics'));
+
+    // Knights
+    const knightStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'place_knight',
+      playerName: 'Eve',
+      vertexId: 15
+    });
+    assert.ok(knightStory.includes('Eve hired a Knight at intersection #15'));
+
+    const moveKnightStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'move_knight',
+      playerName: 'Eve',
+      fromVertexId: 15,
+      toVertexId: 16
+    });
+    assert.ok(moveKnightStory.includes('Eve moved Knight from intersection #15 to #16'));
+
+    // Bank Trade
+    const tradeStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'bank_trade',
+      playerName: 'Frank',
+      give: 'wood',
+      receive: 'ore',
+      ratio: 4
+    });
+    assert.ok(tradeStory.includes('Frank traded with Bank: 4x Wood for 1x Ore'));
+
+    // Progress Card & Dev Card
+    const progressStory = formatEventStory({
+      type: 'ACTION_SUCCESS',
+      action: 'play_progress_card',
+      playerName: 'Grace',
+      cardId: 'alchemist'
+    });
+    assert.ok(progressStory.includes('Grace played Progress Card: Alchemist'));
+
+    // Action Error
+    const errorStory = formatEventStory({
+      type: 'ACTION_ERROR',
+      action: 'build_city',
+      playerName: 'Hank',
+      error: 'NOT_ENOUGH_RESOURCES'
+    });
+    assert.ok(errorStory.includes('Hank attempted "build_city" but was rejected: NOT_ENOUGH_RESOURCES'));
+
+    // Chat Message
+    const chatStory = formatEventStory({
+      type: 'CHAT_MESSAGE',
+      playerName: 'Ivy',
+      text: 'Good luck everyone!'
+    });
+    assert.ok(chatStory.includes('Ivy: "Good luck everyone!"'));
+
+    // Game Start & Game Over
+    const startStory = formatEventStory({
+      type: 'GAME_START',
+      roomCode: 'W4XYZ',
+      startedBy: 'Jack',
+      mode: 'cities_knights'
+    });
+    assert.ok(startStory.includes('Game started in [W4XYZ] by "Jack" (cities_knights mode)'));
+
+    const overStory = formatEventStory({
+      type: 'GAME_OVER',
+      roomCode: 'W4XYZ',
+      winnerName: 'Jack',
+      winnerPoints: 13
+    });
+    assert.ok(overStory.includes('Jack won with 13 Victory Points!'));
+  });
+
+  it('GET /api/admin/traffic should support ?mode=simple and ?mode=advanced', async () => {
+    // Record sample action event
+    recordTrafficEvent({
+      type: 'ACTION_SUCCESS',
+      action: 'build_settlement',
+      playerName: 'TestPlayer',
+      roomCode: 'T1234',
+      vertexId: 42,
+      ip: '127.0.0.1',
+      country: 'RO'
+    });
+
+    // Simple Mode: raw technical packet format
+    const resSimple = await fetch(`${serverUrl}/api/admin/traffic?mode=simple&limit=10`);
+    assert.equal(resSimple.status, 200);
+    const dataSimple = await resSimple.json();
+    assert.equal(dataSimple.mode, 'simple');
+    assert.ok(Array.isArray(dataSimple.recentEvents));
+    const simpleAction = dataSimple.recentEvents.find(e => e.type === 'ACTION_SUCCESS');
+    assert.ok(simpleAction);
+    assert.equal(simpleAction.event, 'build_settlement');
+    assert.equal(simpleAction.ip, '127.0.0.1');
+    assert.equal(simpleAction.country, 'RO');
+    assert.equal(simpleAction.story, undefined); // Story is omitted in simple mode
+
+    // Advanced Mode: player action story narrative
+    const resAdvanced = await fetch(`${serverUrl}/api/admin/traffic?mode=advanced&limit=10`);
+    assert.equal(resAdvanced.status, 200);
+    const dataAdvanced = await resAdvanced.json();
+    assert.equal(dataAdvanced.mode, 'advanced');
+    assert.ok(Array.isArray(dataAdvanced.recentEvents));
+    const advancedAction = dataAdvanced.recentEvents.find(e => e.type === 'ACTION_SUCCESS');
+    assert.ok(advancedAction);
+    assert.equal(advancedAction.player, 'TestPlayer');
+    assert.equal(advancedAction.room, 'T1234');
+    assert.ok(typeof advancedAction.story === 'string');
+    assert.ok(advancedAction.story.includes('TestPlayer built a Settlement at intersection #42'));
+  });
+
+  it('GET /admin should contain mode toggle buttons and dynamic table structure', async () => {
+    const res = await fetch(`${serverUrl}/admin`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('id="btn-mode-advanced"'));
+    assert.ok(html.includes('id="btn-mode-simple"'));
+    assert.ok(html.includes('id="traffic-thead"'));
+    assert.ok(html.includes('id="btn-raw-json"'));
   });
 });

@@ -62,12 +62,125 @@ export function extractClientCountry(reqOrSocket) {
   return headers['cf-ipcountry'] || null;
 }
 
+export function capitalizeWord(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase().replace(/_/g, ' ');
+}
+
+export function formatEventStory(e) {
+  if (!e) return '';
+  const p = e.playerName || 'Player';
+
+  switch (e.type) {
+    case 'ACTION_SUCCESS': {
+      switch (e.action) {
+        case 'roll_dice':
+          if (e.dice) {
+            const extra = e.eventDie ? ` (Event Die: ${capitalizeWord(e.eventDie)}, Barbarians: ${e.barbarianPosition ?? '?'}/7)` : '';
+            return `🎲 ${p} rolled [${e.dice.d1}, ${e.dice.d2}] = ${e.dice.sum}${extra}`;
+          }
+          return `🎲 ${p} rolled the dice`;
+        case 'build_settlement':
+        case 'place_setup_settlement':
+          return `🏠 ${p} built a Settlement at intersection #${e.vertexId ?? '?'}`;
+        case 'build_city':
+        case 'upgrade_city':
+        case 'place_setup_city':
+          return `🏛️ ${p} upgraded Settlement to City at intersection #${e.vertexId ?? '?'}`;
+        case 'build_road':
+        case 'place_setup_road':
+          return `🛣️ ${p} paved a Road on path #${e.edgeId ?? '?'}`;
+        case 'build_city_wall':
+          return `🛡️ ${p} fortified City with a Wall at intersection #${e.vertexId ?? '?'}`;
+        case 'improve_city':
+          return `📈 ${p} upgraded City Improvement: ${capitalizeWord(e.track || 'Track')}`;
+        case 'place_knight':
+          return `⚔️ ${p} hired a Knight at intersection #${e.vertexId ?? '?'}`;
+        case 'activate_knight':
+          return `✨ ${p} activated Knight at intersection #${e.vertexId ?? '?'}`;
+        case 'promote_knight':
+          return `🎖️ ${p} promoted Knight at intersection #${e.vertexId ?? '?'}`;
+        case 'move_knight':
+          return `🏇 ${p} moved Knight from intersection #${e.fromVertexId ?? '?'} to #${e.toVertexId ?? '?'}`;
+        case 'relocate_displaced_knight':
+        case 'relocate_knight':
+          return `🏇 ${p} relocated displaced Knight to intersection #${e.vertexId ?? '?'}`;
+        case 'chase_robber':
+          return `🏃 ${p} chased Robber with Knight to Hex #${e.hexId ?? '?'}`;
+        case 'move_robber':
+          return `🥷 ${p} moved Robber to Hex #${e.hexId ?? '?'}${e.targetName ? ` and robbed ${e.targetName}` : ''}`;
+        case 'discard_cards':
+          return `📤 ${p} discarded cards after 7 was rolled`;
+        case 'bank_trade':
+          return `⚖️ ${p} traded with Bank: ${e.ratio || 4}x ${capitalizeWord(e.give || 'resource')} for 1x ${capitalizeWord(e.receive || 'resource')}`;
+        case 'buy_dev_card':
+          return `🃏 ${p} purchased a Development Card`;
+        case 'play_dev_card':
+          return `🎴 ${p} played Dev Card: ${capitalizeWord(e.cardId || e.cardType || 'card')}`;
+        case 'play_progress_card':
+          return `📜 ${p} played Progress Card: ${capitalizeWord(e.cardId || e.cardType || 'card')}`;
+        case 'claim_aqueduct_resource':
+          return `💧 ${p} claimed Aqueduct resource: ${capitalizeWord(e.resource || 'resource')}`;
+        case 'choose_metropolis':
+          return `👑 ${p} placed Metropolis on City #${e.vertexId ?? '?'}`;
+        case 'choose_barbarian_reward':
+          return `🎁 ${p} chose Barbarian Defender Progress Card (${capitalizeWord(e.deck || 'deck')})`;
+        case 'propose_trade':
+          return `🤝 ${p} proposed a trade offer`;
+        case 'respond_trade':
+          return `💬 ${p} responded to trade offer`;
+        case 'confirm_trade':
+          return `✅ ${p} completed trade with ${e.targetName || 'partner'}`;
+        case 'cancel_trade':
+          return `❌ ${p} cancelled trade offer`;
+        case 'end_turn':
+          return `⌛ ${p} ended turn (Turn ${e.turn ?? '?'})`;
+        default:
+          return `⚡ ${p} performed "${e.action}"`;
+      }
+    }
+    case 'ACTION_ERROR':
+      return `⚠️ ${p} attempted "${e.action}" but was rejected: ${e.error}`;
+    case 'ROOM_CREATE':
+      return `🏠 Host "${e.hostName || p}" created room [${e.roomCode}] (${e.mode || 'base'} mode)`;
+    case 'ROOM_JOIN':
+      return `👋 "${e.playerName || p}" joined room [${e.roomCode}]`;
+    case 'ROOM_JOIN_ERROR':
+      return `🚫 "${e.playerName || p}" failed to join [${e.roomCode}]: ${e.error}`;
+    case 'CHAT_MESSAGE':
+      return `💬 ${p}: "${e.text}"`;
+    case 'GAME_START':
+      return `▶️ Game started in [${e.roomCode}] by "${e.startedBy}" (${e.mode || 'base'} mode)`;
+    case 'GAME_OVER':
+      return `🏆 Game Over in [${e.roomCode}]: ${e.winnerName} won with ${e.winnerPoints} Victory Points!`;
+    case 'SOCKET_CONNECT':
+      return `🔌 Client connected from ${e.ip} [${e.country || '?'}]`;
+    case 'SOCKET_DISCONNECT':
+      return `🔌 Client disconnected ${e.playerName ? `(${e.playerName})` : ''} ${e.details || ''}`.trim();
+    case 'SOCKET_PACKET':
+      if (e.event === 'send_chat') {
+        const msg = e.details?.match(/^\(Msg: "(.*)"\)$/)?.[1] || e.details || '';
+        return `💬 ${p}: "${msg}"`;
+      }
+      if (e.event === 'join_room') return `🚪 ${p} joined Room ${e.roomCode || ''}`;
+      if (e.event === 'create_room') return `🏰 ${p} created Room`;
+      if (e.event === 'roll_dice') return `🎲 ${p} requested dice roll`;
+      if (e.event === 'end_turn') return `⌛ ${p} requested end turn`;
+      return `📦 ${p} sent packet "${e.event}" ${e.details || ''}`;
+    case 'HTTP':
+      return `🌐 HTTP ${e.method} ${e.url} - ${e.status} (${e.durationMs}ms)`;
+    default:
+      return `${e.type}: ${e.details || ''}`;
+  }
+}
+
 export function recordTrafficEvent(entry) {
   const record = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     timestamp: new Date().toISOString(),
     ...entry
   };
+  record.story = entry.story || formatEventStory(record);
   trafficBuffer.push(record);
   if (trafficBuffer.length > MAX_TRAFFIC_LOGS) {
     trafficBuffer.shift();
@@ -241,10 +354,44 @@ app.get('/api/admin/traffic', (req, res) => {
 
   events = events.slice(0, limit);
 
+  const mode = (req.query.mode || req.query.view || 'advanced').toLowerCase();
+  let formattedEvents = events;
+  if (mode === 'simple') {
+    formattedEvents = events.map(e => ({
+      id: e.id,
+      timestamp: e.timestamp,
+      type: e.type,
+      ip: e.ip,
+      country: e.country,
+      event: e.event || e.action || (e.method ? `${e.method} ${e.url}` : e.type),
+      details: e.details || (e.status ? `${e.status} (${e.durationMs}ms)` : ''),
+      status: e.status,
+      durationMs: e.durationMs
+    }));
+  } else if (mode === 'advanced') {
+    formattedEvents = events.map(e => ({
+      id: e.id,
+      timestamp: e.timestamp,
+      story: e.story || formatEventStory(e),
+      player: e.playerName || null,
+      room: e.roomCode || null,
+      action: e.action || e.event || e.type,
+      type: e.type,
+      ip: e.ip,
+      country: e.country,
+      turn: e.turn,
+      phase: e.phase,
+      details: e.details,
+      status: e.status
+    }));
+  }
+
   res.json({
     status: 'ok',
     dashboard: '/admin',
     timestamp: new Date().toISOString(),
+    mode,
+    availableModes: ['simple', 'advanced', 'all'],
     sort: sortBy,
     availableSorts: ['time_desc', 'time_asc', 'ip', 'type', 'status'],
     refreshSeconds: refreshSec > 0 ? refreshSec : null,
@@ -256,8 +403,8 @@ app.get('/api/admin/traffic', (req, res) => {
       activeConnectionCount: trafficStats.activeSockets.size
     },
     activeConnections: Array.from(trafficStats.activeSockets.values()),
-    recentEventsCount: events.length,
-    recentEvents: events
+    recentEventsCount: formattedEvents.length,
+    recentEvents: formattedEvents
   });
 });
 
@@ -648,11 +795,12 @@ io.on('connection', (socket) => {
    * IN-GAME TURNS & ACTIONS
    * ========================================================= */
 
-  const handleGameAction = (actionNameOrCode, codeOrFn, actionFnOrCallback, maybeCallback) => {
+  const handleGameAction = (actionNameOrCode, codeOrFn, actionFnOrCallback, maybeCallback, maybePayload) => {
     let actionName = 'game_action';
     let code = currentRoomCode;
     let actionFn = null;
     let callback = null;
+    let payload = maybePayload || null;
 
     if (typeof codeOrFn === 'function') {
       // Called as: handleGameAction(code, actionFn, callback)
@@ -660,11 +808,12 @@ io.on('connection', (socket) => {
       actionFn = codeOrFn;
       callback = actionFnOrCallback;
     } else {
-      // Called as: handleGameAction(actionName, code, actionFn, callback)
+      // Called as: handleGameAction(actionName, code, actionFn, callback, payload)
       actionName = actionNameOrCode;
       code = codeOrFn;
       actionFn = actionFnOrCallback;
       callback = maybeCallback;
+      payload = maybePayload || null;
     }
 
     const roomCode = (code || currentRoomCode)?.toUpperCase();
@@ -691,13 +840,25 @@ io.on('connection', (socket) => {
       const result = actionFn(room.engine);
       const timeStr = new Date().toLocaleTimeString();
 
+      let diceData = null;
+      let eventDie = null;
+      let fleetPos = null;
       if (actionName === 'roll_dice' && room.engine?.dice) {
         const d = room.engine.dice;
         const sum = (d.d1 || 0) + (d.d2 || 0);
-        const eventDieInfo = room.engine.eventDie ? ` | Event Die: ${room.engine.eventDie} (Fleet: ${room.engine.barbarianPosition}/7)` : '';
+        diceData = { d1: d.d1, d2: d.d2, sum };
+        eventDie = room.engine.eventDie;
+        fleetPos = room.engine.barbarianPosition;
+        const eventDieInfo = eventDie ? ` | Event Die: ${eventDie} (Fleet: ${fleetPos}/7)` : '';
         console.log(`[${timeStr}] [DICE ROLL] [${roomCode}] ${pName} rolled [${d.d1}, ${d.d2}] = ${sum}${eventDieInfo}`);
       } else {
         console.log(`[${timeStr}] [ACTION OK] [${roomCode}] Turn ${turnBefore} (${phaseBefore}) | ${pName} -> "${actionName}"`);
+      }
+
+      let targetName = null;
+      if (payload?.targetPlayerId) {
+        const targetPlayer = room.players.find(p => p.id === payload.targetPlayerId);
+        targetName = targetPlayer ? targetPlayer.name : payload.targetPlayerId;
       }
 
       recordTrafficEvent({
@@ -708,6 +869,21 @@ io.on('connection', (socket) => {
         playerName: pName,
         turn: turnBefore,
         phase: phaseBefore,
+        dice: diceData,
+        eventDie,
+        barbarianPosition: fleetPos,
+        vertexId: payload?.vertexId,
+        edgeId: payload?.edgeId,
+        hexId: payload?.hexId,
+        cardId: payload?.cardId,
+        track: payload?.track,
+        resource: payload?.resource,
+        give: payload?.give,
+        receive: payload?.receive,
+        ratio: payload?.ratio,
+        deck: payload?.deck,
+        targetPlayerId: payload?.targetPlayerId,
+        targetName,
         ip,
         country
       });
@@ -750,120 +926,120 @@ io.on('connection', (socket) => {
   };
 
   socket.on('place_setup_settlement', (data, cb) => {
-    handleGameAction('place_setup_settlement', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_setup_settlement', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('place_setup_city', (data, cb) => {
-    handleGameAction('place_setup_city', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_setup_city', data?.code, (engine) => engine.placeSetupSettlement(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('place_setup_road', (data, cb) => {
-    handleGameAction('place_setup_road', data?.code, (engine) => engine.placeSetupRoad(currentPlayerId, data?.edgeId), cb);
+    handleGameAction('place_setup_road', data?.code, (engine) => engine.placeSetupRoad(currentPlayerId, data?.edgeId), cb, data);
   });
 
   socket.on('roll_dice', (data, cb) => {
-    handleGameAction('roll_dice', data?.code, (engine) => engine.rollDice(currentPlayerId), cb);
+    handleGameAction('roll_dice', data?.code, (engine) => engine.rollDice(currentPlayerId), cb, data);
   });
 
   socket.on('discard_cards', (data, cb) => {
     const discardedCards = data?.discarded || { ...(data?.resources || {}), ...(data?.commodities || {}) };
-    handleGameAction('discard_cards', data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb);
+    handleGameAction('discard_cards', data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb, data);
   });
 
   socket.on('move_robber', (data, cb) => {
-    handleGameAction('move_robber', data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb);
+    handleGameAction('move_robber', data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb, data);
   });
 
   socket.on('build_road', (data, cb) => {
-    handleGameAction('build_road', data.code, (engine) => engine.buildRoad(currentPlayerId, data.edgeId), cb);
+    handleGameAction('build_road', data.code, (engine) => engine.buildRoad(currentPlayerId, data.edgeId), cb, data);
   });
 
   socket.on('build_settlement', (data, cb) => {
-    handleGameAction('build_settlement', data.code, (engine) => engine.buildSettlement(currentPlayerId, data.vertexId), cb);
+    handleGameAction('build_settlement', data.code, (engine) => engine.buildSettlement(currentPlayerId, data.vertexId), cb, data);
   });
 
   socket.on('build_city', (data, cb) => {
-    handleGameAction('build_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('build_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('upgrade_city', (data, cb) => {
-    handleGameAction('upgrade_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('upgrade_city', data?.code, (engine) => engine.buildCity(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('build_city_wall', (data, cb) => {
-    handleGameAction('build_city_wall', data?.code, (engine) => engine.buildCityWall(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('build_city_wall', data?.code, (engine) => engine.buildCityWall(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('improve_city', (data, cb) => {
-    handleGameAction('improve_city', data?.code, (engine) => engine.improveCityTrack(currentPlayerId, data?.track), cb);
+    handleGameAction('improve_city', data?.code, (engine) => engine.improveCityTrack(currentPlayerId, data?.track), cb, data);
   });
 
   socket.on('claim_aqueduct_resource', (data, cb) => {
-    handleGameAction('claim_aqueduct_resource', data?.code, (engine) => engine.claimAqueductResource(currentPlayerId, data?.resource), cb);
+    handleGameAction('claim_aqueduct_resource', data?.code, (engine) => engine.claimAqueductResource(currentPlayerId, data?.resource), cb, data);
   });
 
   socket.on('choose_metropolis', (data, cb) => {
-    handleGameAction('choose_metropolis', data?.code, (engine) => engine.chooseMetropolis(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('choose_metropolis', data?.code, (engine) => engine.chooseMetropolis(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('place_knight', (data, cb) => {
-    handleGameAction('place_knight', data?.code, (engine) => engine.placeKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('place_knight', data?.code, (engine) => engine.placeKnight(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('activate_knight', (data, cb) => {
-    handleGameAction('activate_knight', data?.code, (engine) => engine.activateKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('activate_knight', data?.code, (engine) => engine.activateKnight(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('promote_knight', (data, cb) => {
-    handleGameAction('promote_knight', data?.code, (engine) => engine.promoteKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('promote_knight', data?.code, (engine) => engine.promoteKnight(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('move_knight', (data, cb) => {
-    handleGameAction('move_knight', data?.code, (engine) => engine.moveKnight(currentPlayerId, data?.fromVertexId, data?.toVertexId), cb);
+    handleGameAction('move_knight', data?.code, (engine) => engine.moveKnight(currentPlayerId, data?.fromVertexId, data?.toVertexId), cb, data);
   });
 
   socket.on('relocate_displaced_knight', (data, cb) => {
-    handleGameAction('relocate_displaced_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('relocate_displaced_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('relocate_knight', (data, cb) => {
-    handleGameAction('relocate_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb);
+    handleGameAction('relocate_knight', data?.code, (engine) => engine.relocateDisplacedKnight(currentPlayerId, data?.vertexId), cb, data);
   });
 
   socket.on('chase_robber', (data, cb) => {
-    handleGameAction('chase_robber', data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb);
+    handleGameAction('chase_robber', data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb, data);
   });
 
   socket.on('downgrade_city', (data, cb) => {
-    handleGameAction('downgrade_city', data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb);
+    handleGameAction('downgrade_city', data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb, data);
   });
 
   socket.on('choose_barbarian_reward', (data, cb) => {
-    handleGameAction('choose_barbarian_reward', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+    handleGameAction('choose_barbarian_reward', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb, data);
   });
 
   socket.on('claim_barbarian_progress_card', (data, cb) => {
-    handleGameAction('claim_barbarian_progress_card', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb);
+    handleGameAction('claim_barbarian_progress_card', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb, data);
   });
 
   socket.on('buy_dev_card', (data, cb) => {
-    handleGameAction('buy_dev_card', data.code, (engine) => engine.buyDevCard(currentPlayerId), cb);
+    handleGameAction('buy_dev_card', data.code, (engine) => engine.buyDevCard(currentPlayerId), cb, data);
   });
 
   socket.on('play_dev_card', (data, cb) => {
-    handleGameAction('play_dev_card', data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb);
+    handleGameAction('play_dev_card', data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb, data);
   });
 
   socket.on('play_progress_card', (data, cb) => {
-    handleGameAction('play_progress_card', data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb);
+    handleGameAction('play_progress_card', data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb, data);
   });
 
   socket.on('discard_progress_card', (data, cb) => {
-    handleGameAction('discard_progress_card', data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb);
+    handleGameAction('discard_progress_card', data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb, data);
   });
 
   socket.on('bank_trade', (data, cb) => {
-    handleGameAction('bank_trade', data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb);
+    handleGameAction('bank_trade', data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb, data);
   });
 
   socket.on('propose_trade', (data, cb) => {
@@ -874,19 +1050,19 @@ io.on('connection', (socket) => {
         roomManager.evaluateBotsTrade(room);
       }
       return trade;
-    }, cb);
+    }, cb, data);
   });
 
   socket.on('respond_trade', (data, cb) => {
-    handleGameAction('respond_trade', data.code, (engine) => engine.respondToTrade(currentPlayerId, data.accept), cb);
+    handleGameAction('respond_trade', data.code, (engine) => engine.respondToTrade(currentPlayerId, data.accept), cb, data);
   });
 
   socket.on('confirm_trade', (data, cb) => {
-    handleGameAction('confirm_trade', data.code, (engine) => engine.confirmTrade(currentPlayerId, data.targetPlayerId), cb);
+    handleGameAction('confirm_trade', data.code, (engine) => engine.confirmTrade(currentPlayerId, data.targetPlayerId), cb, data);
   });
 
   socket.on('cancel_trade', (data, cb) => {
-    handleGameAction('cancel_trade', data.code, (engine) => engine.cancelTrade(currentPlayerId), cb);
+    handleGameAction('cancel_trade', data.code, (engine) => engine.cancelTrade(currentPlayerId), cb, data);
   });
 
   socket.on('leave_room', (data, cb) => {
@@ -906,7 +1082,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_turn', (data, cb) => {
-    handleGameAction('end_turn', data.code, (engine) => engine.endTurn(currentPlayerId), cb);
+    handleGameAction('end_turn', data.code, (engine) => engine.endTurn(currentPlayerId), cb, data);
   });
 
   socket.on('disconnect', (reason) => {

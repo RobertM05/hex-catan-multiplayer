@@ -233,6 +233,68 @@
       background-color: rgba(255, 255, 255, 0.03);
     }
 
+    .mode-switch-group {
+      display: inline-flex;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .btn-mode {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn-mode:hover {
+      color: var(--text-main);
+    }
+
+    .btn-mode.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .story-text {
+      font-weight: 500;
+      color: var(--text-main);
+      line-height: 1.4;
+      font-size: 0.88rem;
+    }
+
+    .story-player {
+      font-weight: 700;
+      color: var(--accent-blue);
+    }
+
+    .story-room-badge {
+      display: inline-block;
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 4px;
+      font-family: monospace;
+    }
+
+    .text-muted {
+      color: var(--text-muted);
+    }
+
     .badge {
       display: inline-block;
       padding: 2px 8px;
@@ -242,10 +304,15 @@
       font-family: monospace;
     }
 
+    .badge-action { background: #065f46; color: #a7f3d0; }
+    .badge-error { background: #881337; color: #fecdd3; }
+    .badge-chat { background: #581c87; color: #e9d5ff; }
     .badge-http { background: #1e3a8a; color: #93c5fd; }
     .badge-socket { background: #064e3b; color: #6ee7b7; }
     .badge-connect { background: #14532d; color: #86efac; }
     .badge-disconnect { background: #4c1d95; color: #d8b4fe; }
+    .badge-room { background: #78350f; color: #fde68a; }
+    .badge-gameover { background: #831843; color: #fbcfe8; }
     .badge-country { background: #374151; color: #f3f4f6; font-size: 0.7rem; }
 
     .ip-tag {
@@ -298,7 +365,7 @@
         </select>
         <button id="btn-toggle-auto" class="btn">Pause</button>
         <button id="btn-refresh" class="btn btn-primary">Refresh Now</button>
-        <a href="/api/admin/traffic" target="_blank" class="btn">Raw JSON</a>
+        <a href="/api/admin/traffic?mode=advanced" target="_blank" class="btn" id="btn-raw-json">Raw JSON</a>
         <a href="/" class="btn">Game Home</a>
       </div>
     </header>
@@ -351,13 +418,20 @@
       <div class="card-header">
         <div class="card-title">Recent Traffic & Packet Stream</div>
         <div class="filters-bar">
+          <div class="mode-switch-group" role="group" aria-label="Log View Mode">
+            <button type="button" id="btn-mode-advanced" class="btn-mode active" title="Human-readable player actions">🎮 Advanced Mode</button>
+            <button type="button" id="btn-mode-simple" class="btn-mode" title="Raw technical packets & logs">🕹️ Simple Mode</button>
+          </div>
           <input type="text" id="filter-ip" class="filter-input" placeholder="Filter by IP...">
           <select id="filter-type" class="filter-input">
             <option value="">All Types</option>
-            <option value="SOCKET_IN">Socket Packets</option>
+            <option value="ACTION_SUCCESS">Player Actions</option>
+            <option value="ACTION_ERROR">Action Errors</option>
+            <option value="CHAT_MESSAGE">Chat Messages</option>
+            <option value="SOCKET_PACKET">Socket Packets</option>
             <option value="HTTP">HTTP Requests</option>
-            <option value="CONNECT">Connects</option>
-            <option value="DISCONNECT">Disconnects</option>
+            <option value="SOCKET_CONNECT">Connects</option>
+            <option value="SOCKET_DISCONNECT">Disconnects</option>
           </select>
           <select id="select-sort" class="filter-input">
             <option value="time_desc">Sort: Newest First</option>
@@ -370,15 +444,7 @@
       </div>
       <div class="table-container">
         <table>
-          <thead>
-            <tr>
-              <th data-column="time" class="sortable-th">Time <span id="sort-ind-time" class="sort-indicator">▼</span></th>
-              <th data-column="type" class="sortable-th">Type <span id="sort-ind-type" class="sort-indicator"></span></th>
-              <th data-column="ip" class="sortable-th">IP <span id="sort-ind-ip" class="sort-indicator"></span></th>
-              <th data-column="country" class="sortable-th">Country <span id="sort-ind-country" class="sort-indicator"></span></th>
-              <th data-column="event" class="sortable-th">Event / URL <span id="sort-ind-event" class="sort-indicator"></span></th>
-              <th data-column="details" class="sortable-th">Details / Duration <span id="sort-ind-details" class="sort-indicator"></span></th>
-            </tr>
+          <thead id="traffic-thead">
           </thead>
           <tbody id="traffic-events-tbody">
             <tr><td colspan="6" class="empty-state">Loading telemetry...</td></tr>
@@ -406,13 +472,79 @@
     let secondsLeft = 2;
     let tickerTimer = null;
     let currentSort = 'time_desc';
+    let currentMode = 'advanced'; // 'advanced' (narrative action story) | 'simple' (raw technical packets)
+
+    function renderThead() {
+      const thead = document.getElementById('traffic-thead');
+      if (!thead) return;
+
+      const indicators = { time: '', type: '', ip: '', status: '' };
+      if (currentSort === 'time_desc') indicators.time = '▼';
+      else if (currentSort === 'time_asc') indicators.time = '▲';
+      else if (currentSort === 'ip') indicators.ip = '▲';
+      else if (currentSort === 'type') indicators.type = '▲';
+      else if (currentSort === 'status') indicators.status = '▼';
+
+      if (currentMode === 'advanced') {
+        thead.innerHTML = `
+          <tr>
+            <th data-column="time" class="sortable-th">Time <span class="sort-indicator">${indicators.time}</span></th>
+            <th>Player &amp; Room</th>
+            <th>Action Story (Translated)</th>
+            <th data-column="ip" class="sortable-th">IP &amp; Country <span class="sort-indicator">${indicators.ip}</span></th>
+            <th data-column="type" class="sortable-th">Type <span class="sort-indicator">${indicators.type}</span></th>
+          </tr>
+        `;
+      } else {
+        thead.innerHTML = `
+          <tr>
+            <th data-column="time" class="sortable-th">Time <span class="sort-indicator">${indicators.time}</span></th>
+            <th data-column="type" class="sortable-th">Type <span class="sort-indicator">${indicators.type}</span></th>
+            <th data-column="ip" class="sortable-th">IP <span class="sort-indicator">${indicators.ip}</span></th>
+            <th>Country</th>
+            <th>Event / URL</th>
+            <th data-column="details" class="sortable-th">Details / Duration <span class="sort-indicator">${indicators.status}</span></th>
+          </tr>
+        `;
+      }
+    }
+
+    function setMode(mode) {
+      if (currentMode === mode) return;
+      currentMode = mode;
+      document.getElementById('btn-mode-advanced').classList.toggle('active', mode === 'advanced');
+      document.getElementById('btn-mode-simple').classList.toggle('active', mode === 'simple');
+      renderThead();
+      updateRawJsonLink();
+      fetchTelemetry();
+    }
+
+    function updateRawJsonLink() {
+      const rawBtn = document.getElementById('btn-raw-json');
+      if (rawBtn) {
+        rawBtn.href = `/api/admin/traffic?mode=${encodeURIComponent(currentMode)}&sort=${encodeURIComponent(currentSort)}`;
+      }
+    }
+
+    function getBadgeClass(type) {
+      if (!type) return 'badge-http';
+      if (type === 'ACTION_SUCCESS') return 'badge-action';
+      if (type === 'ACTION_ERROR') return 'badge-error';
+      if (type === 'CHAT_MESSAGE') return 'badge-chat';
+      if (type === 'SOCKET_PACKET' || type === 'SOCKET_IN') return 'badge-socket';
+      if (type === 'SOCKET_CONNECT' || type === 'CONNECT') return 'badge-connect';
+      if (type === 'SOCKET_DISCONNECT' || type === 'DISCONNECT') return 'badge-disconnect';
+      if (type === 'ROOM_CREATE' || type === 'ROOM_JOIN' || type === 'GAME_START') return 'badge-room';
+      if (type === 'GAME_OVER') return 'badge-gameover';
+      return 'badge-http';
+    }
 
     async function fetchTelemetry() {
       try {
         const typeFilter = document.getElementById('filter-type').value;
         const ipFilter = document.getElementById('filter-ip').value.trim();
 
-        let url = '/api/admin/traffic?limit=80&sort=' + encodeURIComponent(currentSort);
+        let url = `/api/admin/traffic?limit=80&mode=${encodeURIComponent(currentMode)}&sort=${encodeURIComponent(currentSort)}`;
         if (typeFilter) url += '&type=' + encodeURIComponent(typeFilter);
         if (ipFilter) url += '&ip=' + encodeURIComponent(ipFilter);
 
@@ -456,37 +588,51 @@
 
       // Render Traffic Events
       const eventsTbody = document.getElementById('traffic-events-tbody');
+      const colSpan = currentMode === 'advanced' ? 5 : 6;
       if (!data.recentEvents || data.recentEvents.length === 0) {
-        eventsTbody.innerHTML = '<tr><td colspan="6" class="empty-state">No events recorded matching criteria</td></tr>';
+        eventsTbody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-state">No events recorded matching criteria</td></tr>`;
       } else {
         eventsTbody.innerHTML = data.recentEvents.map(e => {
           const time = new Date(e.timestamp).toLocaleTimeString();
-          let badgeClass = 'badge-http';
-          if (e.type === 'SOCKET_IN') badgeClass = 'badge-socket';
-          else if (e.type === 'CONNECT') badgeClass = 'badge-connect';
-          else if (e.type === 'DISCONNECT') badgeClass = 'badge-disconnect';
+          const badgeClass = getBadgeClass(e.type);
 
-          let details = '-';
-          if (e.type === 'HTTP') {
-            details = `${e.status} (${e.durationMs}ms)`;
-          } else if (e.summary) {
-            details = escapeHtml(e.summary);
-          } else if (e.roomCode) {
-            details = `Room: ${escapeHtml(e.roomCode)}`;
+          if (currentMode === 'advanced') {
+            const playerDisplay = e.player ? `<span class="story-player">${escapeHtml(e.player)}</span>` : '<span class="text-muted">-</span>';
+            const roomDisplay = e.room ? `<span class="story-room-badge">${escapeHtml(e.room)}</span>` : '';
+            const storyText = escapeHtml(e.story || e.action || e.event || e.type || '');
+            const countryBadge = e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '';
+            const ipDisplay = `<span class="ip-tag">${escapeHtml(e.ip || '-')}</span> ${countryBadge}`;
+
+            return `
+              <tr>
+                <td class="time-tag">${time}</td>
+                <td>${playerDisplay}${roomDisplay}</td>
+                <td><div class="story-text">${storyText}</div></td>
+                <td>${ipDisplay}</td>
+                <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
+              </tr>
+            `;
+          } else {
+            // Simple / Raw Technical format
+            const action = e.type === 'HTTP' ? `${e.method || 'GET'} ${e.url || ''}` : (e.event || e.action || e.type);
+            let details = '-';
+            if (e.type === 'HTTP') {
+              details = `${e.status || 200} (${e.durationMs || 0}ms)`;
+            } else if (e.details) {
+              details = escapeHtml(e.details);
+            }
+
+            return `
+              <tr>
+                <td class="time-tag">${time}</td>
+                <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
+                <td class="ip-tag">${escapeHtml(e.ip || '-')}</td>
+                <td>${e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '-'}</td>
+                <td><strong>${escapeHtml(action)}</strong></td>
+                <td>${details}</td>
+              </tr>
+            `;
           }
-
-          const action = e.type === 'HTTP' ? `${e.method} ${e.url}` : (e.event || e.type);
-
-          return `
-            <tr>
-              <td class="time-tag">${time}</td>
-              <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
-              <td class="ip-tag">${escapeHtml(e.ip || '-')}</td>
-              <td>${e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '-'}</td>
-              <td><strong>${escapeHtml(action)}</strong></td>
-              <td>${details}</td>
-            </tr>
-          `;
         }).join('');
       }
     }
@@ -494,20 +640,8 @@
     function setSort(sortKey) {
       currentSort = sortKey;
       document.getElementById('select-sort').value = sortKey;
-
-      // Update column indicators
-      const indicators = { time: '', type: '', ip: '', country: '', event: '', details: '' };
-      if (sortKey === 'time_desc') indicators.time = '▼';
-      else if (sortKey === 'time_asc') indicators.time = '▲';
-      else if (sortKey === 'ip') indicators.ip = '▲';
-      else if (sortKey === 'type') indicators.type = '▲';
-      else if (sortKey === 'status') indicators.details = '▼';
-
-      for (const [col, sym] of Object.entries(indicators)) {
-        const el = document.getElementById('sort-ind-' + col);
-        if (el) el.textContent = sym;
-      }
-
+      renderThead();
+      updateRawJsonLink();
       fetchTelemetry();
     }
 
@@ -536,21 +670,25 @@
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Column click sorting
-    document.querySelectorAll('.sortable-th').forEach(th => {
-      th.addEventListener('click', () => {
-        const col = th.getAttribute('data-column');
-        if (col === 'time') {
-          setSort(currentSort === 'time_desc' ? 'time_asc' : 'time_desc');
-        } else if (col === 'ip') {
-          setSort('ip');
-        } else if (col === 'type') {
-          setSort('type');
-        } else if (col === 'details') {
-          setSort('status');
-        }
-      });
+    // Event delegation on table head for sorting
+    document.getElementById('traffic-thead').addEventListener('click', (ev) => {
+      const th = ev.target.closest('.sortable-th');
+      if (!th) return;
+      const col = th.getAttribute('data-column');
+      if (col === 'time') {
+        setSort(currentSort === 'time_desc' ? 'time_asc' : 'time_desc');
+      } else if (col === 'ip') {
+        setSort('ip');
+      } else if (col === 'type') {
+        setSort('type');
+      } else if (col === 'details') {
+        setSort('status');
+      }
     });
+
+    // Mode Switcher Listeners
+    document.getElementById('btn-mode-advanced').addEventListener('click', () => setMode('advanced'));
+    document.getElementById('btn-mode-simple').addEventListener('click', () => setMode('simple'));
 
     // Event Listeners
     document.getElementById('btn-refresh').addEventListener('click', () => {
@@ -609,6 +747,8 @@
       }, 1000);
     }
 
+    renderThead();
+    updateRawJsonLink();
     fetchTelemetry();
     startTicker();
     updateBadge();
