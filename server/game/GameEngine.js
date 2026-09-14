@@ -2154,7 +2154,16 @@ export class GameEngine {
           throw new Error('TARGET_NOT_AHEAD_IN_VP');
         }
         const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
-        if (steal.length !== 2) throw new Error('STEAL_TWO_CARDS');
+        if (options.peek || steal.length !== 2) {
+          if (!options.peek && steal.length) throw new Error('STEAL_TWO_CARDS');
+          result.peek = true;
+          result.targetPlayerId = target.id;
+          result.revealedHand = {
+            resources: { ...target.resources },
+            commodities: { ...target.commodities }
+          };
+          break;
+        }
         const taken = [];
         for (const type of steal) {
           if (this.getPlayerCardCount(target, type) < 1) throw new Error('TARGET_MISSING_CARDS');
@@ -2518,6 +2527,10 @@ export class GameEngine {
         break;
       default:
         throw new Error('UNKNOWN_PROGRESS_CARD');
+    }
+
+    if (result.peek) {
+      return result;
     }
 
     card.played = true;

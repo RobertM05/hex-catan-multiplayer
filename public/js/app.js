@@ -2915,13 +2915,13 @@ export class CatanApp {
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;">
           ${opponents.map(p => `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join('')}
         </div>
-        <div>${i18n.t('PROGRESS_SELECT_STEAL')}</div>
-        <select id="mm-steal-1">${this.handTypeOptions()}</select>
-        <select id="mm-steal-2">${this.handTypeOptions()}</select>`;
+        <div id="mm-hand-reveal"></div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.targetPlayerId = b.dataset.id;
+          this.progressPlay.handPeeked = false;
+          delete this.progressPlay.options.steal;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
           if (playBtn) playBtn.disabled = !isActionPhase;
@@ -3166,16 +3166,26 @@ export class CatanApp {
       options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
       options.d2 = parseInt(document.getElementById('alchemist-d2')?.value, 10);
     }
-    if (play.card.type === 'master_merchant') {
+    if (play.card.type === 'master_merchant' && !play.handPeeked) {
+      options.peek = true;
+      delete options.steal;
+    }
+    if (play.card.type === 'master_merchant' && play.handPeeked) {
       options.steal = [
         document.getElementById('mm-steal-1')?.value,
         document.getElementById('mm-steal-2')?.value
-      ];
+      ].filter(Boolean);
     }
     const el = document.querySelector(`.progress-card[data-card-id="${play.card.id}"]`);
     el?.classList.add('playing');
     try {
-      await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      const res = await network.sendAction('play_progress_card', { cardId: play.card.id, options });
+      if (res?.peek && play.card.type === 'master_merchant') {
+        el?.classList.remove('playing');
+        play.handPeeked = true;
+        this.renderMasterMerchantHand(res.revealedHand);
+        return;
+      }
       audio.playBuild();
       this.closeProgressCardModal();
       if (play.card.type === 'road_building') {
@@ -3186,6 +3196,28 @@ export class CatanApp {
       el?.classList.remove('playing');
       this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
     }
+  }
+
+  renderMasterMerchantHand(hand) {
+    const box = document.getElementById('mm-hand-reveal')
+      || document.getElementById('progress-card-target-ui')
+      || document.getElementById('progress-card-options');
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (!box) return;
+    const types = [];
+    for (const [res, n] of Object.entries(hand?.resources || {})) {
+      for (let i = 0; i < n; i++) types.push(res);
+    }
+    for (const [com, n] of Object.entries(hand?.commodities || {})) {
+      for (let i = 0; i < n; i++) types.push(com);
+    }
+    const opts = [...new Set(types)].map(t => `<option value="${t}">${escapeHtml(this.cardLabel(t) || t)}</option>`).join('');
+    const list = types.map(t => this.cardLabel(t) || t).join(', ') || '—';
+    box.innerHTML = `<div>${i18n.t('PROGRESS_PEEK_HAND')}: ${escapeHtml(list)}</div>
+      <div style="margin-top:8px;">${i18n.t('PROGRESS_SELECT_STEAL')}</div>
+      <select id="mm-steal-1">${opts}</select>
+      <select id="mm-steal-2">${opts}</select>`;
+    if (playBtn) playBtn.disabled = types.length < 2;
   }
 
   /* =========================================================
