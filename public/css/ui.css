@@ -361,6 +361,10 @@
   overflow-y: auto;
 }
 
+#view-game.view-screen.active {
+  position: relative;
+}
+
 .hud-left-status,
 .hud-left-actions {
   display: flex;
@@ -992,6 +996,26 @@ body.mode-cities-knights #discard-form .trade-steppers-grid {
 
 .modal-overlay.active {
   display: flex;
+}
+
+#confirm-home-modal {
+  z-index: 2000;
+}
+
+.modal-confirm-home {
+  max-width: 420px;
+  text-align: center;
+  gap: 18px;
+}
+
+.confirm-home-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.confirm-home-actions .btn-glass {
+  min-width: 120px;
 }
 
 .modal-box {

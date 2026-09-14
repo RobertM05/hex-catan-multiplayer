@@ -86,6 +86,16 @@ export class NetworkClient {
     if (typeof localStorage !== 'undefined') localStorage.setItem('catan_reconnect_token', token);
   }
 
+  leaveRoom(code = null) {
+    return new Promise((resolve) => {
+      const roomCode = (code || this.currentRoomCode)?.toUpperCase();
+      this.socket.emit('leave_room', { code: roomCode }, () => {
+        this.currentRoomCode = null;
+        resolve();
+      });
+    });
+  }
+
   addBot(difficulty = 'medium', code = null) {
     return new Promise((resolve, reject) => {
       const roomCode = (code || this.currentRoomCode)?.toUpperCase();

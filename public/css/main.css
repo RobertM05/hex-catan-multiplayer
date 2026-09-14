@@ -130,6 +130,23 @@ body::before {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.brand-section:hover {
+  opacity: 0.88;
+}
+
+.brand-section:focus-visible {
+  outline: 2px solid var(--gold-primary);
+  outline-offset: 3px;
 }
 
 .brand-logo {

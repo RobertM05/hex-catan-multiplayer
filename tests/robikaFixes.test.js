@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { HexGrid } from '../server/game/HexGrid.js';
 import { RoomManager } from '../server/game/RoomManager.js';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('Robika fixes', () => {
   it('avoids three mutually adjacent hexes of the same resource', () => {
@@ -57,5 +62,13 @@ describe('Robika fixes', () => {
     assert.equal(seat.isBot, false);
     assert.equal(seat.isStandInBot, false);
     rm.destroyRoom(room.code);
+  });
+
+  it('wires leave-confirm UI and drops the in-match Leave match button', () => {
+    const html = readFileSync(join(root, 'public/index.html'), 'utf8');
+    const app = readFileSync(join(root, 'public/js/app.js'), 'utf8');
+    assert.match(html, /id="confirm-home-modal"/);
+    assert.doesNotMatch(html, /id="btn-leave-match"/);
+    assert.match(app, /openHomeConfirm/);
   });
 });
