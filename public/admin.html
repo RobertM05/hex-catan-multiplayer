@@ -331,6 +331,32 @@
     .badge-room { background: #78350f; color: #fde68a; }
     .badge-gameover { background: #831843; color: #fbcfe8; }
     .badge-country { background: #374151; color: #f3f4f6; font-size: 0.7rem; }
+    .badge-ip {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      font-family: monospace;
+      font-size: 0.72rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .badge-ip:hover {
+      background: rgba(56, 189, 248, 0.3);
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+    .player-ip-sub {
+      font-size: 0.72rem;
+      color: var(--accent-blue);
+      font-family: monospace;
+      margin-top: 2px;
+    }
 
     /* Chat View Window & Feed Console */
     .card-title-group {
@@ -588,6 +614,10 @@
         <div class="stat-value" id="stat-unique-ips">0</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">Identified Players</div>
+        <div class="stat-value" id="stat-identified-players">0</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">Socket Packets</div>
         <div class="stat-value" id="stat-socket-packets">0</div>
       </div>
@@ -616,6 +646,38 @@
           </thead>
           <tbody id="active-sockets-tbody">
             <tr><td colspan="6" class="empty-state">No active socket connections</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Player & IP Directory -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">👥 Player &amp; IP Directory</div>
+          <span class="feed-count-badge" id="player-directory-count">0 players</span>
+        </div>
+        <div class="filters-bar">
+          <input type="text" id="filter-player-directory" class="filter-input" placeholder="Search username or IP...">
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Current IP</th>
+              <th>All Known IPs</th>
+              <th>Country</th>
+              <th>Room</th>
+              <th>Actions</th>
+              <th>Last Active</th>
+              <th>Quick Filter</th>
+            </tr>
+          </thead>
+          <tbody id="player-directory-tbody">
+            <tr><td colspan="8" class="empty-state">No players identified yet. Players will appear here when they connect or act.</td></tr>
           </tbody>
         </table>
       </div>
@@ -739,6 +801,7 @@
           <tr>
             <th data-column="time" class="sortable-th">Time <span class="sort-indicator">${indicators.time}</span></th>
             <th data-column="type" class="sortable-th">Type <span class="sort-indicator">${indicators.type}</span></th>
+            <th>Player</th>
             <th data-column="ip" class="sortable-th">IP <span class="sort-indicator">${indicators.ip}</span></th>
             <th>Country</th>
             <th>Event / URL</th>
@@ -893,6 +956,10 @@
 
         const roomBadge = roomCode ? `<span class="chat-room-tag">[${escapeHtml(roomCode)}]</span>` : '';
         const playerBadge = `<span class="chat-player-name">${escapeHtml(playerName)}</span>`;
+        const playerIp = e.ip || e.playerIp;
+        const ipBadge = (playerIp && playerIp !== 'unknown')
+          ? `<span class="badge badge-ip" title="Click to filter by IP ${escapeHtml(playerIp)}" onclick="filterBySpecificIp('${escapeHtml(playerIp)}')">🌐 ${escapeHtml(playerIp)}</span>`
+          : '';
 
         return `
           <div class="chat-card ${cardClass}">
@@ -900,6 +967,7 @@
             <div class="chat-card-content">
               <div class="chat-meta-row">
                 ${playerBadge}
+                ${ipBadge}
                 ${roomBadge}
                 <span class="badge ${badgeTypeClass}">${escapeHtml(badgeLabel)}</span>
                 <span class="chat-time-tag">${timeStr}</span>
@@ -964,6 +1032,9 @@
 
       document.getElementById('stat-active-sockets').textContent = data.stats.activeConnectionCount || 0;
       document.getElementById('stat-unique-ips').textContent = data.stats.uniqueIpCount || 0;
+      if (document.getElementById('stat-identified-players')) {
+        document.getElementById('stat-identified-players').textContent = data.stats.identifiedPlayerCount || (data.playerIps ? data.playerIps.length : 0);
+      }
       document.getElementById('stat-socket-packets').textContent = data.stats.totalSocketPackets || 0;
       document.getElementById('stat-http-requests').textContent = data.stats.totalHttpRequests || 0;
 
@@ -988,9 +1059,12 @@
         }).join('');
       }
 
+      // Render Player IP Directory
+      renderPlayerDirectory(data.playerIps || []);
+
       // Render Traffic Events
       const eventsTbody = document.getElementById('traffic-events-tbody');
-      const colSpan = currentMode === 'advanced' ? 5 : 6;
+      const colSpan = currentMode === 'advanced' ? 5 : 7;
       if (!data.recentEvents || data.recentEvents.length === 0) {
         eventsTbody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-state">No events recorded matching criteria</td></tr>`;
       } else {
@@ -1001,6 +1075,7 @@
           if (currentMode === 'advanced') {
             const playerDisplay = e.player ? `<span class="story-player">${escapeHtml(e.player)}</span>` : '<span class="text-muted">-</span>';
             const roomDisplay = e.room ? `<span class="story-room-badge">${escapeHtml(e.room)}</span>` : '';
+            const playerIpTag = (e.ip && e.ip !== 'unknown') ? `<div class="player-ip-sub" title="Click to filter by IP" onclick="filterBySpecificIp('${escapeHtml(e.ip)}')">🌐 ${escapeHtml(e.ip)}</div>` : '';
             const storyText = escapeHtml(e.story || e.action || e.event || e.type || '');
             const countryBadge = e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '';
             const ipDisplay = `<span class="ip-tag">${escapeHtml(e.ip || '-')}</span> ${countryBadge}`;
@@ -1008,7 +1083,7 @@
             return `
               <tr>
                 <td class="time-tag">${time}</td>
-                <td>${playerDisplay}${roomDisplay}</td>
+                <td>${playerDisplay}${roomDisplay}${playerIpTag}</td>
                 <td><div class="story-text">${storyText}</div></td>
                 <td>${ipDisplay}</td>
                 <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
@@ -1016,6 +1091,7 @@
             `;
           } else {
             // Simple / Raw Technical format
+            const playerSimple = e.player ? `<strong>${escapeHtml(e.player)}</strong>` : '<span class="text-muted">-</span>';
             const action = e.type === 'HTTP' ? `${e.method || 'GET'} ${e.url || ''}` : (e.event || e.action || e.type);
             let details = '-';
             if (e.type === 'HTTP') {
@@ -1028,6 +1104,7 @@
               <tr>
                 <td class="time-tag">${time}</td>
                 <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
+                <td>${playerSimple}</td>
                 <td class="ip-tag">${escapeHtml(e.ip || '-')}</td>
                 <td>${e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '-'}</td>
                 <td><strong>${escapeHtml(action)}</strong></td>
@@ -1038,6 +1115,66 @@
         }).join('');
       }
     }
+
+    let lastPlayerIps = [];
+    function renderPlayerDirectory(playerList) {
+      lastPlayerIps = playerList || [];
+      const countBadge = document.getElementById('player-directory-count');
+      const tbody = document.getElementById('player-directory-tbody');
+      const searchInput = document.getElementById('filter-player-directory');
+      const query = (searchInput?.value || '').trim().toLowerCase();
+
+      let filtered = lastPlayerIps;
+      if (query) {
+        filtered = filtered.filter(p =>
+          (p.name && p.name.toLowerCase().includes(query)) ||
+          (p.ip && p.ip.toLowerCase().includes(query)) ||
+          (p.ips && p.ips.some(ip => ip.toLowerCase().includes(query))) ||
+          (p.roomCode && p.roomCode.toLowerCase().includes(query))
+        );
+      }
+
+      if (countBadge) {
+        countBadge.textContent = `${lastPlayerIps.length} player${lastPlayerIps.length === 1 ? '' : 's'}`;
+      }
+
+      if (!tbody) return;
+
+      if (!filtered || filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${query ? 'No players matching search' : 'No players identified yet. Players will appear here when they join or take actions.'}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(p => {
+        const countryBadge = p.country ? `<span class="badge badge-country">${escapeHtml(p.country)}</span>` : '-';
+        const roomBadge = p.roomCode ? `<span class="story-room-badge">${escapeHtml(p.roomCode)}</span>` : '<span class="text-muted">-</span>';
+        const allIpsStr = (p.ips && p.ips.length > 0) ? p.ips.join(', ') : p.ip;
+        const lastActiveTime = p.lastSeen ? new Date(p.lastSeen).toLocaleTimeString() : '-';
+
+        return `
+          <tr>
+            <td><span class="chat-player-name">${escapeHtml(p.name)}</span></td>
+            <td><span class="ip-tag">${escapeHtml(p.ip)}</span></td>
+            <td><code>${escapeHtml(allIpsStr)}</code></td>
+            <td>${countryBadge}</td>
+            <td>${roomBadge}</td>
+            <td><strong>${p.actionCount || 0}</strong></td>
+            <td class="time-tag">${lastActiveTime}</td>
+            <td>
+              <button type="button" class="btn btn-sm" onclick="filterBySpecificIp('${escapeHtml(p.ip)}')">Filter Logs</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    window.filterBySpecificIp = function(ip) {
+      const input = document.getElementById('filter-ip');
+      if (input) {
+        input.value = ip;
+        fetchTelemetry();
+      }
+    };
 
     function setSort(sortKey) {
       currentSort = sortKey;
@@ -1121,6 +1258,10 @@
     });
     document.getElementById('filter-type').addEventListener('change', fetchTelemetry);
     document.getElementById('filter-ip').addEventListener('input', fetchTelemetry);
+    const playerDirInput = document.getElementById('filter-player-directory');
+    if (playerDirInput) {
+      playerDirInput.addEventListener('input', () => renderPlayerDirectory(lastPlayerIps));
+    }
     document.getElementById('select-sort').addEventListener('change', (e) => {
       setSort(e.target.value);
     });

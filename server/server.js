@@ -35,8 +35,31 @@ export const trafficStats = {
   totalHttpRequests: 0,
   totalSocketPackets: 0,
   uniqueIps: new Set(),
-  activeSockets: new Map() // socketId -> { id, ip, country, connectedAt, lastSeen, roomCode, playerName }
+  activeSockets: new Map(), // socketId -> { id, ip, country, connectedAt, lastSeen, roomCode, playerName }
+  playerIps: new Map() // playerName -> { name, ip, ips: Set, country, roomCode, firstSeen, lastSeen, actionCount }
 };
+
+export function recordPlayerIp(name, ip, country = null, roomCode = null) {
+  if (!name || !ip || ip === 'unknown') return null;
+  const existing = trafficStats.playerIps.get(name) || {
+    name,
+    ip,
+    country: country || null,
+    ips: new Set(),
+    roomCode: roomCode || null,
+    firstSeen: new Date().toISOString(),
+    lastSeen: new Date().toISOString(),
+    actionCount: 0
+  };
+  existing.ip = ip;
+  if (country) existing.country = country;
+  if (roomCode) existing.roomCode = roomCode;
+  existing.ips.add(ip);
+  existing.lastSeen = new Date().toISOString();
+  existing.actionCount++;
+  trafficStats.playerIps.set(name, existing);
+  return existing;
+}
 
 export function extractClientIp(reqOrSocket) {
   const headers = reqOrSocket.headers || reqOrSocket.handshake?.headers || {};
@@ -175,6 +198,14 @@ export function formatEventStory(e) {
 }
 
 export function recordTrafficEvent(entry) {
+  if (!entry.playerName && entry.socketId && trafficStats.activeSockets.has(entry.socketId)) {
+    const s = trafficStats.activeSockets.get(entry.socketId);
+    if (s?.playerName) entry.playerName = s.playerName;
+  }
+  if (entry.playerName && entry.ip) {
+    recordPlayerIp(entry.playerName, entry.ip, entry.country, entry.roomCode);
+  }
+
   const record = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     timestamp: new Date().toISOString(),
@@ -320,6 +351,7 @@ app.get('/api/admin/traffic', (req, res) => {
   const limit = Math.min(MAX_TRAFFIC_LOGS, parseInt(req.query.limit, 10) || 100);
   const filterType = req.query.type;
   const filterIp = req.query.ip;
+  const filterPlayer = req.query.player ? req.query.player.toLowerCase() : null;
   const sortBy = (req.query.sort || 'time_desc').toLowerCase();
   const refreshParam = req.query.refresh;
 
@@ -340,6 +372,7 @@ app.get('/api/admin/traffic', (req, res) => {
   let events = trafficBuffer.slice();
   if (filterType) events = events.filter(e => e.type === filterType);
   if (filterIp) events = events.filter(e => e.ip === filterIp);
+  if (filterPlayer) events = events.filter(e => (e.playerName || '').toLowerCase().includes(filterPlayer));
 
   // Sort events based on user selection
   if (sortBy === 'time_asc') {
@@ -364,6 +397,7 @@ app.get('/api/admin/traffic', (req, res) => {
       id: e.id,
       timestamp: e.timestamp,
       type: e.type,
+      player: e.playerName || null,
       ip: e.ip,
       country: e.country,
       event: e.event || e.action || (e.method ? `${e.method} ${e.url}` : e.type),
@@ -403,9 +437,20 @@ app.get('/api/admin/traffic', (req, res) => {
       totalSocketPackets: trafficStats.totalSocketPackets,
       uniqueIpCount: trafficStats.uniqueIps.size,
       uniqueIps: Array.from(trafficStats.uniqueIps),
-      activeConnectionCount: trafficStats.activeSockets.size
+      activeConnectionCount: trafficStats.activeSockets.size,
+      identifiedPlayerCount: trafficStats.playerIps.size
     },
     activeConnections: Array.from(trafficStats.activeSockets.values()),
+    playerIps: Array.from(trafficStats.playerIps.values()).map(p => ({
+      name: p.name,
+      ip: p.ip,
+      ips: Array.from(p.ips),
+      country: p.country,
+      roomCode: p.roomCode,
+      firstSeen: p.firstSeen,
+      lastSeen: p.lastSeen,
+      actionCount: p.actionCount
+    })),
     recentEventsCount: formattedEvents.length,
     recentEvents: formattedEvents
   });
@@ -416,8 +461,12 @@ export function clearTrafficLogs() {
   trafficStats.totalHttpRequests = 0;
   trafficStats.totalSocketPackets = 0;
   trafficStats.uniqueIps.clear();
+  trafficStats.playerIps.clear();
   for (const s of trafficStats.activeSockets.values()) {
     if (s.ip && s.ip !== 'unknown') trafficStats.uniqueIps.add(s.ip);
+    if (s.playerName && s.ip && s.ip !== 'unknown') {
+      recordPlayerIp(s.playerName, s.ip, s.country, s.roomCode);
+    }
   }
   return { success: true, count: 0 };
 }
@@ -547,6 +596,7 @@ io.on('connection', (socket) => {
     }
 
     const payloadSummary = summarizePacketPayload(eventName, args[0]);
+    const pName = active?.playerName || null;
 
     recordTrafficEvent({
       type: 'SOCKET_PACKET',
@@ -556,11 +606,13 @@ io.on('connection', (socket) => {
       event: eventName,
       details: payloadSummary,
       roomCode: currentRoomCode || null,
-      playerId: currentPlayerId || null
+      playerId: currentPlayerId || null,
+      playerName: pName
     });
 
     const nowTime = new Date().toLocaleTimeString();
-    console.log(`[${nowTime}] [SOCKET PACKET] ${ip} ${countryTag} [${socket.id.slice(0, 6)}] -> "${eventName}" ${payloadSummary}`);
+    const playerTag = pName ? ` (${pName})` : '';
+    console.log(`[${nowTime}] [SOCKET PACKET] ${ip} ${countryTag} [${socket.id.slice(0, 6)}]${playerTag} -> "${eventName}" ${payloadSummary}`);
   });
 
   socket.on('create_room', (data, callback) => {
@@ -808,9 +860,17 @@ io.on('connection', (socket) => {
         timestamp: Date.now()
       };
       room.chatMessages.push(chatMsg);
-      if (room.chatMessages.length > 50) room.chatMessages.shift();
+      recordTrafficEvent({
+        type: 'CHAT_MESSAGE',
+        roomCode,
+        playerId: currentPlayerId,
+        playerName: sender.name,
+        text: chatMsg.text,
+        ip,
+        country
+      });
 
-      console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${roomCode}] ${sender.name}: "${chatMsg.text}"`);
+      console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${roomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
 
       io.to(room.code).emit('chat_received', chatMsg);
     }
@@ -875,9 +935,9 @@ io.on('connection', (socket) => {
         eventDie = room.engine.eventDie;
         fleetPos = room.engine.barbarianPosition;
         const eventDieInfo = eventDie ? ` | Event Die: ${eventDie} (Fleet: ${fleetPos}/7)` : '';
-        console.log(`[${timeStr}] [DICE ROLL] [${roomCode}] ${pName} rolled [${d.d1}, ${d.d2}] = ${sum}${eventDieInfo}`);
+        console.log(`[${timeStr}] [DICE ROLL] [${roomCode}] ${pName} (${ip}${countryTag ? ' ' + countryTag : ''}) rolled [${d.d1}, ${d.d2}] = ${sum}${eventDieInfo}`);
       } else {
-        console.log(`[${timeStr}] [ACTION OK] [${roomCode}] Turn ${turnBefore} (${phaseBefore}) | ${pName} -> "${actionName}"`);
+        console.log(`[${timeStr}] [ACTION OK] [${roomCode}] Turn ${turnBefore} (${phaseBefore}) | ${pName} (${ip}${countryTag ? ' ' + countryTag : ''}) -> "${actionName}"`);
       }
 
       let targetName = null;
@@ -915,7 +975,7 @@ io.on('connection', (socket) => {
 
       if (room.engine?.isGameOver) {
         const winner = room.engine.winner;
-        console.log(`[${timeStr}] [GAME OVER] [${roomCode}] 🏆 WINNER: ${winner?.name} with ${winner?.victoryPoints} VP!`);
+        console.log(`[${timeStr}] [GAME OVER] [${roomCode}] 🏆 WINNER: ${winner?.name} (${ip || 'unknown'}) with ${winner?.victoryPoints} VP!`);
         recordTrafficEvent({
           type: 'GAME_OVER',
           roomCode,
@@ -1112,13 +1172,17 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', (reason) => {
     const discTime = new Date().toLocaleTimeString();
-    console.log(`[${discTime}] [SOCKET DISCONNECT] ${ip} ${countryTag} (socketId: ${socket.id}, reason: ${reason})`);
+    const active = trafficStats.activeSockets.get(socket.id);
+    const pName = active?.playerName || null;
+    const playerTag = pName ? ` (${pName})` : '';
+    console.log(`[${discTime}] [SOCKET DISCONNECT] ${ip} ${countryTag}${playerTag} (socketId: ${socket.id}, reason: ${reason})`);
 
     recordTrafficEvent({
       type: 'SOCKET_DISCONNECT',
       socketId: socket.id,
       ip,
       country,
+      playerName: pName,
       details: `reason: ${reason}`
     });
 
