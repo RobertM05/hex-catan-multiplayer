@@ -1620,6 +1620,10 @@ export class CatanApp {
         btn.type = 'button';
         btn.className = 'btn-glass barbarian-city-btn';
         btn.textContent = i18n.t('BARBARIAN_DOWNGRADE_CITY', { hexes: hexes.map((r) => this.cardLabel(r)).join(', ') || vid });
+        if (vertex?.building?.hasWall) {
+          btn.title = i18n.t('BARBARIAN_WALL_NOTE');
+          btn.textContent += ' 🛡️';
+        }
         btn.addEventListener('click', async () => {
           try {
             await network.sendAction('downgrade_city', { vertexId: vid });

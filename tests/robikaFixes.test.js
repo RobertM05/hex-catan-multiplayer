@@ -4,10 +4,22 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HexGrid } from '../server/game/HexGrid.js';
-import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+function makeCkEngine() {
+  const engine = new GameEngine({ mode: GAME_MODES.CITIES_KNIGHTS });
+  engine.addPlayer({ id: 'p1', name: 'Alice' });
+  engine.addPlayer({ id: 'p2', name: 'Bob' });
+  engine.startGame('standard');
+  return engine;
+}
+
+function emptyVertex(engine) {
+  return Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
+}
 
 describe('Robika fixes', () => {
   it('avoids three mutually adjacent hexes of the same resource', () => {
@@ -89,5 +101,20 @@ describe('Robika fixes', () => {
     assert.equal(engine.lastTradeEvent.playerId, 'p2');
     const state = engine.getStateForPlayer('p1');
     assert.equal(state.lastTradeEvent.type, 'declined');
+  });
+
+  it('lets barbarians pillage a walled city and returns the wall to supply', () => {
+    const engine = makeCkEngine();
+    const vertex = emptyVertex(engine);
+    vertex.building = { type: 'city', playerId: 'p1', color: engine.players[0].color, hasWall: true };
+    engine.players[0].citiesBuilt.push(vertex.id);
+    engine.players[0].cityWalls = 2;
+    engine.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
+    engine.pendingBarbarianDowngrades.add('p1');
+    assert.equal(engine.hasVulnerableCity(engine.players[0]), true, 'walls do not protect from barbarians');
+    engine.downgradeCity('p1', vertex.id);
+    assert.equal(vertex.building.hasWall, false);
+    assert.equal(vertex.building.type, 'settlement');
+    assert.equal(engine.players[0].cityWalls, 3);
   });
 });

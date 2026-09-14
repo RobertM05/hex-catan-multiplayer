@@ -502,6 +502,7 @@ export const STRINGS = {
     BARBARIAN_CONTINUE: "Continue",
     BARBARIAN_VICTORY_BODY: "Catan is safe! {name} is Defender of Catan. Knights {knights} vs cities {cities}.",
     BARBARIAN_VICTORY_TIE_BODY: "Catan was saved! Knights ({knights}) defeated the Barbarians ({cities}). Multiple players tied for top knight contribution, so each tied defender draws a Progress Card of their choice.",
+    BARBARIAN_WALL_NOTE: "City walls do not protect against barbarians. If this city is pillaged, the wall is removed with it.",
     BARBARIAN_DEFEAT_BODY: "The barbarians won. Weakest cities must be downgraded. Knights {knights} vs cities {cities}.",
     BARBARIAN_DOWNGRADE_CITY: "Downgrade city ({hexes})",
     BANK_SUPPLY_TITLE: "Bank Reserve",
