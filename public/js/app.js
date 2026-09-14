@@ -90,6 +90,7 @@ export class CatanApp {
     this._myPlayerId = null;
     this.leavingMatch = false;
     this.seenTradeEventId = null;
+    this.lastRenderedPhase = null;
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -920,6 +921,10 @@ export class CatanApp {
     };
 
     this.boardRenderer.onHexClick = async (hexId) => {
+      if (this.gameState && this.gameState.phase === 'TURN_ROBBER') {
+        this.openRobberTargetModal(hexId);
+        return;
+      }
       if (this.selectedAction && this.selectedAction.type === 'progress_hex') {
         this.onProgressHexPicked(hexId);
         return;
@@ -3321,6 +3326,16 @@ export class CatanApp {
   renderGameState() {
     const s = this.gameState;
     if (!s) return;
+
+    if (this.lastRenderedPhase && this.lastRenderedPhase !== s.phase) {
+      if (this.selectedAction?.type === 'progress_hex' || s.phase === 'TURN_ROBBER' || this.lastRenderedPhase === 'TURN_ACTION') {
+        if (s.phase !== 'TURN_ACTION') {
+          this.clearActiveAction();
+          this.closeProgressCardModal();
+        }
+      }
+    }
+    this.lastRenderedPhase = s.phase;
 
     if (s.lastTradeEvent?.id && s.lastTradeEvent.id !== this.seenTradeEventId) {
       this.seenTradeEventId = s.lastTradeEvent.id;

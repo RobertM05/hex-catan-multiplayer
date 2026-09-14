@@ -192,4 +192,19 @@ describe('Robika fixes', () => {
     assert.equal(state.merchantHexId, hexId);
     assert.equal(state.merchantHolder, 'p1');
   });
+
+  it('does not apply Inventor until both hexes are provided', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const hexes = Array.from(engine.grid.hexes.values()).filter(h => h.token && ![2, 6, 8, 12].includes(h.token));
+    const card = { id: 'inv1', type: 'inventor', played: false };
+    engine.players[0].progressCards.push(card);
+    const token = hexes[0].token;
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { hexId1: hexes[0].id }),
+      /INVALID_HEX/
+    );
+    assert.equal(hexes[0].token, token);
+    assert.equal(card.played, false);
+  });
 });
