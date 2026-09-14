@@ -18,6 +18,7 @@ const publicDir = path.join(__dirname, '..', 'public');
 
 const app = express();
 app.set('trust proxy', true);
+app.set('json spaces', 2);
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -193,6 +194,11 @@ app.get('/api/rooms', (req, res) => {
   res.json(roomManager.getPublicRooms());
 });
 
+// Admin UI Dashboard
+app.get(['/admin', '/admin/traffic'], (req, res) => {
+  res.sendFile(path.join(publicDir, 'admin.html'));
+});
+
 // API: Real-time IP & Traffic Telemetry
 app.get('/api/admin/traffic', (req, res) => {
   const limit = Math.min(MAX_TRAFFIC_LOGS, parseInt(req.query.limit, 10) || 100);
@@ -207,6 +213,7 @@ app.get('/api/admin/traffic', (req, res) => {
 
   res.json({
     status: 'ok',
+    dashboard: '/admin',
     timestamp: new Date().toISOString(),
     stats: {
       totalHttpRequests: trafficStats.totalHttpRequests,

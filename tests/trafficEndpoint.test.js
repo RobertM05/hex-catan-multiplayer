@@ -119,4 +119,22 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     // Cleanup
     roomManager.rooms.delete(testRoom.code);
   });
+
+  it('GET /admin should serve HTML dashboard with status 200', async () => {
+    const res = await fetch(`${serverUrl}/admin`);
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.ok(text.includes('Catan Admin Telemetry & Traffic Dashboard'));
+    assert.ok(text.includes('dashboard-container'));
+  });
+
+  it('GET /api/admin/traffic should return dashboard url and valid JSON with indentation', async () => {
+    const res = await fetch(`${serverUrl}/api/admin/traffic?limit=1`);
+    assert.equal(res.status, 200);
+    const rawText = await res.text();
+    // Verify JSON indentation (contains indented lines)
+    assert.ok(rawText.includes('\n  "status": "ok"'));
+    const parsed = JSON.parse(rawText);
+    assert.equal(parsed.dashboard, '/admin');
+  });
 });

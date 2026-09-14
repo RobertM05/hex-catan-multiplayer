@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catan Admin Telemetry & Traffic Dashboard</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .header-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background-color: var(--accent-green);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .controls-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      background-color: var(--card-bg);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+
+    .btn:hover {
+      background-color: var(--border-color);
+    }
+
+    .btn-primary {
+      background-color: #2563eb;
+      border-color: #3b82f6;
+    }
+
+    .btn-primary:hover {
+      background-color: #1d4ed8;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 28px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .filters-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-input {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .filter-input:focus {
+      outline: 1px solid var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.875rem;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    .badge-http { background: #1e3a8a; color: #93c5fd; }
+    .badge-socket { background: #064e3b; color: #6ee7b7; }
+    .badge-connect { background: #14532d; color: #86efac; }
+    .badge-disconnect { background: #4c1d95; color: #d8b4fe; }
+    .badge-country { background: #374151; color: #f3f4f6; font-size: 0.7rem; }
+
+    .ip-tag {
+      font-family: monospace;
+      color: var(--accent-blue);
+    }
+
+    .time-tag {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .json-viewer {
+      background-color: #090d16;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 16px;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 0.85rem;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <header>
+      <div class="header-title">
+        <div class="pulse-dot"></div>
+        <span>Catan Server Telemetry</span>
+      </div>
+      <div class="controls-group">
+        <button id="btn-toggle-auto" class="btn">Auto-refresh: ON (2s)</button>
+        <button id="btn-refresh" class="btn btn-primary">Refresh Now</button>
+        <a href="/api/admin/traffic" target="_blank" class="btn">Raw JSON</a>
+        <a href="/" class="btn">Game Home</a>
+      </div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Active Sockets</div>
+        <div class="stat-value" id="stat-active-sockets">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Unique IPs (Session)</div>
+        <div class="stat-value" id="stat-unique-ips">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Socket Packets</div>
+        <div class="stat-value" id="stat-socket-packets">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">HTTP Requests</div>
+        <div class="stat-value" id="stat-http-requests">0</div>
+      </div>
+    </div>
+
+    <!-- Active Connections -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Live Connected Clients</div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Client IP</th>
+              <th>Country</th>
+              <th>Socket ID</th>
+              <th>Room</th>
+              <th>Player Name</th>
+              <th>Connected</th>
+            </tr>
+          </thead>
+          <tbody id="active-sockets-tbody">
+            <tr><td colspan="6" class="empty-state">No active socket connections</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Traffic Event Stream -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Recent Traffic & Packet Stream</div>
+        <div class="filters-bar">
+          <input type="text" id="filter-ip" class="filter-input" placeholder="Filter by IP...">
+          <select id="filter-type" class="filter-input">
+            <option value="">All Types</option>
+            <option value="SOCKET_IN">Socket Packets</option>
+            <option value="HTTP">HTTP Requests</option>
+            <option value="CONNECT">Connects</option>
+            <option value="DISCONNECT">Disconnects</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>IP</th>
+              <th>Country</th>
+              <th>Event / URL</th>
+              <th>Details / Duration</th>
+            </tr>
+          </thead>
+          <tbody id="traffic-events-tbody">
+            <tr><td colspan="6" class="empty-state">Loading telemetry...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Room State Inspector -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Live Room State Inspector</div>
+        <div class="filters-bar">
+          <input type="text" id="inspect-room-code" class="filter-input" placeholder="Room Code (e.g. Q2LXN)">
+          <button id="btn-inspect-room" class="btn btn-primary">Inspect State</button>
+        </div>
+      </div>
+      <pre id="room-state-output" class="json-viewer">Enter a 5-character room code above and click "Inspect State" to see live authoritative server state.</pre>
+    </div>
+  </div>
+
+  <script>
+    let autoRefresh = true;
+    let refreshTimer = null;
+
+    async function fetchTelemetry() {
+      try {
+        const typeFilter = document.getElementById('filter-type').value;
+        const ipFilter = document.getElementById('filter-ip').value.trim();
+
+        let url = '/api/admin/traffic?limit=60';
+        if (typeFilter) url += '&type=' + encodeURIComponent(typeFilter);
+        if (ipFilter) url += '&ip=' + encodeURIComponent(ipFilter);
+
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderDashboard(data);
+      } catch (err) {
+        console.error('Failed to load telemetry:', err);
+      }
+    }
+
+    function renderDashboard(data) {
+      if (!data || !data.stats) return;
+
+      document.getElementById('stat-active-sockets').textContent = data.stats.activeConnectionCount || 0;
+      document.getElementById('stat-unique-ips').textContent = data.stats.uniqueIpCount || 0;
+      document.getElementById('stat-socket-packets').textContent = data.stats.totalSocketPackets || 0;
+      document.getElementById('stat-http-requests').textContent = data.stats.totalHttpRequests || 0;
+
+      // Render Active Sockets
+      const socketsTbody = document.getElementById('active-sockets-tbody');
+      if (!data.activeConnections || data.activeConnections.length === 0) {
+        socketsTbody.innerHTML = '<tr><td colspan="6" class="empty-state">No active socket connections</td></tr>';
+      } else {
+        socketsTbody.innerHTML = data.activeConnections.map(c => {
+          const durationSec = Math.floor((Date.now() - new Date(c.connectedAt).getTime()) / 1000);
+          const durationStr = durationSec < 60 ? `${durationSec}s` : `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`;
+          return `
+            <tr>
+              <td class="ip-tag">${escapeHtml(c.ip || 'Unknown')}</td>
+              <td>${c.country ? `<span class="badge badge-country">${escapeHtml(c.country)}</span>` : '-'}</td>
+              <td><code>${escapeHtml(c.id || '')}</code></td>
+              <td><strong>${escapeHtml(c.roomCode || '-')}</strong></td>
+              <td>${escapeHtml(c.playerName || '-')}</td>
+              <td class="time-tag">${durationStr}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Render Traffic Events
+      const eventsTbody = document.getElementById('traffic-events-tbody');
+      if (!data.recentEvents || data.recentEvents.length === 0) {
+        eventsTbody.innerHTML = '<tr><td colspan="6" class="empty-state">No events recorded matching criteria</td></tr>';
+      } else {
+        eventsTbody.innerHTML = data.recentEvents.map(e => {
+          const time = new Date(e.timestamp).toLocaleTimeString();
+          let badgeClass = 'badge-http';
+          if (e.type === 'SOCKET_IN') badgeClass = 'badge-socket';
+          else if (e.type === 'CONNECT') badgeClass = 'badge-connect';
+          else if (e.type === 'DISCONNECT') badgeClass = 'badge-disconnect';
+
+          let details = '-';
+          if (e.type === 'HTTP') {
+            details = `${e.status} (${e.durationMs}ms)`;
+          } else if (e.summary) {
+            details = escapeHtml(e.summary);
+          } else if (e.roomCode) {
+            details = `Room: ${escapeHtml(e.roomCode)}`;
+          }
+
+          const action = e.type === 'HTTP' ? `${e.method} ${e.url}` : (e.event || e.type);
+
+          return `
+            <tr>
+              <td class="time-tag">${time}</td>
+              <td><span class="badge ${badgeClass}">${escapeHtml(e.type)}</span></td>
+              <td class="ip-tag">${escapeHtml(e.ip || '-')}</td>
+              <td>${e.country ? `<span class="badge badge-country">${escapeHtml(e.country)}</span>` : '-'}</td>
+              <td><strong>${escapeHtml(action)}</strong></td>
+              <td>${details}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    async function inspectRoom() {
+      const codeInput = document.getElementById('inspect-room-code');
+      const code = codeInput.value.trim().toUpperCase();
+      const output = document.getElementById('room-state-output');
+
+      if (!code) {
+        output.textContent = 'Please enter a valid room code.';
+        return;
+      }
+
+      output.textContent = 'Loading authoritative state for room ' + code + '...';
+      try {
+        const res = await fetch('/api/admin/room/' + encodeURIComponent(code));
+        const json = await res.json();
+        output.textContent = JSON.stringify(json, null, 2);
+      } catch (err) {
+        output.textContent = 'Failed to inspect room: ' + err.message;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return String(str);
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Event Listeners
+    document.getElementById('btn-refresh').addEventListener('click', fetchTelemetry);
+    document.getElementById('filter-type').addEventListener('change', fetchTelemetry);
+    document.getElementById('filter-ip').addEventListener('input', fetchTelemetry);
+    document.getElementById('btn-inspect-room').addEventListener('click', inspectRoom);
+    document.getElementById('inspect-room-code').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') inspectRoom();
+    });
+
+    const toggleBtn = document.getElementById('btn-toggle-auto');
+    toggleBtn.addEventListener('click', () => {
+      autoRefresh = !autoRefresh;
+      toggleBtn.textContent = autoRefresh ? 'Auto-refresh: ON (2s)' : 'Auto-refresh: OFF';
+      if (autoRefresh) {
+        startTimer();
+      } else if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    });
+
+    function startTimer() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => {
+        if (autoRefresh) fetchTelemetry();
+      }, 2000);
+    }
+
+    fetchTelemetry();
+    startTimer();
+  </script>
+</body>
+</html>
