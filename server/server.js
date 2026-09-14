@@ -231,15 +231,18 @@ app.use((req, res, next) => {
     const url = req.originalUrl || req.url;
     const isStatic = url.startsWith('/css/') || url.startsWith('/js/') || url.startsWith('/assets/') || url.startsWith('/sounds/') || url.endsWith('.ico') || url.endsWith('.png') || url.endsWith('.svg');
 
-    recordTrafficEvent({
-      type: 'HTTP',
-      method: req.method,
-      url,
-      ip,
-      country,
-      status: res.statusCode,
-      durationMs: duration
-    });
+    const isClearReq = url.startsWith('/api/admin/traffic/clear') || url.startsWith('/api/admin/traffic/reset') || (req.method === 'DELETE' && url.startsWith('/api/admin/traffic'));
+    if (!isClearReq) {
+      recordTrafficEvent({
+        type: 'HTTP',
+        method: req.method,
+        url,
+        ip,
+        country,
+        status: res.statusCode,
+        durationMs: duration
+      });
+    }
 
     const timeStr = new Date().toLocaleTimeString();
     if (!isStatic || res.statusCode >= 400 || url === '/' || url.startsWith('/api')) {
@@ -406,6 +409,28 @@ app.get('/api/admin/traffic', (req, res) => {
     recentEventsCount: formattedEvents.length,
     recentEvents: formattedEvents
   });
+});
+
+export function clearTrafficLogs() {
+  trafficBuffer.length = 0;
+  trafficStats.totalHttpRequests = 0;
+  trafficStats.totalSocketPackets = 0;
+  trafficStats.uniqueIps.clear();
+  for (const s of trafficStats.activeSockets.values()) {
+    if (s.ip && s.ip !== 'unknown') trafficStats.uniqueIps.add(s.ip);
+  }
+  return { success: true, count: 0 };
+}
+
+// API: Clear traffic logs
+app.post(['/api/admin/traffic/clear', '/api/admin/traffic/reset'], (req, res) => {
+  clearTrafficLogs();
+  res.json({ status: 'ok', message: 'Traffic logs cleared successfully' });
+});
+
+app.delete('/api/admin/traffic', (req, res) => {
+  clearTrafficLogs();
+  res.json({ status: 'ok', message: 'Traffic logs cleared successfully' });
 });
 
 // API: Admin Room Inspection (Complete Authoritative Debug State)

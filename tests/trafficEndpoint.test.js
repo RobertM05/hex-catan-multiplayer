@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, trafficBuffer, trafficStats, formatEventStory, capitalizeWord } from '../server/server.js';
+import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
 
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
@@ -343,5 +343,34 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.ok(html.includes('id="btn-mode-simple"'));
     assert.ok(html.includes('id="traffic-thead"'));
     assert.ok(html.includes('id="btn-raw-json"'));
+    assert.ok(html.includes('id="chat-window-stream"'));
+    assert.ok(html.includes('id="btn-clear-logs"'));
+    assert.ok(html.includes('id="btn-clear-stream"'));
+    assert.ok(html.includes('id="feed-filter-all"'));
+    assert.ok(html.includes('id="feed-filter-chat"'));
+    assert.ok(html.includes('id="feed-filter-actions"'));
+    assert.ok(html.includes('id="feed-filter-errors"'));
+    assert.ok(html.includes('id="check-autoscroll"'));
+  });
+
+  it('clearTrafficLogs and POST /api/admin/traffic/clear should reset logs buffer and stats', async () => {
+    // Add sample events
+    recordTrafficEvent({ type: 'TEST_1', ip: '192.168.1.1' });
+    recordTrafficEvent({ type: 'TEST_2', ip: '192.168.1.2' });
+    assert.ok(trafficBuffer.length >= 2);
+
+    // Call clear endpoint via POST
+    const resClear = await fetch(`${serverUrl}/api/admin/traffic/clear`, { method: 'POST' });
+    assert.equal(resClear.status, 200);
+    const dataClear = await resClear.json();
+    assert.equal(dataClear.status, 'ok');
+    assert.equal(trafficBuffer.length, 0);
+
+    // Add another event and verify DELETE /api/admin/traffic works too
+    recordTrafficEvent({ type: 'TEST_3', ip: '192.168.1.3' });
+    assert.equal(trafficBuffer.length, 1);
+    const resDelete = await fetch(`${serverUrl}/api/admin/traffic`, { method: 'DELETE' });
+    assert.equal(resDelete.status, 200);
+    assert.equal(trafficBuffer.length, 0);
   });
 });

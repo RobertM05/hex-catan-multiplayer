@@ -107,6 +107,23 @@
       background-color: #1d4ed8;
     }
 
+    .btn-danger {
+      background-color: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+
+    .btn-danger:hover {
+      background-color: rgba(239, 68, 68, 0.3);
+      border-color: #ef4444;
+      color: #ffffff;
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 0.8rem;
+    }
+
     .refresh-badge {
       background-color: rgba(34, 197, 94, 0.15);
       border: 1px solid rgba(34, 197, 94, 0.4);
@@ -315,6 +332,196 @@
     .badge-gameover { background: #831843; color: #fbcfe8; }
     .badge-country { background: #374151; color: #f3f4f6; font-size: 0.7rem; }
 
+    /* Chat View Window & Feed Console */
+    .card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .feed-count-badge {
+      font-size: 0.75rem;
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-family: monospace;
+    }
+
+    .autoscroll-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+
+    .autoscroll-toggle:hover {
+      color: var(--text-main);
+    }
+
+    .autoscroll-toggle input {
+      accent-color: var(--accent-blue);
+      cursor: pointer;
+    }
+
+    .chat-window-container {
+      position: relative;
+    }
+
+    .chat-window {
+      background-color: #070b14;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      height: 340px;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      scroll-behavior: smooth;
+    }
+
+    .chat-window::-webkit-scrollbar {
+      width: 6px;
+    }
+    .chat-window::-webkit-scrollbar-track {
+      background: #0b1120;
+    }
+    .chat-window::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    .chat-window::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    .chat-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(30, 41, 59, 0.35);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      transition: background-color 0.15s, border-color 0.15s;
+    }
+
+    .chat-card:hover {
+      background: rgba(30, 41, 59, 0.7);
+      border-color: #475569;
+    }
+
+    .chat-card-chat {
+      background: rgba(88, 28, 135, 0.12);
+      border-left: 3px solid #a855f7;
+    }
+
+    .chat-card-action {
+      background: rgba(6, 95, 70, 0.12);
+      border-left: 3px solid #22c55e;
+    }
+
+    .chat-card-error {
+      background: rgba(136, 19, 55, 0.15);
+      border-left: 3px solid #f43f5e;
+    }
+
+    .chat-card-system {
+      background: rgba(30, 58, 138, 0.12);
+      border-left: 3px solid #38bdf8;
+    }
+
+    .chat-icon-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .chat-card-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .chat-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 3px;
+      flex-wrap: wrap;
+    }
+
+    .chat-player-name {
+      font-weight: 700;
+      color: #60a5fa;
+      font-size: 0.88rem;
+    }
+
+    .chat-room-tag {
+      font-family: monospace;
+      font-size: 0.7rem;
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid var(--border-color);
+      color: #cbd5e1;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .chat-time-tag {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      font-family: monospace;
+      margin-left: auto;
+    }
+
+    .chat-message-bubble {
+      background: rgba(168, 85, 247, 0.18);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      padding: 6px 12px;
+      border-radius: 6px;
+      color: #f3e8ff;
+      font-size: 0.92rem;
+      display: inline-block;
+      margin-top: 3px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .chat-narrative-text {
+      color: #f8fafc;
+      font-size: 0.9rem;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+
+    .chat-error-text {
+      color: #fecdd3;
+      font-size: 0.9rem;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .chat-system-text {
+      color: #cbd5e1;
+      font-size: 0.85rem;
+      font-family: monospace;
+      line-height: 1.4;
+    }
+
     .ip-tag {
       font-family: monospace;
       color: var(--accent-blue);
@@ -365,6 +572,7 @@
         </select>
         <button id="btn-toggle-auto" class="btn">Pause</button>
         <button id="btn-refresh" class="btn btn-primary">Refresh Now</button>
+        <button id="btn-clear-logs" class="btn btn-danger" title="Clear all recorded server telemetry and chat logs">🗑️ Clear Logs</button>
         <a href="/api/admin/traffic?mode=advanced" target="_blank" class="btn" id="btn-raw-json">Raw JSON</a>
         <a href="/" class="btn">Game Home</a>
       </div>
@@ -410,6 +618,34 @@
             <tr><td colspan="6" class="empty-state">No active socket connections</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Live Action Feed & Chat Console -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">💬 Live Action &amp; Chat Stream</div>
+          <span class="feed-count-badge" id="chat-feed-count">0 events</span>
+        </div>
+        <div class="filters-bar">
+          <div class="mode-switch-group" role="group" aria-label="Feed Filter">
+            <button type="button" id="feed-filter-all" class="btn-mode active">All Activity</button>
+            <button type="button" id="feed-filter-chat" class="btn-mode">💬 Chat Only</button>
+            <button type="button" id="feed-filter-actions" class="btn-mode">⚡ Actions</button>
+            <button type="button" id="feed-filter-errors" class="btn-mode">⚠️ Errors</button>
+          </div>
+          <label class="autoscroll-toggle" title="Keep scrolled to latest message">
+            <input type="checkbox" id="check-autoscroll" checked>
+            <span>Auto-scroll</span>
+          </label>
+          <button type="button" id="btn-clear-stream" class="btn btn-danger btn-sm" title="Clear all recorded logs">🗑️ Clear</button>
+        </div>
+      </div>
+      <div class="chat-window-container">
+        <div class="chat-window" id="chat-window-stream">
+          <div class="empty-state">No events recorded yet. Actions and in-game chat will appear here in real time.</div>
+        </div>
       </div>
     </div>
 
@@ -473,6 +709,9 @@
     let tickerTimer = null;
     let currentSort = 'time_desc';
     let currentMode = 'advanced'; // 'advanced' (narrative action story) | 'simple' (raw technical packets)
+    let feedFilter = 'all'; // 'all' | 'chat' | 'actions' | 'errors'
+    let autoScroll = true;
+    let lastEvents = [];
 
     function renderThead() {
       const thead = document.getElementById('traffic-thead');
@@ -539,6 +778,160 @@
       return 'badge-http';
     }
 
+    function getChatIcon(e) {
+      if (!e) return '⚡';
+      if (e.type === 'CHAT_MESSAGE' || e.event === 'send_chat') return '💬';
+      if (e.type === 'ACTION_ERROR' || e.error) return '⚠️';
+      if (e.type === 'GAME_OVER') return '🏆';
+      if (e.type === 'GAME_START') return '▶️';
+      if (e.type === 'ROOM_CREATE') return '🏠';
+      if (e.type === 'ROOM_JOIN') return '👋';
+      if (e.type === 'SOCKET_CONNECT' || e.type === 'CONNECT') return '🔌';
+      if (e.type === 'SOCKET_DISCONNECT' || e.type === 'DISCONNECT') return '🔌';
+      if (e.type === 'HTTP') return '🌐';
+
+      const act = (e.action || e.event || '').toLowerCase();
+      if (act.includes('roll')) return '🎲';
+      if (act.includes('city_wall')) return '🛡️';
+      if (act.includes('city') && !act.includes('improve')) return '🏛️';
+      if (act.includes('settlement')) return '🏠';
+      if (act.includes('road')) return '🛣️';
+      if (act.includes('knight')) return '⚔️';
+      if (act.includes('robber')) return '🥷';
+      if (act.includes('trade')) return '⚖️';
+      if (act.includes('card')) return '📜';
+      if (act.includes('improve')) return '📈';
+      if (act.includes('aqueduct')) return '💧';
+      if (act.includes('metropolis')) return '👑';
+      if (act.includes('turn')) return '⌛';
+      return '⚡';
+    }
+
+    function renderChatWindow(events) {
+      const container = document.getElementById('chat-window-stream');
+      const countBadge = document.getElementById('chat-feed-count');
+      if (!container) return;
+
+      lastEvents = events || [];
+
+      let filtered = lastEvents;
+      if (feedFilter === 'chat') {
+        filtered = lastEvents.filter(e => e.type === 'CHAT_MESSAGE' || e.event === 'send_chat' || (e.story && e.story.startsWith('💬')));
+      } else if (feedFilter === 'actions') {
+        filtered = lastEvents.filter(e => e.type === 'ACTION_SUCCESS');
+      } else if (feedFilter === 'errors') {
+        filtered = lastEvents.filter(e => e.type === 'ACTION_ERROR' || Boolean(e.error));
+      }
+
+      if (countBadge) {
+        countBadge.textContent = `${filtered.length} event${filtered.length === 1 ? '' : 's'}`;
+      }
+
+      if (!filtered || filtered.length === 0) {
+        container.innerHTML = `<div class="empty-state">No events matching "${feedFilter}" filter. Actions and chat appear here live.</div>`;
+        return;
+      }
+
+      // Sort chronological (oldest top, newest bottom for standard chat view)
+      const sorted = filtered.slice().sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      container.innerHTML = sorted.map(e => {
+        const isChat = (e.type === 'CHAT_MESSAGE' || e.event === 'send_chat' || (e.story && e.story.startsWith('💬')));
+        const isError = (e.type === 'ACTION_ERROR' || Boolean(e.error));
+        const isAction = (e.type === 'ACTION_SUCCESS');
+        const isSystem = !isChat && !isError && !isAction;
+
+        let cardClass = 'chat-card-system';
+        let badgeTypeClass = 'badge-http';
+        let badgeLabel = e.type || 'EVENT';
+
+        if (isChat) {
+          cardClass = 'chat-card-chat';
+          badgeTypeClass = 'badge-chat';
+          badgeLabel = 'CHAT';
+        } else if (isError) {
+          cardClass = 'chat-card-error';
+          badgeTypeClass = 'badge-error';
+          badgeLabel = 'ERROR';
+        } else if (isAction) {
+          cardClass = 'chat-card-action';
+          badgeTypeClass = 'badge-action';
+          badgeLabel = 'ACTION';
+        } else if (e.type === 'GAME_OVER') {
+          cardClass = 'chat-card-chat';
+          badgeTypeClass = 'badge-gameover';
+          badgeLabel = 'WINNER';
+        } else if (e.type === 'CONNECT' || e.type === 'SOCKET_CONNECT') {
+          badgeTypeClass = 'badge-connect';
+          badgeLabel = 'CONNECT';
+        }
+
+        const icon = getChatIcon(e);
+        const timeStr = new Date(e.timestamp).toLocaleTimeString();
+        const playerName = e.player || e.playerName || (isSystem ? 'Server' : 'Unknown');
+        const roomCode = e.room || e.roomCode;
+
+        let bodyHtml = '';
+        if (isChat) {
+          const rawText = e.text || (e.story?.match(/💬 [^:]+: "(.*)"/)?.[1]) || e.details || e.story || '';
+          bodyHtml = `<div class="chat-message-bubble">“${escapeHtml(rawText)}”</div>`;
+        } else if (isError) {
+          bodyHtml = `<div class="chat-error-text">⚠️ ${escapeHtml(e.story || e.error || e.details || 'Action rejected')}</div>`;
+        } else if (isAction) {
+          bodyHtml = `<div class="chat-narrative-text">${escapeHtml(e.story || e.action || '')}</div>`;
+        } else {
+          bodyHtml = `<div class="chat-system-text">${escapeHtml(e.story || e.event || e.details || e.type || '')}</div>`;
+        }
+
+        const roomBadge = roomCode ? `<span class="chat-room-tag">[${escapeHtml(roomCode)}]</span>` : '';
+        const playerBadge = `<span class="chat-player-name">${escapeHtml(playerName)}</span>`;
+
+        return `
+          <div class="chat-card ${cardClass}">
+            <div class="chat-icon-avatar">${icon}</div>
+            <div class="chat-card-content">
+              <div class="chat-meta-row">
+                ${playerBadge}
+                ${roomBadge}
+                <span class="badge ${badgeTypeClass}">${escapeHtml(badgeLabel)}</span>
+                <span class="chat-time-tag">${timeStr}</span>
+              </div>
+              ${bodyHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (autoScroll) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function setFeedFilter(filter) {
+      feedFilter = filter;
+      ['all', 'chat', 'actions', 'errors'].forEach(f => {
+        const btn = document.getElementById(`feed-filter-${f}`);
+        if (btn) btn.classList.toggle('active', f === filter);
+      });
+      renderChatWindow(lastEvents);
+    }
+
+    async function clearAllLogs() {
+      const confirmed = confirm('Clear all recorded telemetry logs and event history?');
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch('/api/admin/traffic/clear', { method: 'POST' });
+        if (res.ok) {
+          lastEvents = [];
+          renderChatWindow([]);
+          fetchTelemetry();
+        }
+      } catch (err) {
+        console.error('Failed to clear logs:', err);
+      }
+    }
+
     async function fetchTelemetry() {
       try {
         const typeFilter = document.getElementById('filter-type').value;
@@ -552,6 +945,7 @@
         if (!res.ok) return;
         const data = await res.json();
         renderDashboard(data);
+        renderChatWindow(data.recentEvents || []);
       } catch (err) {
         console.error('Failed to load telemetry:', err);
       }
@@ -689,6 +1083,28 @@
     // Mode Switcher Listeners
     document.getElementById('btn-mode-advanced').addEventListener('click', () => setMode('advanced'));
     document.getElementById('btn-mode-simple').addEventListener('click', () => setMode('simple'));
+
+    // Feed Filter Listeners
+    document.getElementById('feed-filter-all').addEventListener('click', () => setFeedFilter('all'));
+    document.getElementById('feed-filter-chat').addEventListener('click', () => setFeedFilter('chat'));
+    document.getElementById('feed-filter-actions').addEventListener('click', () => setFeedFilter('actions'));
+    document.getElementById('feed-filter-errors').addEventListener('click', () => setFeedFilter('errors'));
+
+    // Auto-scroll toggle
+    const autoScrollCheckbox = document.getElementById('check-autoscroll');
+    if (autoScrollCheckbox) {
+      autoScrollCheckbox.addEventListener('change', (e) => {
+        autoScroll = e.target.checked;
+        if (autoScroll) {
+          const container = document.getElementById('chat-window-stream');
+          if (container) container.scrollTop = container.scrollHeight;
+        }
+      });
+    }
+
+    // Clear Logs Listeners
+    document.getElementById('btn-clear-logs').addEventListener('click', clearAllLogs);
+    document.getElementById('btn-clear-stream').addEventListener('click', clearAllLogs);
 
     // Event Listeners
     document.getElementById('btn-refresh').addEventListener('click', () => {
