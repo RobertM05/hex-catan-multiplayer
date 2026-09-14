@@ -195,6 +195,8 @@ export class HexGrid {
 
     // Enforce official Red Number Rule (no adjacent 6 and 8)
     this.resolveRedNumberAdjacencies();
+    // Avoid three of the same resource meeting at a hex (no tight same-type clusters)
+    this.resolveSameResourceClusters();
   }
 
   buildGraph() {
@@ -369,6 +371,57 @@ export class HexGrid {
     }
 
     return !this.hasAdjacentRedNumbers();
+  }
+
+  getNeighborHexes(hex) {
+    return Array.from(this.hexes.values()).filter(other => this.areHexesAdjacent(hex, other));
+  }
+
+  sameResourceNeighborCount(hex) {
+    if (!hex?.resource || hex.resource === RESOURCE_TYPES.DESERT) return 0;
+    return this.getNeighborHexes(hex).filter(n => n.resource === hex.resource).length;
+  }
+
+  hasTightSameResourceCluster() {
+    return Array.from(this.hexes.values()).some(hex => this.sameResourceNeighborCount(hex) >= 2);
+  }
+
+  resolveSameResourceClusters() {
+    const maxAttempts = 800;
+    let attempts = 0;
+    while (this.hasTightSameResourceCluster() && attempts < maxAttempts) {
+      attempts++;
+      const crowded = Array.from(this.hexes.values()).find(hex => this.sameResourceNeighborCount(hex) >= 2);
+      if (!crowded) break;
+      const candidates = Array.from(this.hexes.values()).filter(h =>
+        h.id !== crowded.id
+        && h.resource
+        && h.resource !== crowded.resource
+        && h.resource !== RESOURCE_TYPES.DESERT
+      );
+      this.shuffle(candidates);
+      let swapped = false;
+      for (const candidate of candidates) {
+        const tmp = crowded.resource;
+        crowded.resource = candidate.resource;
+        candidate.resource = tmp;
+        const stillCrowded = this.sameResourceNeighborCount(crowded) >= 2
+          || this.sameResourceNeighborCount(candidate) >= 2;
+        if (!stillCrowded) {
+          swapped = true;
+          break;
+        }
+        candidate.resource = crowded.resource;
+        crowded.resource = tmp;
+      }
+      if (!swapped && candidates.length > 0) {
+        const fallback = candidates[0];
+        const tmp = crowded.resource;
+        crowded.resource = fallback.resource;
+        fallback.resource = tmp;
+      }
+    }
+    return !this.hasTightSameResourceCluster();
   }
 
   assignHarbors() {
