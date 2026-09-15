@@ -37,10 +37,43 @@ export function validatePlayerColor(value) {
   return value.toLowerCase();
 }
 
+export const STALE_ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+export const STALE_ROOM_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
 export class RoomManager {
-  constructor(io) {
+  constructor(io, options = {}) {
     this.io = io;
     this.rooms = new Map(); // roomCode -> Room object
+    this.staleRoomMaxAgeMs = options.staleRoomMaxAgeMs ?? STALE_ROOM_MAX_AGE_MS;
+    const cleanupMs = options.staleCleanupIntervalMs ?? STALE_ROOM_CLEANUP_INTERVAL_MS;
+    this.staleCleanupInterval = null;
+    if (cleanupMs > 0) {
+      this.staleCleanupInterval = setInterval(() => this.cleanupStaleRooms(), cleanupMs);
+      if (typeof this.staleCleanupInterval.unref === 'function') {
+        this.staleCleanupInterval.unref();
+      }
+    }
+  }
+
+  touchRoom(room) {
+    if (room) room.lastActivity = Date.now();
+  }
+
+  cleanupStaleRooms(now = Date.now()) {
+    const removed = [];
+    for (const [code, room] of this.rooms) {
+      const last = room.lastActivity || room.createdAt || 0;
+      if (now - last >= this.staleRoomMaxAgeMs) removed.push(code);
+    }
+    for (const code of removed) this.destroyRoom(code);
+    return removed;
+  }
+
+  stopStaleCleanup() {
+    if (this.staleCleanupInterval) {
+      clearInterval(this.staleCleanupInterval);
+      this.staleCleanupInterval = null;
+    }
   }
 
   createPlayerSession() {
@@ -87,6 +120,7 @@ export class RoomManager {
       vpTarget: engine.vpTarget,
       isStarted: false,
       createdAt: Date.now(),
+      lastActivity: Date.now(),
       players: [], // { id, name, color, isReady, isBot, socketId }
       engine,
       turnTimerInterval: null,
@@ -116,6 +150,7 @@ export class RoomManager {
     });
 
     this.rooms.set(code, room);
+    this.touchRoom(room);
     return room;
   }
 
@@ -153,6 +188,7 @@ export class RoomManager {
       if (existing.isStandInBot) {
         this.reclaimStandInBot(room, existing);
       }
+      this.touchRoom(room);
       return { room, reconnected: playerData.allowLegacyId === false, playerId: existing.id };
     }
 
@@ -185,6 +221,7 @@ export class RoomManager {
       isBot: false
     });
 
+    this.touchRoom(room);
     return { room, reconnected: false, playerId: playerObj.id };
   }
 
@@ -352,6 +389,7 @@ export class RoomManager {
 
     this.startTurnTimer(room);
     this.checkAndTriggerBotTurn(room);
+    this.touchRoom(room);
 
     return room;
   }
@@ -825,6 +863,7 @@ export class RoomManager {
   }
 
   broadcastState(room) {
+    this.touchRoom(room);
     const seenSockets = new Set();
     for (const player of room.players) {
       if (player.socketId && !seenSockets.has(player.socketId)) {
@@ -846,6 +885,7 @@ export class RoomManager {
   }
 
   broadcastLobbyState(room) {
+    this.touchRoom(room);
     this.io.to(room.code).emit('lobby_state_update', {
       code: room.code,
       name: room.name,
