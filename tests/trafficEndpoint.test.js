@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
+import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs, TRAFFIC_LIMITS } from '../server/server.js';
 
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
@@ -446,5 +446,41 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.ok(html.includes('id="stat-identified-players"'));
     assert.ok(html.includes('id="filter-player-directory"'));
     assert.ok(html.includes('badge-ip'));
+  });
+
+  it('evicts oldest uniqueIps when the cap is reached', () => {
+    const previous = TRAFFIC_LIMITS.uniqueIps;
+    TRAFFIC_LIMITS.uniqueIps = 3;
+    trafficStats.uniqueIps.clear();
+    try {
+      recordTrafficEvent({ type: 'CAP', ip: '10.0.0.1' });
+      recordTrafficEvent({ type: 'CAP', ip: '10.0.0.2' });
+      recordTrafficEvent({ type: 'CAP', ip: '10.0.0.3' });
+      recordTrafficEvent({ type: 'CAP', ip: '10.0.0.4' });
+      assert.equal(trafficStats.uniqueIps.size, 3);
+      assert.equal(trafficStats.uniqueIps.has('10.0.0.1'), false);
+      assert.equal(trafficStats.uniqueIps.has('10.0.0.4'), true);
+    } finally {
+      TRAFFIC_LIMITS.uniqueIps = previous;
+    }
+  });
+
+  it('evicts oldest playerIps when the cap is reached', () => {
+    const previous = TRAFFIC_LIMITS.playerIps;
+    TRAFFIC_LIMITS.playerIps = 2;
+    trafficStats.playerIps.clear();
+    try {
+      recordPlayerIp('OldPlayer', '10.1.0.1');
+      const old = trafficStats.playerIps.get('OldPlayer');
+      old.lastSeen = new Date(Date.now() - 60_000).toISOString();
+      recordPlayerIp('MidPlayer', '10.1.0.2');
+      trafficStats.playerIps.get('MidPlayer').lastSeen = new Date(Date.now() - 30_000).toISOString();
+      recordPlayerIp('NewPlayer', '10.1.0.3');
+      assert.equal(trafficStats.playerIps.size, 2);
+      assert.equal(trafficStats.playerIps.has('OldPlayer'), false);
+      assert.equal(trafficStats.playerIps.has('NewPlayer'), true);
+    } finally {
+      TRAFFIC_LIMITS.playerIps = previous;
+    }
   });
 });
