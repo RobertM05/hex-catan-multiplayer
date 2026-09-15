@@ -128,6 +128,8 @@ export const DEV_CARD_TYPES = {
 
 // How long players have to choose discard cards after a 7 before auto discard kicks in
 export const DISCARD_TIMEOUT_MS = 30000;
+// Forced robber placement after discard (or knight) — independent of the shared turn clock
+export const ROBBER_TIMEOUT_MS = 15000;
 
 export class GameEngine {
   constructor(options = {}) {
@@ -169,6 +171,7 @@ export class GameEngine {
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
     this.discardDeadline = null; // timestamp by which pending players must discard
+    this.robberDeadline = null; // timestamp by which the current player must place the robber
 
     // Trade state
     this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
@@ -971,7 +974,14 @@ export class GameEngine {
     }
   }
 
+  beginRobberPhase() {
+    this.phase = GAME_PHASES.TURN_ROBBER;
+    this.discardDeadline = null;
+    this.robberDeadline = Date.now() + ROBBER_TIMEOUT_MS;
+  }
+
   enterRobberFlow() {
+    this.robberDeadline = null;
     if (this.pendingDiscards.size > 0) {
       this.phase = GAME_PHASES.TURN_DISCARD;
       this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
@@ -981,8 +991,7 @@ export class GameEngine {
         args: { playerIds: Array.from(this.pendingDiscards) }
       });
     } else {
-      this.phase = GAME_PHASES.TURN_ROBBER;
-      this.discardDeadline = null;
+      this.beginRobberPhase();
     }
   }
 
@@ -1193,8 +1202,7 @@ export class GameEngine {
     });
 
     if (this.pendingDiscards.size === 0) {
-      this.phase = GAME_PHASES.TURN_ROBBER;
-      this.discardDeadline = null;
+      this.beginRobberPhase();
     }
 
     return { remainingPending: Array.from(this.pendingDiscards) };
@@ -1244,6 +1252,7 @@ export class GameEngine {
     if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
 
     this.grid.robberHexId = hexId;
+    this.robberDeadline = null;
     let stolenResource = null;
 
     // Steal from target player if adjacent to hex
@@ -2034,7 +2043,7 @@ export class GameEngine {
       this.recalculateVictoryPoints();
       this.checkVictory();
       // Enforce moving robber
-      this.phase = GAME_PHASES.TURN_ROBBER;
+      this.beginRobberPhase();
       this.logEvent({
         type: 'PLAYED_KNIGHT',
         messageKey: 'LOG_PLAYED_KNIGHT',
@@ -3181,6 +3190,7 @@ export class GameEngine {
       knightsOverview: this.getKnightsOverview(),
       pendingDiscards: Array.from(this.pendingDiscards),
       discardDeadline: this.discardDeadline,
+      robberDeadline: this.robberDeadline,
       pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
       pendingBarbarianTieDraws: Array.from(this.pendingBarbarianTieDraws),
       lastBarbarianResult: this.lastBarbarianResult,

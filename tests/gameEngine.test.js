@@ -6,7 +6,7 @@
 import { test, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { HexGrid, RESOURCE_TYPES } from '../server/game/HexGrid.js';
-import { GameEngine, GAME_PHASES, COSTS, DEV_CARD_TYPES } from '../server/game/GameEngine.js';
+import { GameEngine, GAME_PHASES, COSTS, DEV_CARD_TYPES, ROBBER_TIMEOUT_MS } from '../server/game/GameEngine.js';
 import { BotAI } from '../server/game/BotAI.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 
@@ -202,18 +202,8 @@ describe('Discard timer on 7 roll', () => {
 
   function forceSevenRoll(engine) {
     engine.phase = GAME_PHASES.TURN_ROLL;
-    const originalRandom = Math.random;
-    let call = 0;
-    Math.random = () => {
-      call += 1;
-      // First call 2/6 -> die 3, second call 3/6 -> die 4, sum 7
-      return call % 2 === 1 ? 2 / 6 : 3 / 6;
-    };
-    try {
-      engine.rollDice('p1');
-    } finally {
-      Math.random = originalRandom;
-    }
+    engine.alchemistDice = [3, 4];
+    engine.rollDice('p1');
   }
 
   it('sets discardDeadline when a 7 forces discards', () => {
@@ -238,6 +228,7 @@ describe('Discard timer on 7 roll', () => {
     assert.equal(engine.pendingDiscards.size, 0);
     assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
     assert.equal(engine.discardDeadline, null);
+    assert.ok(engine.robberDeadline > Date.now(), 'robber gets its own deadline after discard');
     const total = engine.countTotalCards(engine.players[0]);
     assert.equal(total, 4, 'half of 8 cards remain');
   });
@@ -289,5 +280,103 @@ describe('Discard timer on 7 roll', () => {
     assert.equal(engine.players[0].commodities.cloth, 2, 'half of 4 cloth discarded');
     assert.equal(engine.pendingDiscards.size, 0);
     assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.ok(engine.robberDeadline > 0);
+  });
+});
+
+describe('LOOP-02: discard vs shared turn timer', () => {
+  function forceSevenRoll(engine) {
+    const actorId = engine.getCurrentPlayer().id;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.alchemistDice = [3, 4];
+    engine.rollDice(actorId);
+  }
+
+  it('7 with >30s turn left: shared clock pauses; discardDeadline is the force clock', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'h1', name: 'Host1', socketId: 's1' }, { turnDuration: 60 });
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
+    roomManager.startGame(room.code, 'h1');
+
+    room.turnTimeRemaining = 45;
+    const engine = room.engine;
+    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    forceSevenRoll(engine);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.discardDeadline > Date.now() + 20000);
+
+    roomManager.tickTurnTimer(room);
+    roomManager.tickTurnTimer(room);
+    assert.equal(room.turnTimeRemaining, 45, 'shared turn clock must not tick during discard');
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.pendingDiscards.has(engine.players[0].id));
+
+    roomManager.handleTurnTimeout(room);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD, 'stale turn timeout must not steal discard');
+    assert.ok(engine.pendingDiscards.size > 0);
+
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('7 with <30s turn left: shared clock still pauses so 15s turns cannot beat discardDeadline', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'h1', name: 'Host1', socketId: 's1' }, { turnDuration: 15 });
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
+    roomManager.startGame(room.code, 'h1');
+
+    room.turnTimeRemaining = 8;
+    const engine = room.engine;
+    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    forceSevenRoll(engine);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+
+    for (let i = 0; i < 10; i++) roomManager.tickTurnTimer(room);
+    assert.equal(room.turnTimeRemaining, 8);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.pendingDiscards.size > 0, 'must not auto-robber via turn timeout');
+
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('robber after discard gets robberDeadline and a dedicated force timer', async () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom({ id: 'h1', name: 'Host1', socketId: 's1' });
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
+    roomManager.startGame(room.code, 'h1');
+
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_DISCARD;
+    engine.pendingDiscards.add('h1');
+    engine.players[0].resources = { wood: 6, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.discardDeadline = Date.now() + 50;
+    room.turnTimeRemaining = 40;
+
+    roomManager.checkDiscardTimer(room);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.discardDeadline, null);
+    assert.ok(engine.robberDeadline > Date.now());
+    assert.ok(engine.robberDeadline <= Date.now() + ROBBER_TIMEOUT_MS + 50);
+    assert.equal(room.turnTimeRemaining, 40, 'robber does not consume leftover turn seconds');
+
+    engine.robberDeadline = Date.now() + 50;
+    if (room.robberTimer) {
+      clearTimeout(room.robberTimer);
+      room.robberTimer = null;
+    }
+    roomManager.checkRobberTimer(room);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    assert.notEqual(engine.phase, GAME_PHASES.TURN_ROBBER, 'expired robber deadline forces placement');
+    assert.equal(engine.robberDeadline, null);
+
+    roomManager.destroyRoom(room.code);
   });
 });

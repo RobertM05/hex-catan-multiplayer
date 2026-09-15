@@ -3,7 +3,7 @@
  * Manages multiplayer game rooms, lobby state, bot lifecycle, and turn timers.
  */
 
-import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS, ROBBER_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
@@ -91,6 +91,7 @@ export class RoomManager {
       engine,
       turnTimerInterval: null,
       discardTimer: null,
+      robberTimer: null,
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
@@ -356,29 +357,49 @@ export class RoomManager {
     return room;
   }
 
+  isInterruptClockPhase(engine) {
+    return engine.phase === GAME_PHASES.TURN_DISCARD || engine.phase === GAME_PHASES.TURN_ROBBER;
+  }
+
   startTurnTimer(room) {
     if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
     room.turnTimeRemaining = room.turnDuration;
 
     room.turnTimerInterval = setInterval(() => {
-      if (!room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) {
-        clearInterval(room.turnTimerInterval);
-        return;
-      }
-
-      room.turnTimeRemaining--;
-
-      this.io.to(room.code).emit('timer_tick', {
-        remaining: room.turnTimeRemaining,
-        duration: room.turnDuration
-      });
-
-      if (room.turnTimeRemaining <= 0) {
-        this.handleTurnTimeout(room);
-      }
+      this.tickTurnTimer(room);
     }, 1000);
     if (room.turnTimerInterval && typeof room.turnTimerInterval.unref === 'function') {
       room.turnTimerInterval.unref();
+    }
+  }
+
+  tickTurnTimer(room) {
+    if (!room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) {
+      if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
+      return;
+    }
+
+    // Discard and robber use discardDeadline / robberDeadline only; freeze the shared turn clock.
+    if (this.isInterruptClockPhase(room.engine)) {
+      this.io.to(room.code).emit('timer_tick', {
+        remaining: room.turnTimeRemaining,
+        duration: room.turnDuration,
+        paused: true
+      });
+      this.checkDiscardTimer(room);
+      this.checkRobberTimer(room);
+      return;
+    }
+
+    room.turnTimeRemaining--;
+
+    this.io.to(room.code).emit('timer_tick', {
+      remaining: room.turnTimeRemaining,
+      duration: room.turnDuration
+    });
+
+    if (room.turnTimeRemaining <= 0) {
+      this.handleTurnTimeout(room);
     }
   }
 
@@ -422,12 +443,49 @@ export class RoomManager {
         }
         this.broadcastState(room);
         this.checkAndTriggerBotTurn(room);
+        this.checkRobberTimer(room);
       } catch (err) {
         console.error('Discard timer error:', err);
       }
     }, waitMs);
     if (typeof room.discardTimer.unref === 'function') {
       room.discardTimer.unref();
+    }
+  }
+
+  checkRobberTimer(room) {
+    const engine = room.engine;
+    if (engine.phase !== GAME_PHASES.TURN_ROBBER) {
+      if (room.robberTimer) {
+        clearTimeout(room.robberTimer);
+        room.robberTimer = null;
+      }
+      return;
+    }
+    if (room.robberTimer) return;
+
+    const curPlayer = engine.getCurrentPlayer();
+    if (!curPlayer || curPlayer.isBot) return;
+
+    const waitMs = Math.max(0, (engine.robberDeadline || (Date.now() + ROBBER_TIMEOUT_MS)) - Date.now());
+    room.robberTimer = setTimeout(() => {
+      room.robberTimer = null;
+      try {
+        if (room.engine.phase !== GAME_PHASES.TURN_ROBBER) return;
+        const actor = room.engine.getCurrentPlayer();
+        if (!actor) return;
+        const botRob = BotAI.decideRobberMove(room.engine, actor);
+        if (botRob && botRob.hexId) {
+          room.engine.moveRobber(actor.id, botRob.hexId, botRob.targetPlayerId);
+        }
+        this.broadcastState(room);
+        this.checkAndTriggerBotTurn(room);
+      } catch (err) {
+        console.error('Robber timer error:', err);
+      }
+    }, waitMs);
+    if (typeof room.robberTimer.unref === 'function') {
+      room.robberTimer.unref();
     }
   }
 
@@ -451,26 +509,11 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_ROLL) {
         engine.rollDice(curPlayer.id);
-      } else if (engine.phase === GAME_PHASES.TURN_DISCARD) {
-        // Auto discard for any player still pending
-        for (const pId of Array.from(engine.pendingDiscards)) {
-          const p = engine.players.find(x => x.id === pId);
-          if (p) {
-            const botDis = BotAI.decideDiscard(engine, p);
-            engine.discardCards(pId, botDis.discarded);
-          }
-        }
-        if (engine.phase === GAME_PHASES.TURN_ROBBER) {
-          const botRob = BotAI.decideRobberMove(engine, curPlayer);
-          if (botRob && botRob.hexId) {
-            engine.moveRobber(curPlayer.id, botRob.hexId, botRob.targetPlayerId);
-          }
-        }
-      } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
-        const botRob = BotAI.decideRobberMove(engine, curPlayer);
-        if (botRob && botRob.hexId) {
-          engine.moveRobber(curPlayer.id, botRob.hexId, botRob.targetPlayerId);
-        }
+      } else if (engine.phase === GAME_PHASES.TURN_DISCARD || engine.phase === GAME_PHASES.TURN_ROBBER) {
+        // Shared turn clock is paused; discardDeadline / robberDeadline own these phases.
+        this.checkDiscardTimer(room);
+        this.checkRobberTimer(room);
+        return;
       } else if (engine.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
         for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
           const p = engine.players.find(x => x.id === pId);
@@ -637,6 +680,9 @@ export class RoomManager {
     }
 
     const curPlayer = engine.getCurrentPlayer();
+    if (engine.phase === GAME_PHASES.TURN_ROBBER) {
+      this.checkRobberTimer(room);
+    }
     if (!curPlayer || !curPlayer.isBot) return;
 
     setTimeout(() => {
@@ -864,6 +910,7 @@ export class RoomManager {
     if (room) {
       if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
       if (room.discardTimer) clearTimeout(room.discardTimer);
+      if (room.robberTimer) clearTimeout(room.robberTimer);
       if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
     }
     this.rooms.delete(code);

@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
 import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
+import { GAME_PHASES } from './game/GameEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -996,10 +997,13 @@ io.on('connection', (socket) => {
         });
       }
 
-      roomManager.resetTurnTimer(room);
+      if (room.engine?.phase !== GAME_PHASES.TURN_DISCARD && room.engine?.phase !== GAME_PHASES.TURN_ROBBER) {
+        roomManager.resetTurnTimer(room);
+      }
       roomManager.broadcastState(room);
       roomManager.checkAndTriggerBotTurn(room);
       roomManager.checkDiscardTimer(room);
+      roomManager.checkRobberTimer(room);
       if (callback) callback({ success: true, ...result });
     } catch (err) {
       const timeStr = new Date().toLocaleTimeString();

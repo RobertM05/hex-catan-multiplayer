@@ -49,6 +49,10 @@ export function getDiscardRemainingSeconds(discardDeadline, now = Date.now()) {
   return Math.max(0, Math.ceil(diffMs / 1000));
 }
 
+export function playerMustDiscard(pendingDiscards, playerId) {
+  return Array.isArray(pendingDiscards) && pendingDiscards.includes(playerId);
+}
+
 export class TurnTimerUI {
   constructor({
     wrapperId = 'turn-timer-wrapper',
@@ -108,11 +112,21 @@ export class TurnTimerUI {
     return state;
   }
 
-  syncDiscard({ discardDeadline, isMyTurn = false }) {
+  syncDiscard({ discardDeadline, isPendingDiscard = false }) {
     const remaining = getDiscardRemainingSeconds(discardDeadline);
     return this.update({
       remaining,
       duration: 30,
+      isMyTurn: isPendingDiscard,
+      customLabel: null
+    });
+  }
+
+  syncRobber({ robberDeadline, isMyTurn = false }) {
+    const remaining = getDiscardRemainingSeconds(robberDeadline);
+    return this.update({
+      remaining,
+      duration: 15,
       isMyTurn,
       customLabel: null
     });
