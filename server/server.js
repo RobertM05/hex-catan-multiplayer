@@ -938,6 +938,13 @@ io.on('connection', (socket) => {
       payload = maybePayload || null;
     }
 
+    if (!socketRateLimiter.consume(actionLimitKey(socket.id), RATE_LIMITS.gameAction)) {
+      const err = RATE_LIMITED;
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] "${actionName}": ${err}`);
+      if (callback) callback({ success: false, error: err });
+      return;
+    }
+
     const roomCode = (code || currentRoomCode)?.toUpperCase();
     if (!roomCode || (currentRoomCode && code && currentRoomCode !== code.toUpperCase())) {
       const err = 'ROOM_MISMATCH';
@@ -948,13 +955,6 @@ io.on('connection', (socket) => {
     const room = roomManager.getRoom(roomCode);
     if (!room || !room.isStarted) {
       const err = 'ROOM_NOT_ACTIVE';
-      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] [${roomCode}] "${actionName}": ${err}`);
-      if (callback) callback({ success: false, error: err });
-      return;
-    }
-
-    if (!socketRateLimiter.consume(actionLimitKey(socket.id), RATE_LIMITS.gameAction)) {
-      const err = RATE_LIMITED;
       console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] [${roomCode}] "${actionName}": ${err}`);
       if (callback) callback({ success: false, error: err });
       return;
