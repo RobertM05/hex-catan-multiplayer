@@ -657,6 +657,15 @@ export class CatanApp {
       }
     });
 
+    document.getElementById('btn-pass-sbp')?.addEventListener('click', async () => {
+      try {
+        this.clearActiveAction();
+        await network.sendAction('end_turn');
+      } catch (err) {
+        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+      }
+    });
+
     // Build Settlement action
     document.getElementById('btn-build-settlement').addEventListener('click', () => {
       if (this.selectedAction && this.selectedAction.type === 'settlement') {
@@ -1167,7 +1176,7 @@ export class CatanApp {
     const me = this.gameState.players.find(p => p.id === this.myPlayerId);
     if (!me || knight.playerId !== this.myPlayerId) return;
     const isMyTurn = this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId;
-    if (!isMyTurn || this.gameState.phase !== 'TURN_ACTION') return;
+    if (!isMyTurn || (this.gameState.phase !== 'TURN_ACTION' && this.gameState.phase !== 'TURN_SPECIAL_BUILDING')) return;
 
     const wheat = me.resources?.wheat || 0;
     const wool = me.resources?.wool || 0;
@@ -1199,7 +1208,7 @@ export class CatanApp {
         }
       });
     }
-    if (knight.active) {
+    if (knight.active && this.gameState.phase === 'TURN_ACTION') {
       actions.push({
         label: i18n.t('KNIGHT_MOVE'),
         disabled: false,
@@ -3444,12 +3453,20 @@ export class CatanApp {
     }
 
     const me = s.players.find(p => p.id === this.myPlayerId);
+    const isSbp = s.phase === 'TURN_SPECIAL_BUILDING';
     const isActionPhase = s.phase === 'TURN_ACTION' && isMyTurn;
+    const isBuildPhase = isMyTurn && (s.phase === 'TURN_ACTION' || isSbp);
     const isRollPhase = s.phase === 'TURN_ROLL' && isMyTurn;
     const notTurnReason = !isMyTurn ? 'REASON_NOT_YOUR_TURN' : 'REASON_WRONG_PHASE';
 
     this.setActionEnabled(document.getElementById('btn-roll-dice'), isRollPhase, isMyTurn && !isRollPhase ? 'REASON_ALREADY_ROLLED' : notTurnReason);
     this.setActionEnabled(document.getElementById('btn-end-turn'), isActionPhase, notTurnReason);
+    const passBtn = document.getElementById('btn-pass-sbp');
+    if (passBtn) {
+      passBtn.classList.toggle('is-hidden', !isSbp);
+      this.setActionEnabled(passBtn, isSbp && isMyTurn, notTurnReason);
+    }
+    document.getElementById('btn-end-turn')?.classList.toggle('is-hidden', isSbp);
     this.setActionEnabled(document.getElementById('btn-open-trade'), isActionPhase, notTurnReason);
     const unplayedDev = (me?.devCards || []).filter(c => !c.played);
     this.setActionEnabled(
@@ -3458,11 +3475,11 @@ export class CatanApp {
       !isActionPhase ? notTurnReason : 'REASON_WRONG_PHASE'
     );
 
-    this.setBuildEnabled('btn-build-road', isActionPhase, me, BUILD_COSTS.ROAD, notTurnReason);
-    this.setBuildEnabled('btn-build-settlement', isActionPhase, me, BUILD_COSTS.SETTLEMENT, notTurnReason);
-    this.setBuildEnabled('btn-build-city', isActionPhase, me, BUILD_COSTS.CITY, notTurnReason);
-    this.setBuildEnabled('btn-buy-dev-card', isActionPhase && !this.isCitiesKnights(), me, BUILD_COSTS.DEV_CARD, notTurnReason);
-    this.renderWallSupplyAndButton(s, me, isActionPhase, notTurnReason);
+    this.setBuildEnabled('btn-build-road', isBuildPhase, me, BUILD_COSTS.ROAD, notTurnReason);
+    this.setBuildEnabled('btn-build-settlement', isBuildPhase, me, BUILD_COSTS.SETTLEMENT, notTurnReason);
+    this.setBuildEnabled('btn-build-city', isBuildPhase, me, BUILD_COSTS.CITY, notTurnReason);
+    this.setBuildEnabled('btn-buy-dev-card', isBuildPhase && !this.isCitiesKnights(), me, BUILD_COSTS.DEV_CARD, notTurnReason);
+    this.renderWallSupplyAndButton(s, me, isBuildPhase, notTurnReason);
 
     // Update Dice Values
     if (s.dice) {
@@ -3478,7 +3495,7 @@ export class CatanApp {
       }
     }
 
-    this.renderCkHud(s, me, isActionPhase);
+    this.renderCkHud(s, me, isBuildPhase);
     this.renderBankSupply(s.bank, this.isCitiesKnights());
     this.renderKnightsOverview(s.knightsOverview);
 
@@ -3655,6 +3672,13 @@ export class CatanApp {
       hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
     } else if (s.phase === 'TURN_DISCARD') {
       hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
+    } else if (s.phase === 'TURN_SPECIAL_BUILDING') {
+      if (isMyTurn) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_SBP');
+      } else if (curPlayer) {
+        hintText = i18n.t('STATUS_WAIT_SBP', { name: curPlayer.name });
+      }
     } else if (s.phase === 'TURN_ACTION') {
       if (isMyTurn) {
         if (this.selectedAction && this.selectedAction.type === 'road') {

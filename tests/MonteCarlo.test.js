@@ -117,7 +117,7 @@ describe('Monte Carlo Simulation', () => {
            } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
              const robAction = BotAI.decideRobberMove(engine, curPlayer);
              engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
-           } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+           } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
              const action = BotAI.decideTurnAction(engine, curPlayer);
              if (action.action === 'end_turn') {
                engine.endTurn(curPlayer.id);
@@ -247,7 +247,7 @@ describe('Monte Carlo Simulation', () => {
            } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
              const robAction = BotAI.decideRobberMove(engine, curPlayer);
              engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
-           } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+           } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
              const action = BotAI.decideTurnAction(engine, curPlayer);
              if (action.action === 'end_turn') {
                engine.endTurn(curPlayer.id);
