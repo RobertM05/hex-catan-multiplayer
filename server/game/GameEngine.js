@@ -88,6 +88,7 @@ export const GAME_PHASES = {
   TURN_DISCARD: 'TURN_DISCARD',
   TURN_ROBBER: 'TURN_ROBBER',
   TURN_ACTION: 'TURN_ACTION',
+  TURN_SPECIAL_BUILDING: 'TURN_SPECIAL_BUILDING',
   TURN_BARBARIAN_RESOLVE: 'TURN_BARBARIAN_RESOLVE',
   TURN_BARBARIAN_DOWNGRADE: 'TURN_BARBARIAN_DOWNGRADE',
   TURN_BARBARIAN_REWARD: 'TURN_BARBARIAN_REWARD',
@@ -165,6 +166,8 @@ export class GameEngine {
     this.pendingMetropolisChoice = null;
     this.pendingKnightRelocation = null;
     this.previousPhase = null;
+    this.specialBuildingQueue = [];
+    this.specialBuildingOriginIndex = null;
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -302,6 +305,19 @@ export class GameEngine {
       }
     } else {
       this.currentTurnPlayerIndex = 0;
+    }
+
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
+      this.specialBuildingQueue = (this.specialBuildingQueue || []).filter(id => id !== playerId);
+      if (this.specialBuildingOriginIndex != null && index < this.specialBuildingOriginIndex) {
+        this.specialBuildingOriginIndex--;
+      }
+      if (!this.specialBuildingQueue.length) {
+        this.finishSpecialBuilding();
+      } else {
+        const nextIdx = this.players.findIndex(p => p.id === this.specialBuildingQueue[0]);
+        if (nextIdx >= 0) this.currentTurnPlayerIndex = nextIdx;
+      }
     }
 
     // Clean up Longest Road & Largest Army if held by removed player
@@ -1279,10 +1295,23 @@ export class GameEngine {
    * BUILDING & DEV CARDS IN ACTION PHASE
    * ========================================================= */
 
-  buildRoad(playerId, edgeId) {
+  isBuildPhase() {
+    return this.phase === GAME_PHASES.TURN_ACTION || this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING;
+  }
+
+  usesSpecialBuildingPhase() {
+    return this.players.length > 4;
+  }
+
+  assertBuildTurn(playerId) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    if (!this.isBuildPhase()) throw new Error('NOT_IN_ACTION_PHASE');
+    return player;
+  }
+
+  buildRoad(playerId, edgeId) {
+    const player = this.assertBuildTurn(playerId);
 
     const check = this.canBuildRoad(playerId, edgeId);
     if (!check.ok) throw new Error(check.reason);
@@ -1312,9 +1341,7 @@ export class GameEngine {
   }
 
   buildSettlement(playerId, vertexId) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    const player = this.assertBuildTurn(playerId);
 
     const check = this.canBuildSettlement(playerId, vertexId);
     if (!check.ok) throw new Error(check.reason);
@@ -1340,9 +1367,7 @@ export class GameEngine {
   }
 
   buildCity(playerId, vertexId) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    const player = this.assertBuildTurn(playerId);
 
     const check = this.canBuildCity(playerId, vertexId);
     if (!check.ok) throw new Error(check.reason);
@@ -1401,9 +1426,7 @@ export class GameEngine {
 
   improveCityTrack(playerId, track) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    const player = this.assertBuildTurn(playerId);
     if (!IMPROVEMENT_TRACKS[track]) throw new Error('INVALID_IMPROVEMENT_TRACK');
     if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
 
@@ -1517,11 +1540,13 @@ export class GameEngine {
     return Boolean(this.getFirstVulnerableCityId(player));
   }
 
-  assertCkAction(playerId) {
+  assertCkAction(playerId, { allowSpecialBuilding = true } = {}) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    const phaseOk = this.phase === GAME_PHASES.TURN_ACTION
+      || (allowSpecialBuilding && this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING);
+    if (!phaseOk) throw new Error('NOT_IN_ACTION_PHASE');
     return player;
   }
 
@@ -1640,7 +1665,7 @@ export class GameEngine {
   }
 
   moveKnight(playerId, fromVertexId, toVertexId) {
-    const player = this.assertCkAction(playerId);
+    const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     const knight = this.getKnightRecord(player, fromVertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
     if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
@@ -1750,7 +1775,7 @@ export class GameEngine {
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
-    const player = this.assertCkAction(playerId);
+    const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
     if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
@@ -1977,9 +2002,7 @@ export class GameEngine {
   }
 
   buyDevCard(playerId) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+    const player = this.assertBuildTurn(playerId);
     if (this.isCitiesKnights()) throw new Error('DEV_CARDS_DISABLED_IN_CK');
 
     const check = this.canBuyDevCard(playerId);
@@ -2562,6 +2585,7 @@ export class GameEngine {
   tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
     if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
@@ -2614,6 +2638,7 @@ export class GameEngine {
   proposeTrade(playerId, give, want) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
     if (!give || !want || typeof give !== 'object' || typeof want !== 'object') {
       throw new Error('INVALID_TRADE_FORMAT');
@@ -2700,6 +2725,7 @@ export class GameEngine {
   confirmTrade(playerId, targetPlayerId) {
     if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
     if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
     if (!this.activeTrade.acceptedBy.has(targetPlayerId)) throw new Error('PLAYER_DID_NOT_ACCEPT');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
@@ -2749,6 +2775,10 @@ export class GameEngine {
    * ========================================================= */
 
   endTurn(playerId) {
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
+      return this.passSpecialBuilding(playerId);
+    }
+
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
@@ -2772,12 +2802,76 @@ export class GameEngine {
     player.hasProposedTradeThisTurn = false;
     this.alchemistDice = null;
 
-    // Check victory
     if (this.checkVictory()) {
       return { gameOver: true, winner: player };
     }
 
-    // Pass turn to next player
+    if (this.usesSpecialBuildingPhase()) {
+      return this.startSpecialBuilding(playerId);
+    }
+
+    return this.advanceToNextRegularTurn();
+  }
+
+  startSpecialBuilding(endedPlayerId) {
+    const origin = this.players.findIndex(p => p.id === endedPlayerId);
+    this.specialBuildingOriginIndex = origin < 0 ? this.currentTurnPlayerIndex : origin;
+    this.specialBuildingQueue = [];
+    for (let i = 1; i < this.players.length; i++) {
+      const idx = (this.specialBuildingOriginIndex + i) % this.players.length;
+      this.specialBuildingQueue.push(this.players[idx].id);
+    }
+    this.phase = GAME_PHASES.TURN_SPECIAL_BUILDING;
+    this.currentTurnPlayerIndex = this.players.findIndex(p => p.id === this.specialBuildingQueue[0]);
+    this.hasRolledDice = true;
+    this.logEvent({
+      type: 'SPECIAL_BUILDING_STARTED',
+      messageKey: 'LOG_SPECIAL_BUILDING_STARTED',
+      args: { playerName: this.getCurrentPlayer()?.name }
+    });
+    return { gameOver: false, specialBuilding: true, currentPlayerId: this.getCurrentPlayer()?.id };
+  }
+
+  passSpecialBuilding(playerId) {
+    const player = this.getCurrentPlayer();
+    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase !== GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('NOT_IN_SPECIAL_BUILDING');
+    this.specialBuildingQueue = this.specialBuildingQueue.filter(id => id !== playerId);
+    if (!this.specialBuildingQueue.length) {
+      return this.finishSpecialBuilding();
+    }
+    this.currentTurnPlayerIndex = this.players.findIndex(p => p.id === this.specialBuildingQueue[0]);
+    this.logEvent({
+      type: 'SPECIAL_BUILDING_PASSED',
+      messageKey: 'LOG_SPECIAL_BUILDING_PASSED',
+      args: { playerName: player.name, nextName: this.getCurrentPlayer()?.name }
+    });
+    return { gameOver: false, specialBuilding: true, currentPlayerId: this.getCurrentPlayer()?.id };
+  }
+
+  finishSpecialBuilding() {
+    const origin = this.specialBuildingOriginIndex ?? 0;
+    this.specialBuildingQueue = [];
+    this.specialBuildingOriginIndex = null;
+    this.currentTurnPlayerIndex = (origin + 1) % this.players.length;
+    if (this.currentTurnPlayerIndex === 0) {
+      this.turnNumber++;
+    }
+    this.phase = GAME_PHASES.TURN_ROLL;
+    this.hasRolledDice = false;
+    const nextPlayer = this.getCurrentPlayer();
+    if (this.checkVictory()) {
+      return { gameOver: true, winner: nextPlayer };
+    }
+    this.logEvent({
+      type: 'TURN_CHANGED',
+      messageKey: 'LOG_TURN_CHANGED',
+      args: { playerName: nextPlayer.name, turnNumber: this.turnNumber }
+    });
+    return { gameOver: false, nextPlayer };
+  }
+
+  advanceToNextRegularTurn() {
     this.currentTurnPlayerIndex = (this.currentTurnPlayerIndex + 1) % this.players.length;
     if (this.currentTurnPlayerIndex === 0) {
       this.turnNumber++;
@@ -2786,7 +2880,6 @@ export class GameEngine {
     this.phase = GAME_PHASES.TURN_ROLL;
     const nextPlayer = this.getCurrentPlayer();
 
-    // Check if new player already has winning VP on their turn start
     if (this.checkVictory()) {
       return { gameOver: true, winner: nextPlayer };
     }
@@ -3011,6 +3104,7 @@ export class GameEngine {
   }
 
   checkVictory() {
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) return false;
     this.recalculateVictoryPoints();
     const curPlayer = this.getCurrentPlayer();
     if (curPlayer && curPlayer.victoryPoints >= this.vpTarget) {
@@ -3190,6 +3284,8 @@ export class GameEngine {
       metropolises: this.metropolises,
       pendingMetropolisChoice: this.pendingMetropolisChoice,
       pendingKnightRelocation: this.pendingKnightRelocation,
+      specialBuildingQueue: this.specialBuildingQueue,
+      specialBuildingOriginIndex: this.specialBuildingOriginIndex,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,

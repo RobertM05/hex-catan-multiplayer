@@ -14,6 +14,7 @@ describe('UX-04 phase to status mapping', () => {
     assert.equal(mapPhaseToStatusKey('TURN_DISCARD', true), 'STATUS_YOUR_DISCARD');
     assert.equal(mapPhaseToStatusKey('TURN_ROBBER', true), 'STATUS_YOUR_ROBBER');
     assert.equal(mapPhaseToStatusKey('TURN_ACTION', true), 'STATUS_YOUR_ACTION');
+    assert.equal(mapPhaseToStatusKey('TURN_SPECIAL_BUILDING', true), 'STATUS_YOUR_SBP');
     assert.equal(mapPhaseToStatusKey('SETUP_ROUND_1', true), 'STATUS_YOUR_SETUP');
     assert.equal(mapPhaseToStatusKey('SETUP_ROUND_2', true), 'STATUS_YOUR_SETUP');
     assert.equal(mapPhaseToStatusKey('TURN_BARBARIAN_RESOLVE', true), 'STATUS_YOUR_BARBARIAN');
@@ -26,6 +27,7 @@ describe('UX-04 phase to status mapping', () => {
     assert.equal(mapPhaseToStatusKey('TURN_DISCARD', false), 'STATUS_WAIT_DISCARD');
     assert.equal(mapPhaseToStatusKey('TURN_ROBBER', false), 'STATUS_WAIT_ROBBER');
     assert.equal(mapPhaseToStatusKey('TURN_ACTION', false), 'STATUS_WAIT_ACTION');
+    assert.equal(mapPhaseToStatusKey('TURN_SPECIAL_BUILDING', false), 'STATUS_WAIT_SBP');
     assert.equal(mapPhaseToStatusKey('SETUP_ROUND_1', false), 'STATUS_WAIT_SETUP');
     assert.equal(mapPhaseToStatusKey('TURN_BARBARIAN_RESOLVE', false), 'STATUS_WAIT_BARBARIAN');
   });
