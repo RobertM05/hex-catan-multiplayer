@@ -96,6 +96,24 @@ Pentru dezvoltare cu auto-reload la modificări de cod:
 npm run dev
 ```
 
+### Admin dashboard (SEC-03)
+`GET /admin`, `/admin/traffic`, `/admin.html`, and all `/api/admin/*` routes are **disabled** unless a strong shared secret is configured:
+
+```bash
+export ADMIN_SECRET="$(openssl rand -hex 32)"   # Linux / macOS
+npm start
+```
+
+On Windows (PowerShell): `$env:ADMIN_SECRET = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })`
+
+Sign in with any of:
+- Browser prompt / login form at `/admin` (HTTP Basic or `POST /admin/session`)
+- `Authorization: Bearer <ADMIN_SECRET>`
+- `Authorization: Basic` with password = `ADMIN_SECRET`
+- `X-Admin-Secret: <ADMIN_SECRET>`
+
+If `ADMIN_SECRET` is unset, admin routes return **403** and never include traffic, IPs, or player hands.
+
 ### 3. Rulare teste automate
 Proiectul include o suită completă de 25 de teste unitare și de integrare QA:
 ```bash
