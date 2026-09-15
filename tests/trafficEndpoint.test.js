@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
+import { server, io, app, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs } from '../server/server.js';
 
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
@@ -23,34 +23,40 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     });
   });
 
-  it('extractClientIp should correctly prioritize cf-connecting-ip, x-real-ip, x-forwarded-for, and req.ip', () => {
-    // Cloudflare Connecting IP
-    const reqCf = { headers: { 'cf-connecting-ip': '198.51.100.42', 'x-forwarded-for': '203.0.113.1' } };
-    assert.equal(extractClientIp(reqCf), '198.51.100.42');
-
-    // X-Real-IP
-    const reqReal = { headers: { 'x-real-ip': '198.51.100.88' } };
-    assert.equal(extractClientIp(reqReal), '198.51.100.88');
-
-    // X-Forwarded-For chain
-    const reqFwd = { headers: { 'x-forwarded-for': '203.0.113.50, 10.0.0.1, 192.168.1.1' } };
-    assert.equal(extractClientIp(reqFwd), '203.0.113.50');
-
-    // Socket handshake format
-    const socket = { handshake: { headers: { 'cf-connecting-ip': '86.120.10.5' }, address: '127.0.0.1' } };
-    assert.equal(extractClientIp(socket), '86.120.10.5');
-
-    // Strips ::ffff:
-    const reqIpv6 = { ip: '::ffff:192.168.1.100', headers: {} };
-    assert.equal(extractClientIp(reqIpv6), '192.168.1.100');
+  it('does not enable Express trust proxy for every hop', () => {
+    assert.notEqual(app.get('trust proxy'), true);
+    assert.equal(app.get('trust proxy'), 'loopback');
   });
 
-  it('extractClientCountry should extract cf-ipcountry header', () => {
-    const req = { headers: { 'cf-ipcountry': 'RO' } };
-    assert.equal(extractClientCountry(req), 'RO');
+  it('extractClientIp honors Cloudflare headers only from a verified local edge', () => {
+    const tunneled = {
+      headers: { 'cf-connecting-ip': '198.51.100.42', 'x-forwarded-for': '203.0.113.1' },
+      socket: { remoteAddress: '127.0.0.1' }
+    };
+    assert.equal(extractClientIp(tunneled, 'loopback'), '198.51.100.42');
 
-    const reqEmpty = { headers: {} };
-    assert.equal(extractClientCountry(reqEmpty), null);
+    const spoofedDirect = {
+      headers: { 'cf-connecting-ip': '198.51.100.42', 'x-real-ip': '198.51.100.88', 'x-forwarded-for': '203.0.113.50' },
+      socket: { remoteAddress: '203.0.113.10' }
+    };
+    assert.equal(extractClientIp(spoofedDirect, 'loopback'), '203.0.113.10');
+
+    const socket = { handshake: { headers: { 'cf-connecting-ip': '86.120.10.5' }, address: '127.0.0.1' } };
+    assert.equal(extractClientIp(socket, 'loopback'), '86.120.10.5');
+
+    const reqIpv6 = { ip: '::ffff:192.168.1.100', headers: {} };
+    assert.equal(extractClientIp(reqIpv6, false), '192.168.1.100');
+  });
+
+  it('extractClientCountry should extract cf-ipcountry only from a verified edge', () => {
+    const tunneled = { headers: { 'cf-ipcountry': 'RO' }, socket: { remoteAddress: '127.0.0.1' } };
+    assert.equal(extractClientCountry(tunneled, 'loopback'), 'RO');
+
+    const spoofedDirect = { headers: { 'cf-ipcountry': 'RO' }, socket: { remoteAddress: '203.0.113.10' } };
+    assert.equal(extractClientCountry(spoofedDirect, 'loopback'), null);
+
+    const reqEmpty = { headers: {}, socket: { remoteAddress: '127.0.0.1' } };
+    assert.equal(extractClientCountry(reqEmpty, 'loopback'), null);
   });
 
   it('recordTrafficEvent should append to buffer and track unique IPs', () => {

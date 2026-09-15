@@ -125,12 +125,45 @@ Dacă prietenii tăi sunt la ei acasă, poți expune serverul printr-un tunel se
 ```
 Comanda îți va genera un link securizat (ex: `https://publications-developer-bishop-dimensions.trycloudflare.com`). Trimite link-ul prietenilor și pot juca instant din orice browser.
 
+`cloudflared` connects to Node from loopback (`127.0.0.1` / `::1`). The server therefore treats that peer as a verified edge and honors `CF-Connecting-IP` / `X-Forwarded-For` for client IP telemetry (see below).
+
 ---
 
 ### 🔹 Opțiunea 3: Pe același calculator (Simulare Multiplayer)
 1. Deschide [http://localhost:3000](http://localhost:3000) într-un tab normal.
 2. Deschide un alt tab în mod **Incognito** (sau în alt browser, ex: Safari).
 3. Creează camera din primul tab și alătură-te din cel de-al doilea cu un alt nume pentru a testa interacțiunile multiplayer.
+
+---
+
+## 🔐 Deployment topology & client IPs (SEC-08)
+
+The server records client IPs for admin telemetry and (future) rate limits. Forwarded headers are **not** globally trusted.
+
+| Topology | How traffic reaches Node | `TRUST_PROXY` | Client IP source |
+| :--- | :--- | :--- | :--- |
+| **Bare Node** (LAN or a public bind with no reverse proxy) | Browser connects from a non-loopback address | `false`, or default `loopback` | TCP peer (`socket.remoteAddress`). `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` are ignored because the peer is not a verified edge. |
+| **Cloudflare Tunnel** (`cloudflared tunnel --url http://localhost:3000`) | `cloudflared` dials loopback | default `loopback` | Headers from the tunnel hop: `CF-Connecting-IP`, then hop-stripped `X-Forwarded-For`. |
+| **Reverse proxy / PaaS** (nginx, Render, Railway, Fly.io) | One trusted hop in front of Node | `1` (only if Node is **not** reachable except via that proxy) or the proxy IP/CIDR | Hop count or listed proxy address. |
+
+```bash
+# Bare Node — never honor client-supplied forwarded headers
+TRUST_PROXY=false npm start
+
+# Cloudflare tunnel (default) — trust headers only from loopback
+TRUST_PROXY=loopback npm start
+
+# Single reverse proxy that is the only way to reach Node
+TRUST_PROXY=1 npm start
+
+# Trust a specific proxy address or CIDR
+TRUST_PROXY=10.0.0.1 npm start
+TRUST_PROXY=10.0.0.0/8 npm start
+```
+
+`TRUST_PROXY=true` is rejected: Express would trust every hop, which is how client IPs were spoofable. It is coerced to `loopback` with a startup warning.
+
+Startup logs the active policy, for example: `Client IP trust proxy: loopback`.
 
 ---
 
