@@ -554,6 +554,8 @@ export const STRINGS = {
     ERROR_NO_PLAYERS_WITH_MORE_VP: "No players have more victory points than you.",
     ERROR_TARGET_HAS_NO_PROGRESS_CARDS: "The target player has no progress cards in hand.",
     ERROR_CARD_NOT_FOUND_IN_TARGET_HAND: "That card is not in the target player's hand.",
+    ERROR_CARD_ALREADY_PEEKED: "This card was already used to peek. Choose cards to steal, or it is spent.",
+    ERROR_PEEK_TARGET_MISMATCH: "You must steal from the opponent you peeked.",
     ERROR_NO_LEGAL_KNIGHT_SPOTS: "No legal intersections available for knight placement (must be empty and connected to your road network).",
     BARBARIAN_POS_0: "Distant Waters — Catan is Safe",
     BARBARIAN_POS_APPROACH: "Barbarians sailing to Catan ({remain} steps away)",
