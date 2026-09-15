@@ -10,7 +10,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
-import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
+import { RoomManager, sanitizePlayerForClient, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -740,7 +740,7 @@ io.on('connection', (socket) => {
       const bot = roomManager.addBot(roomCode, data?.difficulty || 'medium');
       if (!bot) throw new Error('BOT_ADD_FAILED');
       roomManager.broadcastLobbyState(existingRoom);
-      if (callback) callback({ success: true, bot });
+      if (callback) callback({ success: true, bot: sanitizePlayerForClient(bot) });
     } catch (err) {
       if (callback) callback({ success: false, error: err.message });
     }

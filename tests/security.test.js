@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RoomManager,
+  sanitizePlayerForClient,
+  sanitizePlayersForClient,
   validateChatMessage,
   validateDisplayName,
   validatePlayerColor,
@@ -99,5 +101,133 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
 
     app.myPlayerId = null;
     network.currentPlayerId = null;
+  });
+});
+
+describe('SEC-09: reconnect secrets not broadcast to clients', () => {
+  function capturingIo() {
+    const emitted = [];
+    const io = {
+      to(target) {
+        return {
+          emit(event, payload) {
+            emitted.push({ target, event, payload });
+          }
+        };
+      }
+    };
+    return { io, emitted };
+  }
+
+  function assertSanitizedPlayers(players) {
+    assert.ok(Array.isArray(players));
+    assert.ok(players.length > 0);
+    for (const player of players) {
+      assert.equal(Object.hasOwn(player, 'reconnectToken'), false, 'raw reconnect token must not be emitted');
+      assert.equal(Object.hasOwn(player, 'reconnectTokenHash'), false, 'reconnectTokenHash must not be emitted');
+      assert.equal(Object.hasOwn(player, 'socketId'), false, 'socketId must not be emitted');
+      assert.ok(player.id);
+      assert.ok(player.name);
+      assert.equal(typeof player.isBot, 'boolean');
+    }
+  }
+
+  it('strips reconnectToken, reconnectTokenHash, and socketId from a player copy without mutating the original', () => {
+    const original = {
+      id: 'p1',
+      name: 'Host',
+      color: '#e63946',
+      isReady: true,
+      isBot: false,
+      socketId: 'sock-secret',
+      reconnectTokenHash: 'hash-secret',
+      reconnectToken: 'raw-secret'
+    };
+
+    const sanitized = sanitizePlayerForClient(original);
+
+    assert.deepEqual(sanitizePlayersForClient([original]), [sanitized]);
+    assert.equal(Object.hasOwn(sanitized, 'reconnectToken'), false);
+    assert.equal(Object.hasOwn(sanitized, 'reconnectTokenHash'), false);
+    assert.equal(Object.hasOwn(sanitized, 'socketId'), false);
+    assert.equal(sanitized.id, 'p1');
+    assert.equal(sanitized.name, 'Host');
+    assert.equal(original.socketId, 'sock-secret');
+    assert.equal(original.reconnectTokenHash, 'hash-secret');
+    assert.equal(original.reconnectToken, 'raw-secret');
+  });
+
+  it('omits reconnectTokenHash, raw reconnect token, and socketId from lobby broadcasts', () => {
+    const { io, emitted } = capturingIo();
+    const roomManager = new RoomManager(io);
+    const host = roomManager.createPlayerSession();
+    const guest = roomManager.createPlayerSession();
+    const room = roomManager.createRoom({
+      id: host.id,
+      name: 'Host',
+      socketId: 'sock-host',
+      reconnectTokenHash: host.reconnectTokenHash
+    });
+    room.players[0].reconnectToken = host.reconnectToken;
+    roomManager.joinRoom(room.code, {
+      id: guest.id,
+      name: 'Guest',
+      socketId: 'sock-guest',
+      reconnectTokenHash: guest.reconnectTokenHash
+    });
+    room.players[1].reconnectToken = guest.reconnectToken;
+
+    roomManager.broadcastLobbyState(room);
+
+    const lobbyEmits = emitted.filter(entry => entry.event === 'lobby_state_update');
+    assert.equal(lobbyEmits.length, 1);
+    assertSanitizedPlayers(lobbyEmits[0].payload.players);
+    assert.equal(lobbyEmits[0].payload.players.length, 2);
+    assert.equal(lobbyEmits[0].payload.players[0].id, host.id);
+    assert.equal(lobbyEmits[0].payload.players[1].id, guest.id);
+
+    assert.equal(room.players[0].reconnectTokenHash, host.reconnectTokenHash);
+    assert.equal(room.players[0].socketId, 'sock-host');
+    assert.equal(room.players[0].reconnectToken, host.reconnectToken);
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('omits reconnectTokenHash, raw reconnect token, and socketId from game broadcasts', () => {
+    const { io, emitted } = capturingIo();
+    const roomManager = new RoomManager(io);
+    const host = roomManager.createPlayerSession();
+    const guest = roomManager.createPlayerSession();
+    const room = roomManager.createRoom({
+      id: host.id,
+      name: 'Host',
+      socketId: 'sock-host',
+      reconnectTokenHash: host.reconnectTokenHash
+    });
+    room.players[0].reconnectToken = host.reconnectToken;
+    roomManager.joinRoom(room.code, {
+      id: guest.id,
+      name: 'Guest',
+      socketId: 'sock-guest',
+      reconnectTokenHash: guest.reconnectTokenHash
+    });
+    room.players[1].reconnectToken = guest.reconnectToken;
+    roomManager.setPlayerReady(room.code, guest.id, true);
+    roomManager.startGame(room.code, host.id);
+
+    roomManager.broadcastState(room);
+
+    const gameEmits = emitted.filter(entry => entry.event === 'game_state_update');
+    assert.equal(gameEmits.length, 2);
+    for (const entry of gameEmits) {
+      assertSanitizedPlayers(entry.payload.room.players);
+      assert.equal(entry.payload.room.players.length, 2);
+      assert.ok(entry.payload.state);
+    }
+
+    assert.equal(room.players[0].reconnectTokenHash, host.reconnectTokenHash);
+    assert.equal(room.players[0].socketId, 'sock-host');
+    assert.equal(room.players[1].reconnectTokenHash, guest.reconnectTokenHash);
+    assert.equal(room.players[1].socketId, 'sock-guest');
+    roomManager.destroyRoom(room.code);
   });
 });

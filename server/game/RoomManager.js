@@ -37,6 +37,21 @@ export function validatePlayerColor(value) {
   return value.toLowerCase();
 }
 
+const CLIENT_PLAYER_SECRET_KEYS = ['reconnectToken', 'reconnectTokenHash', 'socketId'];
+
+export function sanitizePlayerForClient(player) {
+  if (!player || typeof player !== 'object') return player;
+  const copy = { ...player };
+  for (const key of CLIENT_PLAYER_SECRET_KEYS) {
+    delete copy[key];
+  }
+  return copy;
+}
+
+export function sanitizePlayersForClient(players) {
+  return Array.isArray(players) ? players.map(sanitizePlayerForClient) : [];
+}
+
 export class RoomManager {
   constructor(io) {
     this.io = io;
@@ -838,7 +853,7 @@ export class RoomManager {
             hostId: room.hostId,
             turnDuration: room.turnDuration,
             turnTimeRemaining: room.turnTimeRemaining,
-            players: room.players
+            players: sanitizePlayersForClient(room.players)
           }
         });
       }
@@ -855,7 +870,7 @@ export class RoomManager {
       turnDuration: room.turnDuration,
       vpTarget: room.vpTarget,
       isStarted: room.isStarted,
-      players: room.players
+      players: sanitizePlayersForClient(room.players)
     });
   }
 
