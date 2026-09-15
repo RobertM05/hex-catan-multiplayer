@@ -1236,6 +1236,31 @@ export class GameEngine {
     return { playerId, discarded, auto: true };
   }
 
+  // Discard unplayed progress cards down to PROGRESS_CARD_HAND_LIMIT.
+  // Used on turn timeout so an AFK player over the hand limit cannot softlock the table.
+  // Optional selectCardId(player) picks which card to drop (bots pass BotAI.decideProgressDiscard).
+  autoDiscardProgressCards(playerId, selectCardId = null) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+    const discarded = [];
+    if (!this.isCitiesKnights()) {
+      return { discarded, remaining: this.countUnplayedProgressCards(player), auto: true };
+    }
+
+    while (this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
+      this.pendingProgressDiscard.add(playerId);
+      const cardId = (typeof selectCardId === 'function' ? selectCardId(player) : null)
+        || (player.progressCards || []).find(c => !c.played)?.id;
+      if (!cardId) break;
+      this.discardProgressCard(playerId, cardId);
+      discarded.push(cardId);
+    }
+    if (this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
+      this.pendingProgressDiscard.delete(playerId);
+    }
+    return { discarded, remaining: this.countUnplayedProgressCards(player), auto: true };
+  }
+
   moveRobber(playerId, hexId, targetPlayerId = null) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
