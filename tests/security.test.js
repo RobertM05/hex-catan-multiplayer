@@ -157,11 +157,19 @@ describe('SEC-07: moveRobber mandatory steal', () => {
   it('rejects invalid, self, and non-adjacent targets when victims exist', () => {
     const engine = makeRobberEngine();
     const hexId = destHexId(engine);
-    const otherHexId = Array.from(engine.grid.hexes.keys()).find(
-      (id) => id !== engine.grid.robberHexId && id !== hexId
-    );
     attachSettlement(engine, 'p2', hexId);
-    attachSettlement(engine, 'p3', otherHexId);
+    const farVertexId = Array.from(engine.grid.vertices.keys()).find((id) => {
+      const vertex = engine.grid.vertices.get(id);
+      return !vertex.building && !vertex.hexes.includes(hexId);
+    });
+    assert.ok(farVertexId, 'expected a vertex that does not touch the dest hex');
+    const p3 = engine.players[2];
+    engine.grid.vertices.get(farVertexId).building = {
+      type: 'settlement',
+      playerId: 'p3',
+      color: p3.color
+    };
+    p3.settlementsBuilt.push(farVertexId);
     engine.players[1].resources.wool = 1;
     engine.players[2].resources.brick = 1;
 
