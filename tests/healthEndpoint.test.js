@@ -36,6 +36,17 @@ describe('API: Health Check & System Telemetry', () => {
     assert.equal(typeof data.activeRooms, 'number');
   });
 
+  it('serves GET /health for container probes with the same payload shape', async () => {
+    const res = await fetch(`${serverUrl}/health`);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.status, 'ok');
+    assert.equal(typeof data.uptime, 'number');
+    assert.equal(typeof data.timestamp, 'number');
+    assert.equal(typeof data.activeRooms, 'number');
+    assert.ok(res.headers.get('content-type').includes('application/json'));
+  });
+
   it('should include correct Content-Type header', async () => {
     const res = await fetch(`${serverUrl}/api/health`);
     assert.ok(res.headers.get('content-type').includes('application/json'));
