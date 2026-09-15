@@ -3,7 +3,7 @@
  * Manages multiplayer game rooms, lobby state, bot lifecycle, and turn timers.
  */
 
-import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS, CARD_CHOICE_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
@@ -91,6 +91,7 @@ export class RoomManager {
       engine,
       turnTimerInterval: null,
       discardTimer: null,
+      cardChoiceTimer: null,
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
@@ -431,6 +432,52 @@ export class RoomManager {
     }
   }
 
+  checkCardChoiceTimer(room) {
+    const engine = room.engine;
+    if (engine.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      if (room.cardChoiceTimer) {
+        clearTimeout(room.cardChoiceTimer);
+        room.cardChoiceTimer = null;
+      }
+      return;
+    }
+    if (room.cardChoiceTimer) return;
+
+    const pending = engine.pendingProgressChoice;
+    const humansPending = pending ? Array.from(pending.pending).filter(id => {
+      const p = engine.players.find(x => x.id === id);
+      return p && !p.isBot;
+    }) : [];
+    if (humansPending.length === 0) return;
+
+    const waitMs = Math.max(0, (pending.deadline || (Date.now() + CARD_CHOICE_TIMEOUT_MS)) - Date.now());
+    room.cardChoiceTimer = setTimeout(() => {
+      room.cardChoiceTimer = null;
+      try {
+        if (room.engine.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) return;
+        const still = room.engine.pendingProgressChoice;
+        if (!still) return;
+        for (const id of Array.from(still.pending)) {
+          const p = room.engine.players.find(x => x.id === id);
+          if (p && !p.isBot) {
+            try {
+              room.engine.autoResolveProgressChoice(id);
+            } catch (err) {
+              console.error('Auto progress choice error:', err);
+            }
+          }
+        }
+        this.broadcastState(room);
+        this.checkAndTriggerBotTurn(room);
+      } catch (err) {
+        console.error('Card choice timer error:', err);
+      }
+    }, waitMs);
+    if (typeof room.cardChoiceTimer.unref === 'function') {
+      room.cardChoiceTimer.unref();
+    }
+  }
+
   handleTurnTimeout(room) {
     if (!room || !room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) return;
 
@@ -496,6 +543,17 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
+      } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+        const still = engine.pendingProgressChoice;
+        if (still) {
+          for (const id of Array.from(still.pending)) {
+            try {
+              engine.autoResolveProgressChoice(id);
+            } catch (err) {
+              console.error('Progress choice timeout error:', err);
+            }
+          }
+        }
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }
@@ -632,6 +690,29 @@ export class RoomManager {
             }
           }
         }, 800);
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      const pending = engine.pendingProgressChoice;
+      if (pending) {
+        for (const pId of Array.from(pending.pending)) {
+          const p = engine.players.find(x => x.id === pId);
+          if (p && p.isBot) {
+            setTimeout(() => {
+              if (room.isStarted && engine.pendingProgressChoice?.pending.has(pId)) {
+                try {
+                  engine.autoResolveProgressChoice(pId);
+                  this.broadcastState(room);
+                  this.checkAndTriggerBotTurn(room);
+                } catch (err) {
+                  console.error('Bot progress choice error:', err);
+                }
+              }
+            }, 800);
+          }
+        }
       }
       return;
     }
@@ -864,6 +945,7 @@ export class RoomManager {
     if (room) {
       if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
       if (room.discardTimer) clearTimeout(room.discardTimer);
+      if (room.cardChoiceTimer) clearTimeout(room.cardChoiceTimer);
       if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
     }
     this.rooms.delete(code);

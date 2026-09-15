@@ -175,6 +175,7 @@ export class CatanAIAgent {
       (state.phase === 'TURN_ACTION' && isMyTurn) ||
       (state.phase === 'TURN_CHOOSE_METROPOLIS' && state.pendingMetropolisChoice?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' && state.pendingKnightRelocation?.playerId === this.myPlayerId) ||
+      (state.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE' && state.pendingProgressChoice?.pending?.includes(this.myPlayerId)) ||
       (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId)) ||
       (state.phase === 'TURN_BARBARIAN_REWARD' && state.pendingBarbarianTieDraws?.includes(this.myPlayerId))
     );
@@ -237,6 +238,11 @@ export class CatanAIAgent {
       else if (curState.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE') {
         if (curState.pendingKnightRelocation?.playerId === this.myPlayerId) {
           await this.handleRelocateKnight(curState);
+        }
+      }
+      else if (curState.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE') {
+        if (curState.pendingProgressChoice?.pending?.includes(this.myPlayerId)) {
+          await this.handleProgressChoice(curState, curMe);
         }
       }
       // 8. Barbarian Downgrade (C&K)
@@ -366,6 +372,30 @@ export class CatanAIAgent {
       resources: discardedResources,
       commodities: discardedCommodities
     });
+  }
+
+  async handleProgressChoice(state, me) {
+    const pending = state.pendingProgressChoice;
+    if (!pending) return;
+    if (pending.kind === 'commercial_harbor') {
+      const commodity = ['cloth', 'coin', 'paper'].find(t => (me.commodities?.[t] || 0) > 0);
+      if (commodity) await this.sendAction('respond_progress_choice', { commodity });
+      return;
+    }
+    const need = Math.min(2, Object.values(me.resources || {}).reduce((s, n) => s + (n || 0), 0)
+      + Object.values(me.commodities || {}).reduce((s, n) => s + (n || 0), 0));
+    const cards = [];
+    const pool = [
+      ...Object.entries(me.resources || {}).map(([key, count]) => ({ key, count: count || 0 })),
+      ...Object.entries(me.commodities || {}).map(([key, count]) => ({ key, count: count || 0 }))
+    ].filter(i => i.count > 0).sort((a, b) => b.count - a.count);
+    while (cards.length < need && pool.length) {
+      const top = pool[0];
+      cards.push(top.key);
+      top.count--;
+      pool.sort((a, b) => b.count - a.count);
+    }
+    if (cards.length) await this.sendAction('respond_progress_choice', { cards });
   }
 
   async handleRobber(state, me) {

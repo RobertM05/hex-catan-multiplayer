@@ -94,6 +94,16 @@ describe('Monte Carlo Simulation', () => {
               continue;
            }
 
+           if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+             const pending = engine.pendingProgressChoice;
+             if (pending) {
+               for (const pId of Array.from(pending.pending)) {
+                 engine.autoResolveProgressChoice(pId);
+               }
+             }
+             continue;
+           }
+
            if (!curPlayer) { errors++; failed = true; break; }
 
            if (engine.phase === GAME_PHASES.SETUP_ROUND_1 || engine.phase === GAME_PHASES.SETUP_ROUND_2) {
@@ -222,6 +232,16 @@ describe('Monte Carlo Simulation', () => {
            if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
               engine.autoResolveKnightRelocation();
               continue;
+           }
+
+           if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+             const pending = engine.pendingProgressChoice;
+             if (pending) {
+               for (const pId of Array.from(pending.pending)) {
+                 engine.autoResolveProgressChoice(pId);
+               }
+             }
+             continue;
            }
 
            if (!curPlayer) { errors++; failed = true; break; }

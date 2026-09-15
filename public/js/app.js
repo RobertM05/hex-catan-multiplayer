@@ -152,6 +152,7 @@ export class CatanApp {
     this.setupCkUi();
     this.setupTradeModals();
     this.setupDiscardModal();
+    this.setupProgressChoiceModal();
     this.setupDevCardsModal();
     this.setupProgressCardUi();
 
@@ -1897,6 +1898,134 @@ export class CatanApp {
     }
   }
 
+  setupProgressChoiceModal() {
+    const modal = document.getElementById('progress-choice-modal');
+    const submit = document.getElementById('btn-submit-progress-choice');
+    if (!modal || !submit) return;
+    this.progressChoicePicks = [];
+
+    submit.addEventListener('click', async () => {
+      const pending = this.gameState?.pendingProgressChoice;
+      if (!pending?.pending?.includes(this.myPlayerId)) return;
+      try {
+        submit.disabled = true;
+        if (pending.kind === 'wedding') {
+          await network.sendAction('respond_progress_choice', { cards: this.progressChoicePicks });
+        } else if (pending.kind === 'commercial_harbor' && this.progressChoicePicks[0]) {
+          await network.sendAction('respond_progress_choice', { commodity: this.progressChoicePicks[0] });
+        }
+        modal.classList.remove('active');
+      } catch (err) {
+        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+        submit.disabled = false;
+      }
+    });
+  }
+
+  checkProgressChoiceState() {
+    const modal = document.getElementById('progress-choice-modal');
+    if (!modal || !this.gameState) return;
+    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
+    const pending = this.gameState.pendingProgressChoice;
+    const mine = pending && this.gameState.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE'
+      && pending.pending?.includes(this.myPlayerId);
+
+    if (!mine) {
+      modal.classList.remove('active');
+      this.stopProgressChoiceCountdown();
+      this.progressChoiceKey = null;
+      return;
+    }
+
+    const me = this.gameState.players.find(p => p.id === this.myPlayerId);
+    const choiceKey = `${pending.kind}:${pending.deadline}:${pending.playerId}:${this.myPlayerId}`;
+    if (this.progressChoiceKey === choiceKey && modal.classList.contains('active')) {
+      this.startProgressChoiceCountdown();
+      return;
+    }
+    this.progressChoiceKey = choiceKey;
+
+    const title = document.getElementById('progress-choice-title');
+    const hint = document.getElementById('progress-choice-hint');
+    const buttons = document.getElementById('progress-choice-buttons');
+    const submit = document.getElementById('btn-submit-progress-choice');
+    const host = this.gameState.players.find(p => p.id === pending.playerId);
+    this.progressChoicePicks = [];
+
+    if (pending.kind === 'wedding') {
+      const need = Math.min(2, this.countPlayerTotalCards(me));
+      if (title) title.textContent = i18n.t('PROGRESS_CHOICE_WEDDING_TITLE');
+      if (hint) hint.textContent = i18n.t('PROGRESS_CHOICE_WEDDING_HINT', { name: host?.name || '', count: need });
+      if (buttons) {
+        buttons.innerHTML = this.getHandCardTypes().map(type => {
+          const count = this.getCardCount(me, type);
+          return `<button type="button" class="btn-glass res-choice-btn" data-type="${type}" ${count < 1 ? 'disabled' : ''}>${this.cardLabel(type)} (${count})</button>`;
+        }).join('');
+        buttons.querySelectorAll('.res-choice-btn:not([disabled])').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (this.progressChoicePicks.length >= need) return;
+            this.progressChoicePicks.push(btn.dataset.type);
+            btn.disabled = this.getCardCount(me, btn.dataset.type) <= this.progressChoicePicks.filter(t => t === btn.dataset.type).length;
+            if (submit) submit.disabled = this.progressChoicePicks.length !== need;
+          });
+        });
+      }
+      if (submit) {
+        submit.textContent = i18n.t('PROGRESS_CHOICE_GIVE');
+        submit.disabled = need === 0;
+        submit.classList.remove('is-hidden');
+      }
+    } else if (pending.kind === 'commercial_harbor') {
+      if (title) title.textContent = i18n.t('PROGRESS_CHOICE_HARBOR_TITLE');
+      if (hint) hint.textContent = i18n.t('PROGRESS_CHOICE_HARBOR_HINT', { name: host?.name || '', resource: this.cardLabel(pending.resource) });
+      if (buttons) {
+        buttons.innerHTML = ['cloth', 'coin', 'paper'].map(type => {
+          const count = this.getCardCount(me, type);
+          return `<button type="button" class="btn-glass res-choice-btn" data-type="${type}" ${count < 1 ? 'disabled' : ''}>${this.cardLabel(type)} (${count})</button>`;
+        }).join('');
+        buttons.querySelectorAll('.res-choice-btn:not([disabled])').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await network.sendAction('respond_progress_choice', { commodity: btn.dataset.type });
+              modal.classList.remove('active');
+            } catch (err) {
+              this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+            }
+          });
+        });
+      }
+      if (submit) submit.classList.add('is-hidden');
+    }
+
+    modal.classList.add('active');
+    this.startProgressChoiceCountdown();
+  }
+
+  startProgressChoiceCountdown() {
+    this.stopProgressChoiceCountdown();
+    const el = document.getElementById('progress-choice-timer');
+    if (!el) return;
+    const tick = () => {
+      const deadline = this.gameState?.pendingProgressChoice?.deadline;
+      if (!deadline) {
+        el.textContent = '';
+        return;
+      }
+      const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      el.textContent = `${secs}s`;
+      el.style.color = secs <= 10 ? '#ef4444' : 'var(--gold-primary)';
+    };
+    tick();
+    this.progressChoiceTimerInterval = setInterval(tick, 500);
+  }
+
+  stopProgressChoiceCountdown() {
+    if (this.progressChoiceTimerInterval) {
+      clearInterval(this.progressChoiceTimerInterval);
+      this.progressChoiceTimerInterval = null;
+    }
+  }
+
   openRobberTargetModal(hexId, options = {}) {
     const chaseFrom = options.chaseFrom || null;
     const sendMove = (targetPlayerId) => chaseFrom
@@ -2738,7 +2867,7 @@ export class CatanApp {
         </div>
         <div style="font-size:11px;color:var(--text-secondary);">
           ${opponentsWithCom.length > 0
-            ? `Opponents holding commodities: ${opponentsWithCom.map(p => escapeHtml(p.name)).join(', ')}`
+            ? `Opponents holding commodities: ${opponentsWithCom.map(p => escapeHtml(p.name)).join(', ')}. Each will choose which commodity to give.`
             : 'Notice: Opponents currently hold 0 commodities.'}
         </div>`;
 
@@ -2765,10 +2894,11 @@ export class CatanApp {
         if (playBtn) playBtn.disabled = true;
       } else {
         box.innerHTML = `<div class="progress-notice-box info">
-          <p>💍 <strong>Opponents with more VP who must give you up to 2 cards:</strong></p>
+          <p>💍 <strong>Opponents with more VP must each choose up to 2 cards to give you:</strong></p>
           <ul style="margin: 6px 0 0 16px;">
             ${targets.map(p => `<li><strong>${escapeHtml(p.name)}</strong> (${p.victoryPoints} VP, ${this.countPlayerTotalCards(p)} cards)</li>`).join('')}
           </ul>
+          <p style="margin-top:8px;font-size:12px;color:var(--text-secondary);">They pick after you play this card. Cards are not taken automatically.</p>
         </div>`;
         if (playBtn) playBtn.disabled = !isActionPhase;
       }
@@ -3414,6 +3544,7 @@ export class CatanApp {
 
     // Check discard modal
     this.checkDiscardState();
+    this.checkProgressChoiceState();
 
     // Update Turn Banner & Buttons
     const curPlayer = s.players[s.currentTurnPlayerIndex];
@@ -3439,6 +3570,10 @@ export class CatanApp {
       let statusKey = mapPhaseToStatusKey(s.phase, isMyTurn);
       if (this.isCitiesKnights() && s.phase === 'SETUP_ROUND_2') {
         statusKey = isMyTurn ? 'STATUS_YOUR_SETUP_CK' : 'STATUS_WAIT_SETUP_CK';
+      }
+      if (s.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE') {
+        const waitingOnMe = s.pendingProgressChoice?.pending?.includes(this.myPlayerId);
+        statusKey = waitingOnMe ? 'STATUS_YOUR_PROGRESS_CHOICE' : 'STATUS_WAIT_PROGRESS_CHOICE';
       }
       statusEl.textContent = i18n.t(statusKey, { name: curPlayer.name });
     }
