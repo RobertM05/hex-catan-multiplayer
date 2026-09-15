@@ -2030,6 +2030,35 @@ describe('CK-09: Metropolis', () => {
     engine.chooseMetropolis('p1', cityId);
     assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
+
+  it('rejects a second metropolis on a city that already has one', () => {
+    const engine = makeCkEngine();
+    const a = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    const b = giveCity(engine, 'p1', RESOURCE_TYPES.BRICK);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.chooseMetropolis('p1', a);
+    buyLevels(engine, 'p1', 'politics', 4);
+    assert.throws(() => engine.chooseMetropolis('p1', a), /CITY_ALREADY_HAS_METROPOLIS/);
+    assert.equal(engine.grid.vertices.get(a).building.metropolisTrack, 'trade');
+    assert.equal(engine.pendingMetropolisChoice?.track, 'politics');
+    engine.chooseMetropolis('p1', b);
+    assert.equal(engine.grid.vertices.get(b).building.metropolisTrack, 'politics');
+    assert.equal(engine.metropolises.trade.vertexId, a);
+    assert.equal(engine.metropolises.politics.vertexId, b);
+  });
+
+  it('does not overwrite the only city when a second metropolis cannot be placed', () => {
+    const engine = makeCkEngine();
+    const cityId = giveCity(engine, 'p1', RESOURCE_TYPES.WOOD);
+    buyLevels(engine, 'p1', 'trade', 4);
+    engine.chooseMetropolis('p1', cityId);
+    buyLevels(engine, 'p1', 'politics', 4);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.pendingMetropolisChoice, null);
+    assert.equal(engine.metropolises.politics, null);
+    assert.equal(engine.grid.vertices.get(cityId).building.metropolisTrack, 'trade');
+    assert.equal(engine.players[0].metropolis.politics, false);
+  });
 });
 
 describe('CK-11: Knight State in UI', () => {

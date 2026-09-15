@@ -83,7 +83,7 @@ describe('Monte Carlo Simulation', () => {
              const chooserId = engine.pendingMetropolisChoice?.playerId || curPlayer?.id;
              const chooser = engine.players.find(p => p.id === chooserId);
              if (chooser) {
-                const city = BotAI.chooseCityForMetropolis(engine, chooserId) || (engine.getFirstVulnerableCityId && engine.getFirstVulnerableCityId(chooser)) || chooser.citiesBuilt[0];
+                const city = BotAI.chooseCityForMetropolis(engine, chooserId) || (engine.getFirstVulnerableCityId && engine.getFirstVulnerableCityId(chooser));
                 if (city) engine.chooseMetropolis(chooserId, city);
              }
              continue;
@@ -213,7 +213,7 @@ describe('Monte Carlo Simulation', () => {
              const chooserId = engine.pendingMetropolisChoice?.playerId || curPlayer?.id;
              const chooser = engine.players.find(p => p.id === chooserId);
              if (chooser) {
-                const city = BotAI.chooseCityForMetropolis(engine, chooserId) || (engine.getFirstVulnerableCityId && engine.getFirstVulnerableCityId(chooser)) || chooser.citiesBuilt[0];
+                const city = BotAI.chooseCityForMetropolis(engine, chooserId) || (engine.getFirstVulnerableCityId && engine.getFirstVulnerableCityId(chooser));
                 if (city) engine.chooseMetropolis(chooserId, city);
              }
              continue;

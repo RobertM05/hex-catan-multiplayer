@@ -537,6 +537,7 @@ export const STRINGS = {
     ERROR_NOT_IN_METROPOLIS_PHASE: "Choose a city for the metropolis first.",
     ERROR_NOT_YOUR_CHOICE: "It is not your turn to place a metropolis.",
     ERROR_MUST_CHOOSE_YOUR_CITY: "The metropolis must be placed on one of your cities.",
+    ERROR_CITY_ALREADY_HAS_METROPOLIS: "That city already has a metropolis.",
     ERROR_CANNOT_DOWNGRADE_METROPOLIS: "A metropolis cannot be destroyed by the barbarians.",
     ERROR_SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER: "Saboteur can only be played if you are tied or behind the leader.",
     ERROR_KNIGHT_NOT_CONNECTED_TO_ROAD: "The knight must be on an intersection connected to your road network.",

@@ -524,24 +524,14 @@ export class BotAI {
     let bestScore = -1;
     for (const vid of player.citiesBuilt) {
       const v = engine.grid.vertices.get(vid);
-      if (!v?.building || v.building.playerId !== playerId || v.building.type !== 'city') continue;
+      if (!v?.building || v.building.playerId !== playerId || v.building.type !== 'city' || v.building.hasMetropolis) continue;
       const score = this.cityResourceScore(engine, vid);
       if (score > bestScore) {
         bestScore = score;
         best = vid;
       }
     }
-    if (best) return best;
-    for (const vid of player.citiesBuilt) {
-      const v = engine.grid.vertices.get(vid);
-      if (!v?.building || v.building.playerId !== playerId) continue;
-      const score = this.cityResourceScore(engine, vid);
-      if (score > bestScore) {
-        bestScore = score;
-        best = vid;
-      }
-    }
-    return best || player.citiesBuilt[0];
+    return best;
   }
 
   static chooseBestImprovementTrack(engine, me) {
