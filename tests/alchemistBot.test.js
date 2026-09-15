@@ -21,22 +21,17 @@ function hexWithToken(engine, token) {
   );
 }
 
-function placeIsolatedSettlement(engine, playerId, token) {
-  const hex = hexWithToken(engine, token);
-  assert.ok(hex, `expected a hex with token ${token}`);
+function placeIsolatedSettlement(engine, playerId, hex) {
+  assert.ok(hex, 'expected a target hex');
   const vertexId = Array.from(engine.grid.vertices.keys()).find((id) => {
     const v = engine.grid.vertices.get(id);
     return v.hexes.includes(hex.id) && !v.building;
   });
-  assert.ok(vertexId, `expected a free vertex on token ${token}`);
+  assert.ok(vertexId, `expected a free vertex on hex ${hex.id}`);
   const vertex = engine.grid.vertices.get(vertexId);
   vertex.building = { type: 'settlement', playerId, color: '#e63946' };
+  vertex.hexes = [hex.id];
   engine.players.find((p) => p.id === playerId).settlementsBuilt.push(vertexId);
-  for (const hid of vertex.hexes) {
-    if (hid === hex.id) continue;
-    const other = engine.grid.hexes.get(hid);
-    if (other) other.token = null;
-  }
   return hex;
 }
 
@@ -53,9 +48,13 @@ describe('AI-02 Alchemist roll selection', () => {
   it('prefers 6 or 8 over 12 when the bot sits on 6, 8, and 12', () => {
     const engine = makeCkEngine();
     const bot = engine.players[0];
-    placeIsolatedSettlement(engine, bot.id, 6);
-    placeIsolatedSettlement(engine, bot.id, 8);
-    placeIsolatedSettlement(engine, bot.id, 12);
+    const hex6 = hexWithToken(engine, 6);
+    const hex8 = hexWithToken(engine, 8);
+    const hex12 = hexWithToken(engine, 12);
+    assert.ok(hex6 && hex8 && hex12, 'board should have tokens 6, 8, and 12');
+    placeIsolatedSettlement(engine, bot.id, hex6);
+    placeIsolatedSettlement(engine, bot.id, hex8);
+    placeIsolatedSettlement(engine, bot.id, hex12);
     bot.progressCards.push({ id: 'alch-1', type: 'alchemist', played: false, boughtTurn: 0 });
     engine.phase = GAME_PHASES.TURN_ROLL;
     engine.currentPlayerIndex = 0;
@@ -73,8 +72,11 @@ describe('AI-02 Alchemist roll selection', () => {
   it('does not pick a robber-blocked 8 when 6 is open', () => {
     const engine = makeCkEngine();
     const bot = engine.players[0];
-    const hex8 = placeIsolatedSettlement(engine, bot.id, 8);
-    placeIsolatedSettlement(engine, bot.id, 6);
+    const hex8 = hexWithToken(engine, 8);
+    const hex6 = hexWithToken(engine, 6);
+    assert.ok(hex6 && hex8);
+    placeIsolatedSettlement(engine, bot.id, hex8);
+    placeIsolatedSettlement(engine, bot.id, hex6);
     engine.grid.robberHexId = hex8.id;
     bot.progressCards.push({ id: 'alch-2', type: 'alchemist', played: false, boughtTurn: 0 });
     engine.phase = GAME_PHASES.TURN_ROLL;
