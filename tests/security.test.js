@@ -37,6 +37,32 @@ describe('SEC-01: multiplayer session authority', () => {
   });
 });
 
+describe('SEC-10: constant-time reconnect token compare', () => {
+  it('accepts the matching token and rejects a wrong token', () => {
+    const roomManager = new RoomManager({ to: () => ({ emit() {} }) });
+    const session = roomManager.createPlayerSession();
+    const player = { reconnectTokenHash: session.reconnectTokenHash };
+
+    assert.equal(roomManager.matchesReconnectToken(player, session.reconnectToken), true);
+    assert.equal(roomManager.matchesReconnectToken(player, session.reconnectToken + 'x'), false);
+    assert.equal(roomManager.matchesReconnectToken(player, ''), false);
+  });
+
+  it('fails closed on missing hash, non-string token, and invalid digest length', () => {
+    const roomManager = new RoomManager({ to: () => ({ emit() {} }) });
+    const session = roomManager.createPlayerSession();
+
+    assert.equal(roomManager.matchesReconnectToken({}, session.reconnectToken), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: null }, session.reconnectToken), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: session.reconnectTokenHash }, null), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: session.reconnectTokenHash }, 123), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: 'abcd' }, session.reconnectToken), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: 'z'.repeat(64) }, session.reconnectToken), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: 'a'.repeat(63) }, session.reconnectToken), false);
+    assert.equal(roomManager.matchesReconnectToken({ reconnectTokenHash: 'a'.repeat(65) }, session.reconnectToken), false);
+  });
+});
+
 describe('SEC-02: untrusted display content', () => {
   it('rejects markup and invalid colors while preserving valid Unicode names', () => {
     assert.equal(validateDisplayName('Ștefan', 'Player'), 'Ștefan');
