@@ -11,6 +11,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
 import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
+import {
+  SlidingWindowLimiter,
+  RATE_LIMITS,
+  RATE_LIMITED,
+  createRoomLimitKey,
+  chatLimitKey,
+  actionLimitKey
+} from './game/rateLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +35,7 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager(io);
 const spawnedAgents = new Map(); // roomCode -> childProcess[]
+export const socketRateLimiter = new SlidingWindowLimiter();
 
 // --- Real-time IP & Traffic Telemetry Infrastructure ---
 export const MAX_TRAFFIC_LOGS = 200;
@@ -617,6 +626,9 @@ io.on('connection', (socket) => {
 
   socket.on('create_room', (data, callback) => {
     try {
+      if (!socketRateLimiter.consume(createRoomLimitKey(ip), RATE_LIMITS.createRoom)) {
+        throw new Error(RATE_LIMITED);
+      }
       if (!data || typeof data !== 'object') throw new Error('INVALID_PAYLOAD');
       const session = roomManager.createPlayerSession();
       const playerId = session.id;
@@ -857,11 +869,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send_chat', (data) => {
-    const roomCode = (currentRoomCode || data?.code)?.toUpperCase();
-    if (!roomCode || (currentRoomCode && data?.code && currentRoomCode !== data.code.toUpperCase())) return;
-    const room = roomManager.getRoom(roomCode);
-    if (room && data?.text) {
+  socket.on('send_chat', (data, callback) => {
+    try {
+      const roomCode = (currentRoomCode || data?.code)?.toUpperCase();
+      if (!roomCode || (currentRoomCode && data?.code && currentRoomCode !== data.code.toUpperCase())) {
+        if (callback) callback({ success: false, error: 'ROOM_MISMATCH' });
+        return;
+      }
+      const room = roomManager.getRoom(roomCode);
+      if (!room || !data?.text) {
+        if (callback) callback({ success: false, error: 'INVALID_PAYLOAD' });
+        return;
+      }
+      if (!socketRateLimiter.consume(chatLimitKey(currentPlayerId, socket.id), RATE_LIMITS.sendChat)) {
+        throw new Error(RATE_LIMITED);
+      }
       const sender = room.players.find(p => p.id === currentPlayerId) || { name: 'Player' };
       const chatMsg = {
         id: `chat_${Date.now()}`,
@@ -885,6 +907,9 @@ io.on('connection', (socket) => {
       console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${roomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
 
       io.to(room.code).emit('chat_received', chatMsg);
+      if (callback) callback({ success: true });
+    } catch (err) {
+      if (callback) callback({ success: false, error: err.message });
     }
   });
 
@@ -911,6 +936,13 @@ io.on('connection', (socket) => {
       actionFn = actionFnOrCallback;
       callback = maybeCallback;
       payload = maybePayload || null;
+    }
+
+    if (!socketRateLimiter.consume(actionLimitKey(socket.id), RATE_LIMITS.gameAction)) {
+      const err = RATE_LIMITED;
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] "${actionName}": ${err}`);
+      if (callback) callback({ success: false, error: err });
+      return;
     }
 
     const roomCode = (code || currentRoomCode)?.toUpperCase();
@@ -1217,6 +1249,7 @@ io.on('connection', (socket) => {
     });
 
     trafficStats.activeSockets.delete(socket.id);
+    socketRateLimiter.clearSocket(socket.id, currentPlayerId);
 
     if (currentRoomCode && currentPlayerId) {
       const room = roomManager.getRoom(currentRoomCode);
@@ -1257,4 +1290,4 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   });
 }
 
-export { app, server, io, roomManager };
+export { app, server, io, roomManager, RATE_LIMITS, RATE_LIMITED };
