@@ -592,6 +592,11 @@ export class GameEngine {
     return this.mode === GAME_MODES.CITIES_KNIGHTS;
   }
 
+  // Official C&K: the robber is unused until barbarians have attacked once.
+  isRobberInPlay() {
+    return !this.isCitiesKnights() || this.barbariansHaveAttacked;
+  }
+
   countCommodities(player) {
     if (!player.commodities) return 0;
     return Object.values(player.commodities).reduce((sum, count) => sum + count, 0);
@@ -1007,10 +1012,23 @@ export class GameEngine {
         messageKey: 'LOG_DISCARD_REQUIRED',
         args: { playerIds: Array.from(this.pendingDiscards) }
       });
-    } else {
-      this.phase = GAME_PHASES.TURN_ROBBER;
-      this.discardDeadline = null;
+      return;
     }
+    this.continueAfterSevenDiscards();
+  }
+
+  continueAfterSevenDiscards() {
+    this.discardDeadline = null;
+    if (this.isRobberInPlay()) {
+      this.phase = GAME_PHASES.TURN_ROBBER;
+      return;
+    }
+    this.phase = GAME_PHASES.TURN_ACTION;
+    this.logEvent({
+      type: 'ROBBER_INACTIVE',
+      messageKey: 'LOG_SEVEN_DISCARD_ONLY',
+      args: {}
+    });
   }
 
   produceForRoll(rollSum) {
@@ -1251,8 +1269,7 @@ export class GameEngine {
     });
 
     if (this.pendingDiscards.size === 0) {
-      this.phase = GAME_PHASES.TURN_ROBBER;
-      this.discardDeadline = null;
+      this.continueAfterSevenDiscards();
     }
 
     return { remainingPending: Array.from(this.pendingDiscards) };
@@ -1322,6 +1339,7 @@ export class GameEngine {
   moveRobber(playerId, hexId, targetPlayerId = null) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
     if (this.phase !== GAME_PHASES.TURN_ROBBER) throw new Error('NOT_IN_ROBBER_PHASE');
     if (hexId === this.grid.robberHexId) throw new Error('MUST_MOVE_ROBBER_TO_NEW_HEX');
     if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
@@ -1848,7 +1866,8 @@ export class GameEngine {
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
-    const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
+    const player = this.assertCkAction(playerId);
+    if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
     if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
@@ -2352,6 +2371,7 @@ export class GameEngine {
         break;
       }
       case 'bishop': {
+        if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
         const hexId = options.hexId;
         if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
         if (hexId === this.grid.robberHexId) throw new Error('MUST_MOVE_ROBBER_TO_NEW_HEX');

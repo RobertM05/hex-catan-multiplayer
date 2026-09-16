@@ -733,12 +733,15 @@ export class BotAI {
     }
 
     const robberHex = engine.grid.robberHexId;
-    for (const knight of me.knightsPlaced || []) {
-      if (!knight.active || knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
-      const v = engine.grid.vertices.get(knight.vertexId);
-      if (v?.hexes?.includes(robberHex)) {
-        const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
-        if (dest) return { action: 'chase_robber', vertexId: knight.vertexId, hexId: dest };
+    const robberInPlay = engine.isRobberInPlay?.() ?? (!engine.isCitiesKnights?.() || engine.barbariansHaveAttacked);
+    if (robberInPlay) {
+      for (const knight of me.knightsPlaced || []) {
+        if (!knight.active || knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
+        const v = engine.grid.vertices.get(knight.vertexId);
+        if (v?.hexes?.includes(robberHex)) {
+          const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
+          if (dest) return { action: 'chase_robber', vertexId: knight.vertexId, hexId: dest };
+        }
       }
     }
 

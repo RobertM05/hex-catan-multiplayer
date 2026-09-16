@@ -830,7 +830,8 @@ export class CatanApp {
       document.getElementById('dice-sum').textContent = pending[0] + pending[1];
       if (pending[0] + pending[1] === 7) {
         dice.forEach(d => d.classList.add('die-seven'));
-        this.showToast(i18n.t('ROBBER_ROLLED'), true);
+        const robberInPlay = !this.isCitiesKnights() || this.gameState?.barbariansHaveAttacked;
+        this.showToast(i18n.t(robberInPlay ? 'ROBBER_ROLLED' : 'SEVEN_DISCARD_ONLY'), true);
         setTimeout(() => dice.forEach(d => d.classList.remove('die-seven')), 700);
       }
     }
@@ -1187,7 +1188,8 @@ export class CatanApp {
     const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
     const politicsNeeded = knight.rank === 'basic' ? 1 : 2;
     const vertex = this.gameState.grid.vertices[vertexId];
-    const canChase = knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
+    const robberInPlay = !!this.gameState.barbariansHaveAttacked;
+    const canChase = robberInPlay && knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
 
     const actions = [];
     if (!knight.active) {
@@ -1216,11 +1218,13 @@ export class CatanApp {
         disabled: false,
         run: () => this.activateMoveKnight(vertexId, knight)
       });
-      actions.push({
-        label: i18n.t('KNIGHT_CHASE_ROBBER'),
-        disabled: !canChase,
-        run: () => this.activateChaseRobber(vertexId)
-      });
+      if (robberInPlay) {
+        actions.push({
+          label: i18n.t('KNIGHT_CHASE_ROBBER'),
+          disabled: !canChase,
+          run: () => this.activateChaseRobber(vertexId)
+        });
+      }
     }
 
     const menu = document.getElementById('knight-action-menu');
