@@ -25,8 +25,27 @@ const io = new Server(server, {
   cors: { origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : false }
 });
 
-const roomManager = new RoomManager(io);
 const spawnedAgents = new Map(); // roomCode -> childProcess[]
+
+export function killSpawnedAgentsForRoom(roomCode) {
+  const code = String(roomCode || '').toUpperCase();
+  if (!code) return;
+  const list = spawnedAgents.get(code) || [];
+  for (const child of list) {
+    try {
+      if (child && typeof child.kill === 'function' && !child.killed) {
+        child.kill('SIGTERM');
+      }
+    } catch {
+      // Best-effort teardown; room is already going away.
+    }
+  }
+  spawnedAgents.delete(code);
+}
+
+const roomManager = new RoomManager(io, {
+  onRoomDestroyed: killSpawnedAgentsForRoom
+});
 
 // --- Real-time IP & Traffic Telemetry Infrastructure ---
 export const MAX_TRAFFIC_LOGS = 200;
@@ -1297,4 +1316,4 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   });
 }
 
-export { app, server, io, roomManager };
+export { app, server, io, roomManager, spawnedAgents };

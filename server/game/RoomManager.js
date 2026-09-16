@@ -44,6 +44,9 @@ export class RoomManager {
   constructor(io, options = {}) {
     this.io = io;
     this.rooms = new Map(); // roomCode -> Room object
+    this.onRoomDestroyed = typeof options.onRoomDestroyed === 'function'
+      ? options.onRoomDestroyed
+      : null;
     this.staleRoomMaxAgeMs = options.staleRoomMaxAgeMs ?? STALE_ROOM_MAX_AGE_MS;
     const cleanupMs = options.staleCleanupIntervalMs ?? STALE_ROOM_CLEANUP_INTERVAL_MS;
     this.staleCleanupInterval = null;
@@ -907,5 +910,6 @@ export class RoomManager {
       if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
     }
     this.rooms.delete(code);
+    if (this.onRoomDestroyed) this.onRoomDestroyed(code);
   }
 }

@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { RoomManager, STALE_ROOM_MAX_AGE_MS } from '../server/game/RoomManager.js';
+import { killSpawnedAgentsForRoom, spawnedAgents } from '../server/server.js';
 
 function mockIo() {
   return { to: () => ({ emit: () => {} }) };
@@ -42,5 +43,77 @@ describe('SEC-01 stale room cleanup', () => {
     assert.ok(rm.getRoom(room.code));
     rm.destroyRoom(room.code);
     rm.stopStaleCleanup();
+  });
+
+  it('invokes onRoomDestroyed when destroyRoom runs', () => {
+    const destroyed = [];
+    const rm = new RoomManager(mockIo(), {
+      staleCleanupIntervalMs: 0,
+      onRoomDestroyed: (code) => destroyed.push(code)
+    });
+    const room = rm.createRoom({ id: 'h4', name: 'HookHost', socketId: 's4' });
+    rm.destroyRoom(room.code);
+    assert.deepEqual(destroyed, [room.code]);
+    rm.stopStaleCleanup();
+  });
+
+  it('stale sweep teardown invokes onRoomDestroyed for removed rooms', () => {
+    const destroyed = [];
+    const rm = new RoomManager(mockIo(), {
+      staleCleanupIntervalMs: 0,
+      onRoomDestroyed: (code) => destroyed.push(code)
+    });
+    const stale = rm.createRoom({ id: 'h5', name: 'SweepHost', socketId: 's5' });
+    stale.lastActivity = Date.now() - STALE_ROOM_MAX_AGE_MS - 1000;
+    const removed = rm.cleanupStaleRooms();
+    assert.deepEqual(removed, [stale.code]);
+    assert.deepEqual(destroyed, [stale.code]);
+    rm.stopStaleCleanup();
+  });
+
+  it('killSpawnedAgentsForRoom kills tracked children and clears tracking', () => {
+    const kills = [];
+    const mockChild = {
+      killed: false,
+      kill(signal) {
+        kills.push(signal);
+        this.killed = true;
+      }
+    };
+    const code = 'ZZZZZ';
+    spawnedAgents.set(code, [mockChild]);
+    try {
+      killSpawnedAgentsForRoom(code);
+      assert.deepEqual(kills, ['SIGTERM']);
+      assert.equal(mockChild.killed, true);
+      assert.equal(spawnedAgents.has(code), false);
+    } finally {
+      spawnedAgents.delete(code);
+    }
+  });
+
+  it('destroyRoom via RoomManager hook kills spawned agents for that room', () => {
+    const kills = [];
+    const mockChild = {
+      killed: false,
+      kill(signal) {
+        kills.push(signal);
+        this.killed = true;
+      }
+    };
+    const rm = new RoomManager(mockIo(), {
+      staleCleanupIntervalMs: 0,
+      onRoomDestroyed: killSpawnedAgentsForRoom
+    });
+    const room = rm.createRoom({ id: 'h6', name: 'AgentHost', socketId: 's6' });
+    spawnedAgents.set(room.code, [mockChild]);
+    try {
+      rm.destroyRoom(room.code);
+      assert.deepEqual(kills, ['SIGTERM']);
+      assert.equal(spawnedAgents.has(room.code), false);
+    } finally {
+      spawnedAgents.delete(room.code);
+      rm.stopStaleCleanup();
+    }
   });
 });
