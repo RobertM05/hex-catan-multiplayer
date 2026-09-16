@@ -149,6 +149,7 @@ export class GameEngine {
 
     // Cities & Knights shared state (serialized even in base mode as empty/defaults)
     this.barbarianPosition = 0;
+    this.barbariansHaveAttacked = false;
     this.defenderOfCatan = null;
     this.pendingBarbarianDowngrades = new Set();
     this.pendingBarbarianTieDraws = new Set();
@@ -1849,6 +1850,7 @@ export class GameEngine {
     }
     this.barbarianPosition = 0;
     this.lastBarbarianResult = result;
+    this.barbariansHaveAttacked = true;
 
     if (result.outcome === 'defeat' && this.pendingBarbarianDowngrades.size > 0) {
       this.phase = GAME_PHASES.TURN_BARBARIAN_DOWNGRADE;
@@ -3012,6 +3014,10 @@ export class GameEngine {
 
   checkVictory() {
     this.recalculateVictoryPoints();
+    // Official C&K: no one may win until after the first barbarian attack, even at 13 VP.
+    if (this.isCitiesKnights() && !this.barbariansHaveAttacked) {
+      return false;
+    }
     const curPlayer = this.getCurrentPlayer();
     if (curPlayer && curPlayer.victoryPoints >= this.vpTarget) {
       this.phase = GAME_PHASES.GAME_OVER;
@@ -3174,6 +3180,7 @@ export class GameEngine {
       dice: this.dice,
       eventDie: this.eventDie,
       barbarianPosition: this.barbarianPosition,
+      barbariansHaveAttacked: this.barbariansHaveAttacked,
       defenderOfCatan: this.defenderOfCatan,
       hasRolledDice: this.hasRolledDice,
       grid: this.grid ? this.grid.toJSON() : null,

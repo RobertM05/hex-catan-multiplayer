@@ -15,6 +15,7 @@ import {
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
+import { STRINGS } from '../public/js/i18n.js';
 
 function makeCkEngine() {
   const engine = new GameEngine({ mode: 'cities_knights' });
@@ -548,6 +549,100 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     assert.ok(result.progressDraws.every(d => d.drawn));
     assert.equal(engine.players[0].progressCards.length, 1);
     assert.equal(engine.players[1].progressCards.length, 1);
+  });
+});
+
+describe('CK-33: Victory gated on first barbarian attack', () => {
+  function giveCkWinningVp(engine, player) {
+    player.defenderCards = 13;
+    engine.recalculateVictoryPoints();
+    assert.ok(player.victoryPoints >= engine.vpTarget);
+  }
+
+  it('blocks GAME_OVER at 13 VP before the first barbarian attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    giveCkWinningVp(engine, engine.players[0]);
+
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.equal(engine.checkVictory(), false);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.players[0].victoryPoints >= 13, true);
+  });
+
+  it('does not end the game on endTurn at 13 VP before the first attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    giveCkWinningVp(engine, engine.players[0]);
+
+    const result = engine.endTurn('p1');
+    assert.equal(result?.gameOver, undefined);
+    assert.notEqual(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.equal(engine.getCurrentPlayer().id, 'p2');
+  });
+
+  it('allows GAME_OVER at 13 VP after the first barbarian attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.barbariansHaveAttacked = true;
+    giveCkWinningVp(engine, engine.players[0]);
+
+    assert.equal(engine.checkVictory(), true);
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+  });
+
+  it('unlocks victory when the first barbarian attack resolves', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    giveCkWinningVp(engine, engine.players[0]);
+    assert.equal(engine.checkVictory(), false);
+
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const result = forceRoll(engine, 'p1', 2, 2, 0);
+
+    assert.ok(result.barbarian);
+    assert.equal(engine.barbariansHaveAttacked, true);
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.ok(engine.eventLog.some(e => e.type === 'VICTORY'));
+  });
+
+  it('does not unlock victory merely by advancing the ship', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    giveCkWinningVp(engine, engine.players[0]);
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    forceRoll(engine, 'p1', 2, 2, 0);
+
+    assert.equal(engine.barbarianPosition, 1);
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.notEqual(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.equal(engine.checkVictory(), false);
+  });
+
+  it('serializes barbariansHaveAttacked in player state', () => {
+    const engine = makeCkEngine();
+    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, false);
+    engine.barbariansHaveAttacked = true;
+    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, true);
+  });
+
+  it('does not gate base-game victory on barbarians', () => {
+    const engine = new GameEngine({ mode: 'base', vpTarget: 10 });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].citiesBuilt = ['c1', 'c2', 'c3', 'c4', 'c5'];
+    engine.recalculateVictoryPoints();
+    assert.equal(engine.players[0].victoryPoints, 10);
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.equal(engine.checkVictory(), true);
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+  });
+
+  it('documents the first-attack victory gate in C&K rules text', () => {
+    assert.match(STRINGS.RULES_CK_VP_BODY, /first barbarian attack/i);
   });
 });
 
@@ -1872,6 +1967,7 @@ describe('CK-14: Walls, Metropolis, remaining cards, full game', () => {
         cur.progressCards.push({ id: `win-${cur.progressCards.length}`, type: 'constitution', played: true, revealed: true });
         engine.recalculateVictoryPoints();
       }
+      engine.barbariansHaveAttacked = true;
       engine.checkVictory();
     }
     assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
