@@ -1188,7 +1188,7 @@ export class CatanApp {
     const ore = me.resources?.ore || 0;
     const politics = me.cityImprovements?.politics || 0;
     const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
-    const politicsNeeded = knight.rank === 'basic' ? 1 : 2;
+    const politicsNeeded = nextRank === 'mighty' ? 3 : 0;
     const vertex = this.gameState.grid.vertices[vertexId];
     const robberInPlay = !!this.gameState.barbariansHaveAttacked;
     const canChase = robberInPlay && knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
@@ -1608,23 +1608,32 @@ export class CatanApp {
       politics: 'coin',
       science: 'paper'
     };
+    const perkKeys = {
+      trade: 'TRACK_PERK_TRADE',
+      politics: 'TRACK_PERK_POLITICS',
+      science: 'TRACK_PERK_SCIENCE'
+    };
     const hasCities = (me.citiesBuilt || []).length > 0;
     for (const [track, commodity] of Object.entries(tracks)) {
       const level = me.cityImprovements?.[track] || 0;
       const cost = Math.min(level + 1, 5);
       const have = this.getCardCount(me, commodity);
       const canAfford = hasCities && isActionPhase && level < 5 && have >= cost;
+      const perkUnlocked = level >= 3;
       const levelEl = document.getElementById(`improve-level-${track}`);
       const fillEl = document.getElementById(`improve-fill-${track}`);
       const costEl = document.getElementById(`improve-cost-${track}`);
+      const perkEl = document.getElementById(`improve-perk-${track}`);
       const btn = document.getElementById(`btn-improve-${track}`);
       const row = document.querySelector(`.improvement-track[data-track="${track}"]`);
       if (levelEl) levelEl.textContent = `${level}/5`;
       if (fillEl) fillEl.style.width = `${(level / 5) * 100}%`;
       if (costEl) costEl.textContent = level >= 5 ? '—' : String(cost);
+      if (perkEl) perkEl.textContent = i18n.t(perkKeys[track]);
       if (btn) btn.disabled = !canAfford;
       row?.classList.toggle('track-ready', canAfford);
       row?.classList.toggle('track-metro', level >= 4);
+      row?.classList.toggle('track-perk-on', perkUnlocked);
     }
   }
 
@@ -2208,7 +2217,7 @@ export class CatanApp {
     }
     if (!me) return 4;
     if (me.merchantFleetActive) return 2;
-    if ((me.cityImprovements?.trade || 0) >= 5) return 2;
+    if ((me.cityImprovements?.trade || 0) >= 3 && this.isCommodity(resource)) return 2;
     if (this.gameState.merchantHolder === this.myPlayerId && this.gameState.merchantHexId) {
       const hex = this.gameState.grid.hexes?.[this.gameState.merchantHexId];
       if (hex && hex.resource === resource) return 2;
@@ -2261,6 +2270,10 @@ export class CatanApp {
         }
       }
     }
+    if ((me?.cityImprovements?.trade || 0) >= 3) {
+      const house = i18n.t('BANK_TRADING_HOUSE');
+      if (!ownedHarbors.includes(house)) ownedHarbors.push(house);
+    }
     const harborsStatusEl = document.getElementById('bank-harbors-status');
     if (harborsStatusEl) {
       harborsStatusEl.textContent = ownedHarbors.length > 0
@@ -2296,7 +2309,12 @@ export class CatanApp {
 
       let ratioClass = '';
       let ratioTag = `${ratio}:1 Bank`;
-      if (ratio === 2) {
+      const tradingHouse = ratio === 2 && !me?.merchantFleetActive
+        && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(res);
+      if (tradingHouse) {
+        ratioClass = 'harbor-special';
+        ratioTag = i18n.t('BANK_TRADING_HOUSE');
+      } else if (ratio === 2) {
         ratioClass = 'harbor-special';
         ratioTag = `2:1 Port`;
       } else if (ratio === 3) {
@@ -2359,7 +2377,10 @@ export class CatanApp {
 
       if (ratioTextEl) ratioTextEl.textContent = i18n.t('BANK_RATE_VALUE', { ratio });
       if (ratioDescEl) {
-        if (ratio === 2) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
+        const tradingHouse = ratio === 2 && !me?.merchantFleetActive
+          && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(this.bankTrade.give);
+        if (tradingHouse) ratioDescEl.textContent = i18n.t('BANK_TRADING_HOUSE_APPLIED');
+        else if (ratio === 2) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
         else if (ratio === 3) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_3');
         else ratioDescEl.textContent = i18n.t('BANK_STANDARD_RATIO');
       }
@@ -3096,7 +3117,12 @@ export class CatanApp {
     }
 
     if (type === 'smith') {
-      const promotable = (me?.knightsPlaced || []).filter(k => k.rank !== 'mighty');
+      const politics = me?.cityImprovements?.politics || 0;
+      const promotable = (me?.knightsPlaced || []).filter(k => {
+        if (k.rank === 'mighty') return false;
+        if (k.rank === 'strong' && politics < 3) return false;
+        return true;
+      });
       if (promotable.length === 0) {
         box.innerHTML = `<div class="progress-notice-box warning"><p>You have no knights that can be promoted.</p></div>`;
         if (playBtn) playBtn.disabled = true;
