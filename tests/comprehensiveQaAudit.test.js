@@ -343,22 +343,18 @@ describe('QA Audit: Buildings & Knight Units', () => {
     assert.equal(p1.knightsAvailable.basic, 1);
   });
 
-  it('Knight activation costs 1 wheat and cannot activate on hired turn', () => {
+  it('Knight activation costs 1 wheat and is legal on the hired turn', () => {
     const engine = makeCkEngine();
     const p1 = engine.players[0];
     const v1 = Array.from(engine.grid.vertices.values())[0];
-    v1.knight = { playerId: 'p1', vertexId: v1.id, rank: 'basic', active: false, strength: 1, hiredTurn: engine.turnNumber, lastActionTurn: engine.turnNumber };
+    v1.knight = { playerId: 'p1', vertexId: v1.id, rank: 'basic', active: false, strength: 1, hiredTurn: engine.turnNumber, lastActionTurn: null };
     p1.knightsPlaced.push(v1.knight);
     p1.resources.wheat = 1;
 
-    assert.throws(() => engine.activateKnight('p1', v1.id), /KNIGHT_CANNOT_ACT_ON_HIRED_TURN/);
-
-    // Advance turn
-    v1.knight.hiredTurn = engine.turnNumber - 1;
-    v1.knight.lastActionTurn = engine.turnNumber - 1;
     engine.activateKnight('p1', v1.id);
     assert.equal(v1.knight.active, true);
     assert.equal(p1.resources.wheat, 0);
+    assert.equal(v1.knight.lastActionTurn, engine.turnNumber);
   });
 
   it('Knight promotion requires politics improvement level', () => {

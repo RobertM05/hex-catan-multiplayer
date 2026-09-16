@@ -889,7 +889,7 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
     return { edge, otherVertexId };
   }
 
-  it('sets hiredTurn and lastActionTurn when a knight is placed', () => {
+  it('sets hiredTurn but does not consume the knight action when placed', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.ore = 2;
@@ -899,10 +899,10 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
 
     const result = engine.placeKnight('p1', vertex.id);
     assert.equal(result.knight.hiredTurn, engine.turnNumber);
-    assert.equal(result.knight.lastActionTurn, engine.turnNumber);
+    assert.equal(result.knight.lastActionTurn, null);
   });
 
-  it('rejects activating or promoting a knight on the turn it is hired', () => {
+  it('allows activate and promote on the turn a knight is hired', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.ore = 3;
@@ -913,35 +913,32 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
     giveRoad(engine, 'p1', vertex.id);
 
     engine.placeKnight('p1', vertex.id);
-    assert.throws(() => engine.activateKnight('p1', vertex.id), /KNIGHT_CANNOT_ACT_ON_HIRED_TURN/);
-    assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_CANNOT_ACT_ON_HIRED_TURN/);
+    engine.promoteKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.rank, 'strong');
+    engine.activateKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
   });
 
-  it('rejects multiple knight actions on the same turn', () => {
+  it('rejects a second knight action on the same turn after activate (promote is not an action)', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.ore = 3;
     engine.players[0].resources.wool = 2;
     engine.players[0].resources.wheat = 3;
-    engine.players[0].cityImprovements.politics = 2;
+    engine.players[0].cityImprovements.politics = 3;
     const vertex = Array.from(engine.grid.vertices.values()).find(v => !v.building && !v.knight);
     const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
 
     engine.placeKnight('p1', vertex.id);
-
-    // Advance to next turn so knight is no longer on hired turn
-    engine.turnNumber++;
     engine.activateKnight('p1', vertex.id);
     assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
     assert.equal(engine.grid.vertices.get(vertex.id).knight.lastActionTurn, engine.turnNumber);
 
-    // Cannot promote on the same turn it was activated
-    assert.throws(() => engine.promoteKnight('p1', vertex.id), /KNIGHT_ALREADY_ACTED_THIS_TURN/);
+    engine.promoteKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.rank, 'strong');
 
-    // Cannot move on the same turn it was activated
     assert.throws(() => engine.moveKnight('p1', vertex.id, otherVertexId), /KNIGHT_ALREADY_ACTED_THIS_TURN/);
 
-    // Advance turn again: now it can move
     engine.turnNumber++;
     engine.moveKnight('p1', vertex.id, otherVertexId);
     assert.equal(engine.grid.vertices.get(otherVertexId).knight.playerId, 'p1');

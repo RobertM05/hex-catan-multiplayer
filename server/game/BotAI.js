@@ -4,7 +4,7 @@
  * Can participate in setup, dice rolling, discarding, robber movement, building, and trading.
  */
 
-import { GAME_PHASES, GAME_MODES, COSTS, DEV_CARD_TYPES, IMPROVEMENT_TRACKS } from './GameEngine.js';
+import { GAME_PHASES, GAME_MODES, COSTS, DEV_CARD_TYPES, IMPROVEMENT_TRACKS, KNIGHT_RANKS } from './GameEngine.js';
 import { RESOURCE_TYPES } from './HexGrid.js';
 
 export class BotAI {
@@ -685,7 +685,7 @@ export class BotAI {
     if (progress) return progress;
 
     if (engine.barbarianPosition >= 5) {
-      const inactive = (me.knightsPlaced || []).filter(k => !k.active && k.hiredTurn !== engine.turnNumber && k.lastActionTurn !== engine.turnNumber);
+      const inactive = (me.knightsPlaced || []).filter(k => !k.active && k.lastActionTurn !== engine.turnNumber);
       if (inactive.length && (me.resources.wheat || 0) >= 1) {
         return { action: 'activate_knight', vertexId: inactive[0].vertexId };
       }
@@ -693,11 +693,23 @@ export class BotAI {
 
     const robberHex = engine.grid.robberHexId;
     for (const knight of me.knightsPlaced || []) {
-      if (!knight.active || knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
+      if (!knight.active || knight.lastActionTurn === engine.turnNumber) continue;
       const v = engine.grid.vertices.get(knight.vertexId);
       if (v?.hexes?.includes(robberHex)) {
         const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
         if (dest) return { action: 'chase_robber', vertexId: knight.vertexId, hexId: dest };
+      }
+    }
+
+    for (const knight of me.knightsPlaced || []) {
+      if (!knight.active || knight.lastActionTurn === engine.turnNumber) continue;
+      const dests = engine.listKnightMoveDestinations(me.id, knight.vertexId, knight.strength);
+      const displaceId = dests.find(id => {
+        const foe = engine.grid.vertices.get(id)?.knight;
+        return foe && foe.playerId !== me.id;
+      });
+      if (displaceId) {
+        return { action: 'move_knight', fromVertexId: knight.vertexId, toVertexId: displaceId };
       }
     }
 
@@ -708,11 +720,11 @@ export class BotAI {
 
     const politics = me.cityImprovements?.politics || 0;
     for (const knight of me.knightsPlaced || []) {
-      if (knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
-      const nextReq = knight.rank === 'basic' ? 1 : knight.rank === 'strong' ? 2 : 99;
-      if (politics >= nextReq && knight.rank !== 'mighty'
+      const nextRank = KNIGHT_RANKS[knight.rank]?.next;
+      if (!nextRank) continue;
+      const nextReq = KNIGHT_RANKS[nextRank].politicsRequired;
+      if (politics >= nextReq
         && (me.resources.wool || 0) >= 1 && (me.resources.ore || 0) >= 1) {
-        const nextRank = knight.rank === 'basic' ? 'strong' : 'mighty';
         if ((me.knightsAvailable?.[nextRank] || 0) > 0) {
           return { action: 'promote_knight', vertexId: knight.vertexId };
         }
@@ -805,6 +817,9 @@ export class BotAI {
         break;
       case 'promote_knight':
         engine.promoteKnight(botPlayer.id, action.vertexId);
+        break;
+      case 'move_knight':
+        engine.moveKnight(botPlayer.id, action.fromVertexId, action.toVertexId);
         break;
       case 'build_city_wall':
         engine.buildCityWall(botPlayer.id, action.vertexId);

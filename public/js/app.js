@@ -1111,11 +1111,15 @@ export class CatanApp {
         if (visited.has(adjId)) continue;
         visited.add(adjId);
         const dest = this.gameState.grid.vertices[adjId];
-        if (!dest || dest.building) continue;
+        if (!dest) continue;
         if (dest.knight) {
           if (dest.knight.playerId !== this.myPlayerId && dest.knight.strength < strength) {
             validIds.add(adjId);
           }
+          continue;
+        }
+        if (dest.building) {
+          queue.push(adjId);
           continue;
         }
         validIds.add(adjId);
@@ -1174,15 +1178,16 @@ export class CatanApp {
     const ore = me.resources?.ore || 0;
     const politics = me.cityImprovements?.politics || 0;
     const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
-    const politicsNeeded = knight.rank === 'basic' ? 1 : 2;
+    const politicsNeeded = nextRank === 'strong' ? 1 : nextRank === 'mighty' ? 3 : 99;
     const vertex = this.gameState.grid.vertices[vertexId];
+    const actedThisTurn = knight.lastActionTurn === this.gameState.turnNumber;
     const canChase = knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
 
     const actions = [];
     if (!knight.active) {
       actions.push({
         label: i18n.t('KNIGHT_ACTIVATE'),
-        disabled: wheat < 1,
+        disabled: wheat < 1 || actedThisTurn,
         run: async () => {
           await network.sendAction('activate_knight', { vertexId });
           audio.playBuild();
@@ -1202,12 +1207,12 @@ export class CatanApp {
     if (knight.active) {
       actions.push({
         label: i18n.t('KNIGHT_MOVE'),
-        disabled: false,
+        disabled: actedThisTurn,
         run: () => this.activateMoveKnight(vertexId, knight)
       });
       actions.push({
         label: i18n.t('KNIGHT_CHASE_ROBBER'),
-        disabled: !canChase,
+        disabled: !canChase || actedThisTurn,
         run: () => this.activateChaseRobber(vertexId)
       });
     }
