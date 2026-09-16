@@ -2626,101 +2626,117 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
 
 });
 
-describe('UX-01: Aqueduct resource chooser', () => {
-  function armChooser(engine, production = { p1: {}, p2: { wood: 1 } }) {
-    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    engine.hasRolledDice = true;
-    engine.dice = [2, 3];
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.armAqueductEligibility(production);
+describe('CK-40: Progress deck draw order and recycle', () => {
+  function makeThreePlayerCkEngine() {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    engine.startGame('standard');
+    return engine;
   }
 
-  it('blank non-7 production roll arms a pending claim without granting a resource', () => {
-    const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+  it('draws clockwise starting from the roller, not seat 0', () => {
+    const engine = makeThreePlayerCkEngine();
+    for (const player of engine.players) player.cityImprovements.science = 3;
+    engine.currentTurnPlayerIndex = 1;
     engine.phase = GAME_PHASES.TURN_ROLL;
-    const oreBefore = engine.players[0].resources.ore;
-    const blank = forceRoll(engine, 'p1', 2, 2);
-    assert.notEqual(blank.sum, 7);
-    assert.equal(engine.players[0].resources.ore, oreBefore);
-    assert.equal(engine.pendingAqueductClaims.has('p1'), true);
-    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, ['p1']);
-    assert.equal(engine.getStateForPlayer('p1').eventLog.some(e => e.type === 'AQUEDUCT_RESOURCE'), false);
+    engine.progressDecks.science = [
+      { id: 'sci-p1', type: 'crane' },
+      { id: 'sci-p3', type: 'inventor' },
+      { id: 'sci-p2', type: 'alchemist' }
+    ];
+
+    const result = forceRoll(engine, 'p2', 1, 3, 5);
+    assert.equal(result.eventDie, 'science');
+    assert.deepEqual(result.progressDraws.map(d => d.playerId), ['p2', 'p3', 'p1']);
+    assert.deepEqual(result.progressDraws.map(d => d.cardType), ['alchemist', 'inventor', 'crane']);
+    assert.equal(engine.players[1].progressCards[0].id, 'sci-p2');
+    assert.equal(engine.players[2].progressCards[0].id, 'sci-p3');
+    assert.equal(engine.players[0].progressCards[0].id, 'sci-p1');
   });
 
-  it('lets the player choose any one resource, then rejects a second claim', () => {
-    const engine = makeCkEngine();
-    armChooser(engine);
-    const before = engine.players[0].resources.wheat;
-    const res = engine.claimAqueductResource('p1', 'wheat');
-    assert.equal(res.resource, 'wheat');
-    assert.equal(engine.players[0].resources.wheat, before + 1);
-    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
-    assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
-    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, []);
-    const oreBefore = engine.players[0].resources.ore;
-    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_ALREADY_CLAIMED/);
-    assert.equal(engine.players[0].resources.ore, oreBefore);
+  it('lists eligible players clockwise from the current roller', () => {
+    const engine = makeThreePlayerCkEngine();
+    engine.players[0].cityImprovements.trade = 3;
+    engine.players[1].cityImprovements.trade = 1;
+    engine.players[2].cityImprovements.trade = 4;
+    engine.currentTurnPlayerIndex = 2;
+
+    assert.deepEqual(
+      engine.getProgressCardEligiblePlayers('trade', 2).map(p => p.id),
+      ['p3', 'p1']
+    );
   });
 
-  it('honors an explicit choice map without auto-picking the lowest resource', () => {
+  it('places a played progress card under its deck so it is drawn last', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
-    const production = { p1: {}, p2: { wood: 1 } };
-    const claimed = engine.applyAqueductBenefit(production, { p1: 'wool' });
-    assert.equal(claimed.p1, 'wool');
-    assert.equal(engine.players[0].resources.wool, 3);
-    assert.equal(engine.players[0].resources.ore, 0);
-    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.trade = [
+      { id: 'trade-bottom', type: 'merchant' },
+      { id: 'trade-top', type: 'resource_monopoly' }
+    ];
+    const card = {
+      id: 'played-fleet',
+      type: 'merchant_fleet',
+      track: 'trade',
+      played: false,
+      boughtTurn: 0
+    };
+    engine.players[0].progressCards.push(card);
+    engine.players[0].resources.wood = 2;
+
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'played-fleet'), false);
+    assert.equal(engine.progressDecks.trade[0].id, 'played-fleet');
+    assert.equal(engine.progressDecks.trade[0].type, 'merchant_fleet');
+    assert.equal(engine.progressDecks.trade.length, 3);
+
+    const firstRedraw = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(firstRedraw, 'resource_monopoly');
+    assert.equal(engine.players[0].progressCards.at(-1).id, 'trade-top');
+    const secondRedraw = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(secondRedraw, 'merchant');
+    const recycled = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(recycled, 'merchant_fleet');
+    assert.equal(engine.players[0].progressCards.at(-1).id, 'played-fleet');
+    assert.equal(engine.players[0].progressCards.at(-1).played, false);
   });
 
-  it('does not apply Aqueduct before Science 3, on a 7, or after producing', () => {
+  it('keeps constitution and printer in front of the player instead of recycling', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = 2;
-    engine.players[0].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
-    const claimed = engine.applyAqueductBenefit({ p1: {} });
-    assert.equal(claimed.p1, undefined);
-    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.politics = [{ id: 'pol-remain', type: 'bishop' }];
+    const card = { id: 'vp-const', type: 'constitution', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
 
-    const seven = makeCkEngine();
-    seven.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    seven.phase = GAME_PHASES.TURN_ROLL;
-    const roll = forceRoll(seven, 'p1', 3, 4);
-    assert.equal(roll.sum, 7);
-    assert.throws(() => seven.claimAqueductResource('p1', 'wool'), /AQUEDUCT_NOT_ELIGIBLE/);
-
-    const produced = makeCkEngine();
-    armChooser(produced, { p1: { wood: 1 }, p2: {} });
-    assert.throws(() => produced.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_ELIGIBLE/);
-    assert.throws(() => produced.claimAqueductResource('p1', 'cloth'), /INVALID_RESOURCE/);
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'vp-const'), true);
+    assert.equal(engine.progressDecks.politics.some(c => c.id === 'vp-const'), false);
+    assert.equal(engine.progressDecks.politics[0].id, 'pol-remain');
   });
 
-  it('lets a non-current Aqueduct holder claim after someone else rolls blank for them', () => {
+  it('places a discarded progress card under its deck', () => {
     const engine = makeCkEngine();
-    engine.players[1].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    engine.hasRolledDice = true;
-    engine.dice = [2, 3];
-    engine.armAqueductEligibility({ p1: { wood: 1 }, p2: {} });
-    const before = engine.players[1].resources.brick;
-    const res = engine.claimAqueductResource('p2', 'brick');
-    assert.equal(res.resource, 'brick');
-    assert.equal(engine.players[1].resources.brick, before + 1);
-  });
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.science = [{ id: 'sci-remain', type: 'crane' }];
+    for (let i = 0; i < 5; i++) {
+      engine.players[0].progressCards.push({
+        id: `sci-hand-${i}`,
+        type: 'inventor',
+        track: 'science',
+        played: false,
+        boughtTurn: 0
+      });
+    }
+    engine.pendingProgressDiscard.add('p1');
 
-  it('BotAI auto-claims the lowest resource for bots with a pending chooser', () => {
-    const engine = makeCkEngine();
-    engine.players[0].isBot = true;
-    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
-    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
-    engine.hasRolledDice = true;
-    engine.dice = [2, 2];
-    engine.armAqueductEligibility({ p1: {}, p2: { wood: 1 } });
-    assert.equal(BotAI.chooseAqueductResource(engine.players[0]), 'ore');
-    const claimed = BotAI.resolvePendingAqueductClaims(engine);
-    assert.equal(claimed, 1);
-    assert.equal(engine.players[0].resources.ore, 1);
-    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    engine.discardProgressCard('p1', 'sci-hand-0');
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'sci-hand-0'), false);
+    assert.equal(engine.progressDecks.science[0].id, 'sci-hand-0');
+    assert.equal(engine.progressDecks.science[0].type, 'inventor');
+    assert.equal(engine.drawProgressCard(engine.players[1], 'science'), 'crane');
+    assert.equal(engine.drawProgressCard(engine.players[1], 'science'), 'inventor');
   });
 });
+

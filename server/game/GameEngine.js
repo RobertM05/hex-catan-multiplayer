@@ -76,6 +76,14 @@ export const PROGRESS_CARD_DECKS = {
 
 export const PROGRESS_CARD_HAND_LIMIT = 4;
 
+export const PROGRESS_CARD_TYPE_TO_DECK = Object.fromEntries(
+  Object.entries(PROGRESS_CARD_DECKS).flatMap(([deck, cards]) =>
+    cards.map(card => [card.type, deck])
+  )
+);
+
+const PROGRESS_VP_CARD_TYPES = new Set(['constitution', 'printer']);
+
 export function normalizeGameMode(mode) {
   if (mode === GAME_MODES.CITIES_KNIGHTS || mode === 'advanced') {
     return GAME_MODES.CITIES_KNIGHTS;
@@ -764,7 +772,27 @@ export class GameEngine {
   }
 
   getProgressCardEligiblePlayers(track, dieNumber) {
-    return this.players.filter(p => (p.cityImprovements?.[track] || 0) >= dieNumber);
+    const n = this.players.length;
+    if (!n) return [];
+    const start = ((this.currentTurnPlayerIndex % n) + n) % n;
+    const eligible = [];
+    for (let i = 0; i < n; i++) {
+      const player = this.players[(start + i) % n];
+      if ((player.cityImprovements?.[track] || 0) >= dieNumber) {
+        eligible.push(player);
+      }
+    }
+    return eligible;
+  }
+
+  progressCardDeckName(card) {
+    return card?.track || PROGRESS_CARD_TYPE_TO_DECK[card?.type] || null;
+  }
+
+  placeProgressCardUnderDeck(card) {
+    const track = this.progressCardDeckName(card);
+    if (!track || !Array.isArray(this.progressDecks?.[track])) return;
+    this.progressDecks[track].unshift({ id: card.id, type: card.type });
   }
 
   shuffle(array) {
@@ -1195,7 +1223,7 @@ export class GameEngine {
     if (!deck || deck.length === 0) return null;
     const card = deck.pop();
     const type = card.type || card;
-    const isVp = ['constitution', 'printer'].includes(type);
+    const isVp = PROGRESS_VP_CARD_TYPES.has(type);
     player.progressCards.push({
       id: card.id || `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       type,
@@ -1219,7 +1247,8 @@ export class GameEngine {
     if (!this.pendingProgressDiscard.has(playerId)) throw new Error('NO_PROGRESS_DISCARD_NEEDED');
     const idx = player.progressCards.findIndex(c => c.id === cardId && !c.played);
     if (idx === -1) throw new Error('CARD_NOT_FOUND');
-    player.progressCards.splice(idx, 1);
+    const [discarded] = player.progressCards.splice(idx, 1);
+    this.placeProgressCardUnderDeck(discarded);
     if (this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
       this.pendingProgressDiscard.delete(playerId);
     }
@@ -2632,7 +2661,7 @@ export class GameEngine {
           this.pendingProgressDiscard.delete(target.id);
         }
 
-        const isVp = ['constitution', 'printer'].includes(stolenCard.type);
+        const isVp = PROGRESS_VP_CARD_TYPES.has(stolenCard.type);
         const cardObj = {
           ...stolenCard,
           boughtTurn: this.turnNumber,
@@ -2739,6 +2768,11 @@ export class GameEngine {
     card.played = true;
     if (this.pendingProgressDiscard && this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
       this.pendingProgressDiscard.delete(player.id);
+    }
+    if (!PROGRESS_VP_CARD_TYPES.has(card.type)) {
+      const idx = player.progressCards.findIndex(c => c.id === card.id);
+      if (idx !== -1) player.progressCards.splice(idx, 1);
+      this.placeProgressCardUnderDeck(card);
     }
     if (card.type === 'bishop' && result.hexId) {
       this.logEvent(this.buildRobberMovedLog(player.name, result.hexId));
@@ -3333,7 +3367,7 @@ export class GameEngine {
       }
 
       for (const card of player.progressCards || []) {
-        if (card.played && (card.type === 'constitution' || card.type === 'printer')) {
+        if (card.played && PROGRESS_VP_CARD_TYPES.has(card.type)) {
           publicPoints += 1;
         }
       }
@@ -3503,7 +3537,7 @@ export class GameEngine {
             : {
               count: (p.progressCards || []).length,
               revealed: (p.progressCards || [])
-                .filter(c => c.revealed || (c.played && ['constitution', 'printer'].includes(c.type)))
+                .filter(c => c.revealed || (c.played && PROGRESS_VP_CARD_TYPES.has(c.type)))
                 .map(c => ({ id: c.id, type: c.type, revealed: true, played: true }))
             },
           devCards: isSelf ? p.devCards : { count: p.devCards.filter(c => !c.played).length },
