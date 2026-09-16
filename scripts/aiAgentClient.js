@@ -711,7 +711,10 @@ export class CatanAIAgent {
   }
 
   async handleMetropolis(state, me) {
-    const candidateCities = (me.citiesBuilt || []).filter(cId => state.grid?.vertices?.[cId]?.building?.type === 'city');
+    const candidateCities = (me.citiesBuilt || []).filter(cId => {
+      const b = state.grid?.vertices?.[cId]?.building;
+      return b?.type === 'city' && !b.hasMetropolis;
+    });
     const chosen = candidateCities[0];
     if (chosen) {
       this.log(`[AI-Agent] Choosing metropolis city ${chosen}`);
