@@ -9,6 +9,7 @@ export class NetworkClient {
     this.currentRoomCode = null;
     this.currentPlayerId = null;
     this.reconnectToken = typeof localStorage !== 'undefined' ? localStorage.getItem('catan_reconnect_token') : null;
+    this.accessToken = null;
     this.onStateUpdate = null;
     this.onLobbyUpdate = null;
     this.onGameStarted = null;
@@ -16,16 +17,26 @@ export class NetworkClient {
     this.onChatReceived = null;
     this.onError = null;
     this.onKicked = null;
+    /** Called when handshake rejects a stored JWT; caller should clear the session. */
+    this.onInvalidAuth = null;
+    this._clearingInvalidAuth = false;
   }
 
   connect() {
     return new Promise((resolve) => {
       // Connect to same origin
-      this.socket = io();
+      this.socket = io({
+        auth: this.accessToken ? { token: this.accessToken } : {}
+      });
 
       this.socket.on('connect', () => {
         console.log('Connected to game server, socket id:', this.socket.id);
+        this._clearingInvalidAuth = false;
         resolve(this.socket);
+      });
+
+      this.socket.on('connect_error', (err) => {
+        this.handleConnectError(err);
       });
 
       this.socket.on('game_state_update', (data) => {
@@ -52,6 +63,23 @@ export class NetworkClient {
         if (this.onKicked) this.onKicked(data);
       });
     });
+  }
+
+  handleConnectError(err) {
+    const msg = String(err?.message || err || '');
+    if (!/INVALID_AUTH_TOKEN/i.test(msg)) return;
+    if (this._clearingInvalidAuth) return;
+    this._clearingInvalidAuth = true;
+    this.accessToken = null;
+    if (this.socket) this.socket.auth = {};
+    if (typeof this.onInvalidAuth === 'function') {
+      try {
+        this.onInvalidAuth(err);
+      } catch (e) {
+        console.warn('[auth] onInvalidAuth handler failed:', e);
+      }
+    }
+    // Next Socket.IO reconnect attempt goes as guest (auth cleared).
   }
 
   createRoom(hostName, options) {
@@ -82,6 +110,21 @@ export class NetworkClient {
           reject(new Error(res ? res.error : 'Failed to join room'));
         }
       });
+    });
+  }
+
+  setAccessToken(token) {
+    this.accessToken = token || null;
+  }
+
+  reconnectWithAuth(token) {
+    this.setAccessToken(token);
+    if (!this.socket) return this.connect();
+    this.socket.auth = this.accessToken ? { token: this.accessToken } : {};
+    return new Promise((resolve) => {
+      this.socket.once('connect', () => resolve(this.socket));
+      this.socket.disconnect();
+      this.socket.connect();
     });
   }
 

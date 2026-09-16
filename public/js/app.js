@@ -7,6 +7,7 @@
 import { i18n } from './i18n.js';
 import { audio } from './audio.js';
 import { network } from './network.js';
+import { lobbyAuth } from './auth.js';
 import { BoardRenderer } from './renderer.js';
 import { ico } from './icons.js';
 import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, canBuildWall, isCityWallHost, BUILD_COSTS } from './turnStatus.js';
@@ -190,6 +191,7 @@ export class CatanApp {
     // Setup Lobby Forms & Tabs
     this.setupLobbyTabs();
     this.setupLobbyActions();
+    this.setupAuthUi();
     this.setupWaitingRoomActions();
     this.setupInGameActions();
     this.setupHudOverlays();
@@ -199,6 +201,15 @@ export class CatanApp {
     this.setupProgressChoiceModal();
     this.setupDevCardsModal();
     this.setupProgressCardUi();
+
+    await lobbyAuth.init();
+    network.setAccessToken(lobbyAuth.accessToken);
+    network.onInvalidAuth = () => {
+      // Stale JWT must not hard-block reconnects — clear session and continue as guest.
+      lobbyAuth.clearStoredSession();
+      this.syncAuthChrome();
+    };
+    this.syncAuthChrome();
 
     // Connect to WebSocket Server
     await network.connect();
@@ -248,6 +259,40 @@ export class CatanApp {
     document.querySelectorAll('.view-screen').forEach(v => v.classList.remove('active'));
     const target = document.getElementById(viewId);
     if (target) target.classList.add('active');
+    this.syncAuthChrome(viewId);
+  }
+
+  syncAuthChrome(viewId = document.querySelector('.view-screen.active')?.id) {
+    const inMatch = viewId === 'view-game' || viewId === 'view-waiting';
+    document.body.classList.toggle('match-active', inMatch);
+    const authed = Boolean(lobbyAuth.accessToken);
+    const authEnabled = Boolean(lobbyAuth.config?.enabled);
+    document.getElementById('lobby-auth-card')?.classList.toggle('is-hidden', !authEnabled || inMatch);
+    document.getElementById('btn-sign-out')?.classList.toggle('is-hidden', !authEnabled || !authed || inMatch);
+    document.getElementById('btn-my-stats')?.classList.toggle('is-hidden', !authEnabled || !authed || inMatch);
+    const nameLocked = authed;
+    ['host-player-name', 'join-player-name'].forEach((id) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.disabled = nameLocked;
+      if (nameLocked && lobbyAuth.displayName) input.value = lobbyAuth.displayName;
+    });
+    document.getElementById('lobby-auth-signed-out')?.classList.toggle('is-hidden', authed);
+    document.getElementById('form-display-name')?.classList.toggle('is-hidden', !authed);
+    const status = document.getElementById('lobby-auth-status');
+    if (status) {
+      if (authed) {
+        status.classList.remove('is-hidden');
+        status.textContent = i18n.t('SIGNED_IN_AS', { name: lobbyAuth.displayName || 'Player' });
+      } else {
+        status.classList.add('is-hidden');
+        status.textContent = '';
+      }
+    }
+    const profileInput = document.getElementById('profile-display-name');
+    if (profileInput && authed && lobbyAuth.displayName && !profileInput.value) {
+      profileInput.value = lobbyAuth.displayName;
+    }
   }
 
   showToast(message, isError = false) {
@@ -309,6 +354,7 @@ export class CatanApp {
       window.history.replaceState({}, '', path);
     }
     this.showView('view-lobby');
+    this.syncAuthChrome();
     if (kicked) this.showToast(i18n.t('YOU_WERE_KICKED'), true);
     this.refreshPublicRooms();
     i18n.updateDOM();
@@ -444,6 +490,99 @@ export class CatanApp {
 
     if (tab === 'public') {
       this.refreshPublicRooms();
+    }
+  }
+
+  setupAuthUi() {
+    lobbyAuth.onChange = () => this.syncAuthChrome();
+
+    document.getElementById('btn-sign-in-google')?.addEventListener('click', async () => {
+      try {
+        await lobbyAuth.signInWithGoogle();
+      } catch (err) {
+        this.showToast(err.message, true);
+      }
+    });
+
+    document.getElementById('form-magic-link')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('magic-link-email')?.value.trim();
+      if (!email) return;
+      try {
+        await lobbyAuth.signInWithMagicLink(email);
+        this.showToast(i18n.t('MAGIC_LINK_SENT'));
+      } catch (err) {
+        this.showToast(err.message, true);
+      }
+    });
+
+    document.getElementById('form-display-name')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('profile-display-name')?.value.trim();
+      try {
+        await lobbyAuth.saveDisplayName(name);
+        await network.reconnectWithAuth(lobbyAuth.accessToken);
+        this.syncAuthChrome();
+        this.showToast(i18n.t('SAVE_DISPLAY_NAME'));
+      } catch (err) {
+        this.showToast(err.message, true);
+      }
+    });
+
+    document.getElementById('btn-sign-out')?.addEventListener('click', async () => {
+      await lobbyAuth.signOut();
+      await network.reconnectWithAuth(null);
+      this.syncAuthChrome();
+    });
+
+    document.getElementById('btn-my-stats')?.addEventListener('click', () => {
+      this.openStatsPage();
+    });
+
+    document.getElementById('btn-stats-back')?.addEventListener('click', () => {
+      this.showView('view-lobby');
+    });
+  }
+
+  async openStatsPage() {
+    this.showView('view-stats');
+    const guest = document.getElementById('stats-guest');
+    const body = document.getElementById('stats-body');
+    if (!lobbyAuth.accessToken) {
+      guest?.classList.remove('is-hidden');
+      body?.classList.add('is-hidden');
+      return;
+    }
+    guest?.classList.add('is-hidden');
+    body?.classList.remove('is-hidden');
+    try {
+      const stats = await lobbyAuth.fetchStats();
+      const summary = document.getElementById('stats-summary');
+      const recent = document.getElementById('stats-recent');
+      if (summary) {
+        summary.innerHTML = `
+          <div class="victory-stat-card"><span class="victory-stat-val">${stats.matches || 0}</span><span class="victory-stat-lbl">${i18n.t('STATS_MATCHES')}</span></div>
+          <div class="victory-stat-card"><span class="victory-stat-val">${stats.wins || 0}</span><span class="victory-stat-lbl">${i18n.t('STATS_WINS')}</span></div>
+          <div class="victory-stat-card"><span class="victory-stat-val">${stats.averageRank ?? '—'}</span><span class="victory-stat-lbl">${i18n.t('STATS_AVG_RANK')}</span></div>
+          <div class="victory-stat-card"><span class="victory-stat-val">${stats.averageVp ?? '—'}</span><span class="victory-stat-lbl">${i18n.t('STATS_AVG_VP')}</span></div>
+        `;
+      }
+      if (recent) {
+        if (!stats.matches) {
+          recent.innerHTML = `<p class="muted-label">${i18n.t('STATS_EMPTY')}</p>`;
+        } else {
+          recent.innerHTML = (stats.recent || []).map(row => `
+            <div class="stats-row">
+              <span>${escapeHtml(row.roomCode || '')}</span>
+              <span>${i18n.t('STATS_RANK', { rank: row.rank })}</span>
+              <span>${row.vp} VP</span>
+              <span>${escapeHtml(row.mode || '')}</span>
+            </div>
+          `).join('');
+        }
+      }
+    } catch (err) {
+      this.showToast(err.message, true);
     }
   }
 
