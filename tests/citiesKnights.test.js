@@ -1018,6 +1018,66 @@ describe('CK-08: City Walls', () => {
     assert.equal(engine.pendingDiscards.has('p1'), true);
   });
 
+  it('should allow building a wall on a metropolis city (CK-39)', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.players[0].cityImprovements.trade = 3;
+    engine.players[0].commodities.cloth = 4;
+    engine.improveCityTrack('p1', 'trade');
+    engine.chooseMetropolis('p1', cityId);
+    assert.equal(engine.grid.vertices.get(cityId).building.type, 'metropolis');
+
+    engine.buildCityWall('p1', cityId);
+
+    const building = engine.grid.vertices.get(cityId).building;
+    assert.equal(building.hasWall, true);
+    assert.equal(building.type, 'metropolis');
+    assert.equal(engine.players[0].cityWalls, 2);
+    assert.equal(engine.players[0].resources.brick, 4);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
+  });
+
+  it('wall on a metropolis still counts toward the 7-card discard limit', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.players[0].cityImprovements.science = 3;
+    engine.players[0].commodities.paper = 4;
+    engine.improveCityTrack('p1', 'science');
+    engine.chooseMetropolis('p1', cityId);
+    engine.buildCityWall('p1', cityId);
+
+    engine.players[0].resources = { wood: 9, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[0].commodities = { cloth: 0, coin: 0, paper: 0 };
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), false);
+    engine.players[0].resources.wood = 10;
+    engine.queueDiscardsForSeven();
+    assert.equal(engine.pendingDiscards.has('p1'), true);
+  });
+
+  it('should reject a second wall on a metropolis city', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.grid.vertices.get(cityId).building.type = 'metropolis';
+    engine.grid.vertices.get(cityId).building.hasMetropolis = true;
+    engine.buildCityWall('p1', cityId);
+    assert.throws(() => engine.buildCityWall('p1', cityId), /CITY_ALREADY_HAS_WALL/);
+  });
+
+  it('Engineer can place a free wall on a metropolis city', () => {
+    const engine = makeCkEngine();
+    const cityId = cityReady(engine);
+    engine.grid.vertices.get(cityId).building.type = 'metropolis';
+    engine.grid.vertices.get(cityId).building.hasMetropolis = true;
+    engine.players[0].resources.brick = 0;
+    const card = { id: 'eng-metro', type: 'engineer', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { vertexId: cityId });
+    assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+    assert.equal(engine.players[0].resources.brick, 0);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
+  });
+
   it('should reject in base game mode', () => {
     const engine = new GameEngine({ mode: 'base' });
     engine.addPlayer({ id: 'p1', name: 'Alice' });
@@ -1674,6 +1734,24 @@ describe('CK-13: Bot AI C&K', () => {
     assert.equal(action.action, 'build_city_wall');
     BotAI.applyTurnAction(engine, engine.players[0], action);
     assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+  });
+
+  it('bot should build a city wall on a metropolis city (CK-39)', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt.at(-1);
+    engine.grid.vertices.get(cityId).building.type = 'metropolis';
+    engine.grid.vertices.get(cityId).building.hasMetropolis = true;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].resources = { wood: 3, brick: 2, wool: 0, wheat: 3, ore: 0 };
+    engine.players[0].commodities = { cloth: 0, coin: 0, paper: 0 };
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'build_city_wall');
+    assert.equal(action.vertexId, cityId);
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.grid.vertices.get(cityId).building.hasWall, true);
+    assert.equal(engine.getDiscardThreshold(engine.players[0]), 9);
   });
 
   it('bot should handle TURN_BARBARIAN_DOWNGRADE without crashing', () => {
