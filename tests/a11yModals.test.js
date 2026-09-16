@@ -15,4 +15,11 @@ describe('UX-06 accessibility', () => {
       .filter(tag => !/role="dialog"/.test(tag) || !/aria-modal="true"/.test(tag));
     assert.deepEqual(missing, [], `Overlays missing dialog role:\n${missing.join('\n')}`);
   });
+
+  it('includes an Aqueduct chooser modal for any 1 resource', () => {
+    assert.match(html, /id="aqueduct-modal"/);
+    assert.match(html, /Aqueduct: Choose 1 Resource/);
+    assert.match(html, /data-res="wood"/);
+    assert.match(html, /data-res="ore"/);
+  });
 });

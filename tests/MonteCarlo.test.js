@@ -52,6 +52,10 @@ describe('Monte Carlo Simulation', () => {
              continue;
            }
 
+           if (engine.pendingAqueductClaims && engine.pendingAqueductClaims.size) {
+             BotAI.resolvePendingAqueductClaims(engine, { includeHumans: true });
+           }
+
            if (engine.phase === GAME_PHASES.TURN_DISCARD) {
              for (const pId of Array.from(engine.pendingDiscards)) {
                const p = engine.players.find(x => x.id === pId);
@@ -180,6 +184,10 @@ describe('Monte Carlo Simulation', () => {
                if (cardId) engine.discardProgressCard(pId, cardId);
              }
              continue;
+           }
+
+           if (engine.pendingAqueductClaims && engine.pendingAqueductClaims.size) {
+             BotAI.resolvePendingAqueductClaims(engine, { includeHumans: true });
            }
 
            if (engine.phase === GAME_PHASES.TURN_DISCARD) {

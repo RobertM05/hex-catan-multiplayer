@@ -15,7 +15,7 @@ import {
   GAME_MODES,
   normalizeGameMode,
   PROGRESS_CARD_DECKS,
-  PROGRESS_CARD_HAND_LIMIT
+  AQUEDUCT_UNLOCK_LEVEL
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
@@ -290,16 +290,17 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].resources.ore, 1);
   });
 
-  it('unlocks Aqueduct perk when Science reaches level 5 (no extra city pieces)', () => {
+  it('unlocks Aqueduct perk when Science reaches level 3 (no extra city pieces)', () => {
     const engine = makeCkEngine();
     engine.players[0].citiesBuilt.push('v1');
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].cityImprovements.science = 4;
-    engine.players[0].commodities.paper = 5;
+    engine.players[0].cityImprovements.science = 2;
+    engine.players[0].commodities.paper = 3;
     const before = engine.players[0].citiesRemaining;
     engine.improveCityTrack('p1', 'science');
-    assert.equal(engine.players[0].cityImprovements.science, 5);
+    assert.equal(engine.players[0].cityImprovements.science, 3);
     assert.equal(engine.players[0].citiesRemaining, before);
+    assert.equal(engine.hasAqueduct(engine.players[0]), true);
   });
 });
 
@@ -2625,82 +2626,101 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
 
 });
 
-describe('SEC-11: Aqueduct claim_aqueduct_resource gating', () => {
-  function armChooserPath(engine, production = { p1: {}, p2: {} }) {
-    engine.players[0].cityImprovements.science = 5;
+describe('UX-01: Aqueduct resource chooser', () => {
+  function armChooser(engine, production = { p1: {}, p2: { wood: 1 } }) {
+    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
     engine.hasRolledDice = true;
     engine.dice = [2, 3];
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.armAqueductEligibility(production);
   }
 
-  it('allows one resource of choice on a qualifying blank non-7 roll', () => {
+  it('blank non-7 production roll arms a pending claim without granting a resource', () => {
     const engine = makeCkEngine();
-    armChooserPath(engine);
-    const before = engine.players[0].resources.wheat;
+    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
+    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const oreBefore = engine.players[0].resources.ore;
+    const blank = forceRoll(engine, 'p1', 2, 2);
+    assert.notEqual(blank.sum, 7);
+    assert.equal(engine.players[0].resources.ore, oreBefore);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), true);
+    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, ['p1']);
+    assert.equal(engine.getStateForPlayer('p1').eventLog.some(e => e.type === 'AQUEDUCT_RESOURCE'), false);
+  });
 
+  it('lets the player choose any one resource, then rejects a second claim', () => {
+    const engine = makeCkEngine();
+    armChooser(engine);
+    const before = engine.players[0].resources.wheat;
     const res = engine.claimAqueductResource('p1', 'wheat');
     assert.equal(res.resource, 'wheat');
     assert.equal(engine.players[0].resources.wheat, before + 1);
     assert.equal(engine.pendingAqueductClaims.has('p1'), false);
     assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
     assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, []);
-  });
-
-  it('rejects a second claim for the same roll', () => {
-    const engine = makeCkEngine();
-    armChooserPath(engine);
-    engine.claimAqueductResource('p1', 'wheat');
     const oreBefore = engine.players[0].resources.ore;
     assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_ALREADY_CLAIMED/);
     assert.equal(engine.players[0].resources.ore, oreBefore);
   });
 
-  it('rejects claims that are not the current player', () => {
+  it('honors an explicit choice map without auto-picking the lowest resource', () => {
     const engine = makeCkEngine();
-    engine.players[1].cityImprovements.science = 5;
-    armChooserPath(engine, { p1: {}, p2: {} });
-    assert.throws(() => engine.claimAqueductResource('p2', 'wood'), /NOT_YOUR_TURN/);
+    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
+    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    const production = { p1: {}, p2: { wood: 1 } };
+    const claimed = engine.applyAqueductBenefit(production, { p1: 'wool' });
+    assert.equal(claimed.p1, 'wool');
+    assert.equal(engine.players[0].resources.wool, 3);
+    assert.equal(engine.players[0].resources.ore, 0);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
   });
 
-  it('rejects claims before a production roll', () => {
+  it('does not apply Aqueduct before Science 3, on a 7, or after producing', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = 5;
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    engine.hasRolledDice = false;
-    assert.throws(() => engine.claimAqueductResource('p1', 'brick'), /AQUEDUCT_NOT_ELIGIBLE/);
+    engine.players[0].cityImprovements.science = 2;
+    engine.players[0].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    const claimed = engine.applyAqueductBenefit({ p1: {} });
+    assert.equal(claimed.p1, undefined);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+
+    const seven = makeCkEngine();
+    seven.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
+    seven.phase = GAME_PHASES.TURN_ROLL;
+    const roll = forceRoll(seven, 'p1', 3, 4);
+    assert.equal(roll.sum, 7);
+    assert.throws(() => seven.claimAqueductResource('p1', 'wool'), /AQUEDUCT_NOT_ELIGIBLE/);
+
+    const produced = makeCkEngine();
+    armChooser(produced, { p1: { wood: 1 }, p2: {} });
+    assert.throws(() => produced.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_ELIGIBLE/);
+    assert.throws(() => produced.claimAqueductResource('p1', 'cloth'), /INVALID_RESOURCE/);
   });
 
-  it('rejects claims when the player produced resources this roll', () => {
+  it('lets a non-current Aqueduct holder claim after someone else rolls blank for them', () => {
     const engine = makeCkEngine();
-    armChooserPath(engine, { p1: { wood: 1 }, p2: {} });
-    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_ELIGIBLE/);
+    engine.players[1].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
+    engine.hasRolledDice = true;
+    engine.dice = [2, 3];
+    engine.armAqueductEligibility({ p1: { wood: 1 }, p2: {} });
+    const before = engine.players[1].resources.brick;
+    const res = engine.claimAqueductResource('p2', 'brick');
+    assert.equal(res.resource, 'brick');
+    assert.equal(engine.players[1].resources.brick, before + 1);
   });
 
-  it('rejects claims on a 7 and after rollDice already auto-granted', () => {
+  it('BotAI auto-claims the lowest resource for bots with a pending chooser', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = 5;
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    const seven = forceRoll(engine, 'p1', 3, 4);
-    assert.equal(seven.sum, 7);
-    assert.throws(() => engine.claimAqueductResource('p1', 'wool'), /AQUEDUCT_NOT_ELIGIBLE/);
-
-    const engine2 = makeCkEngine();
-    engine2.players[0].cityImprovements.science = 5;
-    engine2.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
-    engine2.phase = GAME_PHASES.TURN_ROLL;
-    const oreBefore = engine2.players[0].resources.ore;
-    const blank = forceRoll(engine2, 'p1', 2, 2);
-    assert.notEqual(blank.sum, 7);
-    assert.equal(engine2.players[0].resources.ore, oreBefore + 1);
-    assert.throws(() => engine2.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_ALREADY_CLAIMED/);
-  });
-
-  it('rejects invalid resources and missing Aqueduct unlock', () => {
-    const engine = makeCkEngine();
-    armChooserPath(engine);
-    assert.throws(() => engine.claimAqueductResource('p1', 'cloth'), /INVALID_RESOURCE/);
-    engine.players[0].cityImprovements.science = 4;
-    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
+    engine.players[0].isBot = true;
+    engine.players[0].cityImprovements.science = AQUEDUCT_UNLOCK_LEVEL;
+    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    engine.hasRolledDice = true;
+    engine.dice = [2, 2];
+    engine.armAqueductEligibility({ p1: {}, p2: { wood: 1 } });
+    assert.equal(BotAI.chooseAqueductResource(engine.players[0]), 'ore');
+    const claimed = BotAI.resolvePendingAqueductClaims(engine);
+    assert.equal(claimed, 1);
+    assert.equal(engine.players[0].resources.ore, 1);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
   });
 });

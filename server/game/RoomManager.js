@@ -515,6 +515,7 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_ROLL) {
         engine.rollDice(curPlayer.id);
+        BotAI.resolvePendingAqueductClaims(engine, { includeHumans: true });
       } else if (engine.phase === GAME_PHASES.TURN_DISCARD) {
         // Auto discard for any player still pending
         for (const pId of Array.from(engine.pendingDiscards)) {
@@ -581,6 +582,11 @@ export class RoomManager {
   checkAndTriggerBotTurn(room) {
     const engine = room.engine;
     if (engine.phase === GAME_PHASES.GAME_OVER) return;
+
+    if (engine.pendingAqueductClaims && engine.pendingAqueductClaims.size) {
+      const claimed = BotAI.resolvePendingAqueductClaims(engine);
+      if (claimed) this.broadcastState(room);
+    }
 
     if (engine.pendingProgressDiscard && engine.pendingProgressDiscard.size) {
       for (const pId of Array.from(engine.pendingProgressDiscard)) {
@@ -727,6 +733,7 @@ export class RoomManager {
             engine.playProgressCard(curPlayer.id, alchemist.cardId, alchemist.options);
           }
           engine.rollDice(curPlayer.id);
+          BotAI.resolvePendingAqueductClaims(engine);
         } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
           const robAction = BotAI.decideRobberMove(engine, curPlayer);
           engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
@@ -772,6 +779,7 @@ export class RoomManager {
         } else if (engine.phase === GAME_PHASES.TURN_ROLL) {
           try {
             engine.rollDice(curPlayer.id);
+            BotAI.resolvePendingAqueductClaims(engine);
             this.broadcastState(room);
             this.checkAndTriggerBotTurn(room);
           } catch (e) {}

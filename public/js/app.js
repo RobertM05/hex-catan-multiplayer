@@ -93,6 +93,7 @@ export class CatanApp {
     this.leavingMatch = false;
     this.seenTradeEventId = null;
     this.lastRenderedPhase = null;
+    this.aqueductClaimInFlight = false;
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -1296,6 +1297,37 @@ export class CatanApp {
     document.getElementById('btn-toggle-improvements')?.addEventListener('click', () => {
       document.getElementById('city-improvements-panel')?.classList.toggle('collapsed');
     });
+
+    const aqueductModal = document.getElementById('aqueduct-modal');
+    aqueductModal?.querySelectorAll('.res-choice-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.claimAqueductChoice(btn.dataset.res));
+    });
+  }
+
+  async claimAqueductChoice(resource) {
+    if (!resource || this.aqueductClaimInFlight) return;
+    this.aqueductClaimInFlight = true;
+    try {
+      await network.sendAction('claim_aqueduct_resource', { resource });
+      audio.playBuild();
+      document.getElementById('aqueduct-modal')?.classList.remove('active');
+    } catch (err) {
+      this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
+    } finally {
+      this.aqueductClaimInFlight = false;
+    }
+  }
+
+  checkAqueductChooser() {
+    const modal = document.getElementById('aqueduct-modal');
+    if (!modal || !this.gameState) return;
+    const pending = this.gameState.pendingAqueductClaims || [];
+    const needsChoice = this.isCitiesKnights() && pending.includes(this.myPlayerId);
+    if (!needsChoice) {
+      modal.classList.remove('active');
+      return;
+    }
+    modal.classList.add('active');
   }
 
   renderCkHud(s, me, isActionPhase) {
@@ -1308,6 +1340,7 @@ export class CatanApp {
     this.renderProgressCardHand();
     this.notifyProgressDraws(s);
     this.checkProgressDiscardState();
+    this.checkAqueductChooser();
     this.renderKnightSupply(me, isActionPhase);
   }
 
