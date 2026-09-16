@@ -20,6 +20,12 @@ import {
   actionLimitKey
 } from './game/rateLimiter.js';
 import { GAME_PHASES } from './game/GameEngine.js';
+import {
+  TRUST_PROXY_SETTING,
+  describeTrustProxySetting,
+  extractClientCountry,
+  extractClientIp
+} from './clientIp.js';
 import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,7 +33,9 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, '..', 'public');
 
 const app = express();
-app.set('trust proxy', true);
+// SEC-08: never `trust proxy: true`. Default is loopback (Cloudflare tunnel).
+// Bare Node ignores client-supplied forwarded headers because the peer is not loopback.
+app.set('trust proxy', TRUST_PROXY_SETTING);
 app.set('json spaces', 2);
 
 const server = http.createServer(app);
@@ -131,29 +139,7 @@ export function recordPlayerIp(name, ip, country = null, roomCode = null) {
   return existing;
 }
 
-export function extractClientIp(reqOrSocket) {
-  const headers = reqOrSocket.headers || reqOrSocket.handshake?.headers || {};
-  const cfConnectingIp = headers['cf-connecting-ip'];
-  if (cfConnectingIp && typeof cfConnectingIp === 'string') return cfConnectingIp.trim();
-
-  const xRealIp = headers['x-real-ip'];
-  if (xRealIp && typeof xRealIp === 'string') return xRealIp.trim();
-
-  const xForwardedFor = headers['x-forwarded-for'];
-  if (xForwardedFor && typeof xForwardedFor === 'string') {
-    const first = xForwardedFor.split(',')[0].trim();
-    if (first) return first;
-  }
-
-  const raw = reqOrSocket.ip || reqOrSocket.connection?.remoteAddress || reqOrSocket.socket?.remoteAddress || reqOrSocket.handshake?.address;
-  if (!raw) return 'unknown';
-  return String(raw).replace(/^::ffff:/, '');
-}
-
-export function extractClientCountry(reqOrSocket) {
-  const headers = reqOrSocket.headers || reqOrSocket.handshake?.headers || {};
-  return headers['cf-ipcountry'] || null;
-}
+export { extractClientIp, extractClientCountry, TRUST_PROXY_SETTING };
 
 export function capitalizeWord(s) {
   if (!s || typeof s !== 'string') return '';
@@ -1377,6 +1363,7 @@ const PORT = process.env.PORT || 3000;
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   server.listen(PORT, () => {
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
+    console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
   });
 }
 
