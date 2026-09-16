@@ -299,6 +299,12 @@ function forceRoll(engine, playerId, d1, d2, eventIndex = 3) {
   }
 }
 
+function diceForToken(token) {
+  const d1 = Math.min(6, Math.max(1, Math.floor(token / 2)));
+  const d2 = token - d1;
+  return [d1, d2];
+}
+
 function giveRoad(engine, playerId, vertexId) {
   const vertex = engine.grid.vertices.get(vertexId);
   const edgeId = vertex.adjacentEdges[0];
@@ -548,6 +554,121 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
     assert.ok(result.progressDraws.every(d => d.drawn));
     assert.equal(engine.players[0].progressCards.length, 1);
     assert.equal(engine.players[1].progressCards.length, 1);
+  });
+});
+
+describe('CK-36: Barbarians resolve before production', () => {
+  it('does not grant city production until a pillaged city is downgraded', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    const p1 = engine.players[0];
+    const woodBefore = p1.resources.wood;
+    const paperBefore = p1.commodities.paper;
+
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
+
+    assert.equal(result.barbarian.outcome, 'defeat');
+    assert.equal(engine.phase, GAME_PHASES.TURN_BARBARIAN_DOWNGRADE);
+    assert.equal(p1.resources.wood, woodBefore);
+    assert.equal(p1.commodities.paper, paperBefore);
+    assert.deepEqual(result.produces.p1 || {}, {});
+
+    engine.downgradeCity('p1', cityId);
+    assert.equal(engine.grid.vertices.get(cityId).building.type, 'settlement');
+    assert.equal(p1.resources.wood, woodBefore + 1);
+    assert.equal(p1.commodities.paper, paperBefore);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('pillaged city produces as a settlement, not a city, on the attack roll', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOL, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    forceRoll(engine, 'p1', d1, d2, 0);
+    engine.downgradeCity('p1', cityId);
+
+    assert.equal(engine.players[0].resources.wool, 1);
+    assert.equal(engine.players[0].commodities.cloth, 0);
+    const types = engine.eventLog.map(e => e.type);
+    const defeatIdx = types.lastIndexOf('BARBARIAN_DEFEAT');
+    const downIdx = types.lastIndexOf('CITY_DOWNGRADED');
+    const prodIdx = types.lastIndexOf('RESOURCE_PRODUCED');
+    assert.ok(defeatIdx >= 0 && downIdx >= 0 && prodIdx >= 0);
+    assert.ok(defeatIdx < downIdx);
+    assert.ok(downIdx < prodIdx);
+  });
+
+  it('still produces as a city when the matching city is not the one pillaged', () => {
+    const engine = makeCkEngine();
+    const woodHex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const wheatHex = Array.from(engine.grid.hexes.values()).find(
+      h => h.resource === RESOURCE_TYPES.WHEAT
+        && h.id !== engine.grid.robberHexId
+        && h.token
+        && h.token !== woodHex.token
+    );
+    assert.ok(wheatHex, 'expected a wheat hex with a different token');
+    const wheatVertexId = Array.from(engine.grid.vertices.keys()).find(id => {
+      const v = engine.grid.vertices.get(id);
+      return v.hexes.includes(wheatHex.id) && !v.building && !v.knight;
+    });
+    engine.grid.vertices.get(wheatVertexId).building = { type: 'city', playerId: 'p1', color: '#e63946' };
+    engine.players[0].citiesBuilt.push(wheatVertexId);
+
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(woodHex.token);
+    forceRoll(engine, 'p1', d1, d2, 0);
+
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[0].commodities.paper, 0);
+    engine.downgradeCity('p1', wheatVertexId);
+
+    assert.equal(engine.grid.vertices.get(engine.players[0].citiesBuilt[0]).building.type, 'city');
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.paper, 1);
+  });
+
+  it('grants city production after a barbarian victory on the same roll', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const v = emptyVertex(engine);
+    plantKnight(engine, 'p1', v.id, { active: true });
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
+
+    assert.equal(result.barbarian.outcome, 'victory');
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(result.produces.p1.wood, 1);
+    assert.equal(result.produces.p1.paper, 1);
+    const types = engine.eventLog.map(e => e.type);
+    assert.ok(types.lastIndexOf('BARBARIAN_VICTORY') < types.lastIndexOf('RESOURCE_PRODUCED'));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('still produces immediately when barbarians advance but do not attack', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    engine.barbarianPosition = 4;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
+    assert.equal(engine.eventDie, 'barbarian');
+    assert.equal(engine.barbarianPosition, 5);
+    assert.equal(result.barbarian, null);
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 });
 
