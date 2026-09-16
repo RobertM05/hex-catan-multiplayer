@@ -600,6 +600,7 @@
         <button id="btn-refresh" class="btn btn-primary">Refresh Now</button>
         <button id="btn-clear-logs" class="btn btn-danger" title="Clear all recorded server telemetry and chat logs">🗑️ Clear Logs</button>
         <a href="/api/admin/traffic?mode=advanced" target="_blank" class="btn" id="btn-raw-json">Raw JSON</a>
+        <a href="/admin/logout" class="btn" id="btn-admin-logout">Sign out</a>
         <a href="/" class="btn">Game Home</a>
       </div>
     </header>
@@ -997,7 +998,7 @@
       if (!confirmed) return;
 
       try {
-        const res = await fetch('/api/admin/traffic/clear', { method: 'POST' });
+        const res = await fetch('/api/admin/traffic/clear', { method: 'POST', credentials: 'same-origin' });
         if (res.ok) {
           lastEvents = [];
           renderChatWindow([]);
@@ -1017,7 +1018,7 @@
         if (typeFilter) url += '&type=' + encodeURIComponent(typeFilter);
         if (ipFilter) url += '&ip=' + encodeURIComponent(ipFilter);
 
-        const res = await fetch(url);
+        const res = await fetch(url, { credentials: 'same-origin' });
         if (!res.ok) return;
         const data = await res.json();
         renderDashboard(data);
@@ -1196,7 +1197,7 @@
 
       output.textContent = 'Loading authoritative state for room ' + code + '...';
       try {
-        const res = await fetch('/api/admin/room/' + encodeURIComponent(code));
+        const res = await fetch('/api/admin/room/' + encodeURIComponent(code), { credentials: 'same-origin' });
         const json = await res.json();
         output.textContent = JSON.stringify(json, null, 2);
       } catch (err) {
