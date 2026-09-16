@@ -1,5 +1,6 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { io as ioClient } from 'socket.io-client';
 import {
   RoomManager,
   validateChatMessage,
@@ -9,6 +10,7 @@ import {
 } from '../server/game/RoomManager.js';
 import { escapeHtml, CatanApp } from '../public/js/app.js';
 import { network } from '../public/js/network.js';
+import { server, roomManager as liveRoomManager, io as serverIo } from '../server/server.js';
 
 describe('SEC-01: multiplayer session authority', () => {
   it('does not reconnect a player from their public ID when legacy matching is disabled', () => {
@@ -101,3 +103,177 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
     network.currentPlayerId = null;
   });
 });
+
+describe('SEC-05: send_chat requires seated room membership', () => {
+  let serverPort = null;
+  let serverUrl = null;
+
+  before(async () => {
+    await new Promise((resolve) => {
+      server.listen(0, () => {
+        serverPort = server.address().port;
+        serverUrl = `http://localhost:${serverPort}`;
+        resolve();
+      });
+    });
+  });
+
+  after(async () => {
+    serverIo.close();
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+  });
+
+  function createClient() {
+    return ioClient(serverUrl, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false
+    });
+  }
+
+  function connectClient() {
+    const socket = createClient();
+    return new Promise((resolve) => {
+      socket.on('connect', () => resolve(socket));
+    });
+  }
+
+  function emitCreateRoom(socket, hostName, roomName) {
+    return new Promise((resolve) => {
+      socket.emit('create_room', {
+        hostName,
+        roomName,
+        maxPlayers: 4,
+        mode: 'base'
+      }, resolve);
+    });
+  }
+
+  function emitJoinRoom(socket, code, playerName) {
+    return new Promise((resolve) => {
+      socket.emit('join_room', { code, playerName }, resolve);
+    });
+  }
+
+  function nextChat(socket, timeoutMs = 1500) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        socket.off('chat_received', onChat);
+        reject(new Error('timed out waiting for chat_received'));
+      }, timeoutMs);
+      function onChat(msg) {
+        clearTimeout(timer);
+        socket.off('chat_received', onChat);
+        resolve(msg);
+      }
+      socket.on('chat_received', onChat);
+    });
+  }
+
+  function assertNoChat(socket, timeoutMs = 400) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        socket.off('chat_received', onChat);
+        resolve();
+      }, timeoutMs);
+      function onChat(msg) {
+        clearTimeout(timer);
+        socket.off('chat_received', onChat);
+        reject(new Error(`unexpected chat_received: ${JSON.stringify(msg)}`));
+      }
+      socket.on('chat_received', onChat);
+    });
+  }
+
+  it('allows a seated player to broadcast chat using the bound room', async () => {
+    const host = await connectClient();
+    const guest = await connectClient();
+    const created = await emitCreateRoom(host, 'ChatHost', 'ChatRoom');
+    assert.equal(created.success, true);
+    const joined = await emitJoinRoom(guest, created.roomCode, 'ChatGuest');
+    assert.equal(joined.success, true);
+
+    const received = nextChat(guest);
+    host.emit('send_chat', { code: created.roomCode, text: 'hello lobby' });
+    const msg = await received;
+
+    assert.equal(msg.senderId, created.playerId);
+    assert.equal(msg.senderName, 'ChatHost');
+    assert.equal(msg.text, 'hello lobby');
+    const room = liveRoomManager.getRoom(created.roomCode);
+    assert.equal(room.chatMessages.at(-1).text, 'hello lobby');
+
+    host.disconnect();
+    guest.disconnect();
+    liveRoomManager.destroyRoom(created.roomCode);
+  });
+
+  it('rejects chat from a socket that is not in any room even if data.code is supplied', async () => {
+    const host = await connectClient();
+    const attacker = await connectClient();
+    const created = await emitCreateRoom(host, 'TargetHost', 'TargetRoom');
+    assert.equal(created.success, true);
+
+    const noChat = assertNoChat(host);
+    attacker.emit('send_chat', { code: created.roomCode, text: 'injected from outside' });
+    await noChat;
+
+    const room = liveRoomManager.getRoom(created.roomCode);
+    assert.equal(room.chatMessages.some(m => m.text === 'injected from outside'), false);
+    assert.equal(room.chatMessages.some(m => m.senderName === 'Player'), false);
+
+    host.disconnect();
+    attacker.disconnect();
+    liveRoomManager.destroyRoom(created.roomCode);
+  });
+
+  it('rejects cross-room chat from a player seated in a different room', async () => {
+    const hostA = await connectClient();
+    const hostB = await connectClient();
+    const roomA = await emitCreateRoom(hostA, 'HostA', 'RoomA');
+    const roomB = await emitCreateRoom(hostB, 'HostB', 'RoomB');
+    assert.equal(roomA.success, true);
+    assert.equal(roomB.success, true);
+
+    const noChatA = assertNoChat(hostA);
+    const noChatB = assertNoChat(hostB);
+    hostA.emit('send_chat', { code: roomB.roomCode, text: 'cross-room ping' });
+    await Promise.all([noChatA, noChatB]);
+
+    assert.equal(liveRoomManager.getRoom(roomA.roomCode).chatMessages.some(m => m.text === 'cross-room ping'), false);
+    assert.equal(liveRoomManager.getRoom(roomB.roomCode).chatMessages.some(m => m.text === 'cross-room ping'), false);
+
+    hostA.disconnect();
+    hostB.disconnect();
+    liveRoomManager.destroyRoom(roomA.roomCode);
+    liveRoomManager.destroyRoom(roomB.roomCode);
+  });
+
+  it('rejects chat after the socket is no longer seated in room.players', async () => {
+    const host = await connectClient();
+    const guest = await connectClient();
+    const created = await emitCreateRoom(host, 'KickHost', 'KickRoom');
+    const joined = await emitJoinRoom(guest, created.roomCode, 'KickGuest');
+    assert.equal(created.success, true);
+    assert.equal(joined.success, true);
+
+    const kickRes = await new Promise((resolve) => {
+      host.emit('remove_player', { code: created.roomCode, id: joined.playerId }, resolve);
+    });
+    assert.equal(kickRes.success, true);
+    assert.equal(liveRoomManager.getRoom(created.roomCode).players.some(p => p.id === joined.playerId), false);
+
+    const noChat = assertNoChat(host);
+    guest.emit('send_chat', { code: created.roomCode, text: 'still here after kick' });
+    await noChat;
+
+    assert.equal(liveRoomManager.getRoom(created.roomCode).chatMessages.some(m => m.text === 'still here after kick'), false);
+
+    host.disconnect();
+    guest.disconnect();
+    liveRoomManager.destroyRoom(created.roomCode);
+  });
+});
+

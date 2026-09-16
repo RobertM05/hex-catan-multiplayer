@@ -913,48 +913,38 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send_chat', (data, callback) => {
-    try {
-      const roomCode = (currentRoomCode || data?.code)?.toUpperCase();
-      if (!roomCode || (currentRoomCode && data?.code && currentRoomCode !== data.code.toUpperCase())) {
-        if (callback) callback({ success: false, error: 'ROOM_MISMATCH' });
-        return;
-      }
-      const room = roomManager.getRoom(roomCode);
-      if (!room || !data?.text) {
-        if (callback) callback({ success: false, error: 'INVALID_PAYLOAD' });
-        return;
-      }
-      if (!socketRateLimiter.consume(chatLimitKey(currentPlayerId, socket.id), RATE_LIMITS.sendChat)) {
-        throw new Error(RATE_LIMITED);
-      }
-      const sender = room.players.find(p => p.id === currentPlayerId) || { name: 'Player' };
-      const chatMsg = {
-        id: `chat_${Date.now()}`,
-        senderId: currentPlayerId,
-        senderName: sender.name,
-        color: sender.color,
-        text: validateChatMessage(data.text),
-        timestamp: Date.now()
-      };
-      room.chatMessages.push(chatMsg);
-      recordTrafficEvent({
-        type: 'CHAT_MESSAGE',
-        roomCode,
-        playerId: currentPlayerId,
-        playerName: sender.name,
-        text: chatMsg.text,
-        ip,
-        country
-      });
+  socket.on('send_chat', (data) => {
+    // SEC-05: chat is bound to the seated room only — never fall back to client-supplied data.code.
+    if (!currentRoomCode || !currentPlayerId) return;
+    const requestedCode = typeof data?.code === 'string' ? data.code.toUpperCase() : null;
+    if (requestedCode && requestedCode !== currentRoomCode) return;
 
-      console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${roomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
+    const room = roomManager.getRoom(currentRoomCode);
+    const sender = room?.players.find(p => p.id === currentPlayerId);
+    if (!room || !sender || !data?.text) return;
 
-      io.to(room.code).emit('chat_received', chatMsg);
-      if (callback) callback({ success: true });
-    } catch (err) {
-      if (callback) callback({ success: false, error: err.message });
-    }
+    const chatMsg = {
+      id: `chat_${Date.now()}`,
+      senderId: currentPlayerId,
+      senderName: sender.name,
+      color: sender.color,
+      text: validateChatMessage(data.text),
+      timestamp: Date.now()
+    };
+    room.chatMessages.push(chatMsg);
+    recordTrafficEvent({
+      type: 'CHAT_MESSAGE',
+      roomCode: currentRoomCode,
+      playerId: currentPlayerId,
+      playerName: sender.name,
+      text: chatMsg.text,
+      ip,
+      country
+    });
+
+    console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${currentRoomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
+
+    io.to(room.code).emit('chat_received', chatMsg);
   });
 
   /* =========================================================
