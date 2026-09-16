@@ -96,6 +96,21 @@ Pentru dezvoltare cu auto-reload la modificări de cod:
 npm run dev
 ```
 
+### Docker (production image)
+
+Requires Docker. The image runs Node 22 Alpine as the non-root `node` user and exposes `GET /health` for liveness checks.
+
+```bash
+docker compose up --build
+```
+
+The app is at **`http://localhost:3000`**. Probe: `curl http://localhost:3000/health`.
+
+```bash
+docker build -t hex-catan-multiplayer .
+docker run --rm -p 3000:3000 hex-catan-multiplayer
+```
+
 ### 3. Rulare teste automate
 Proiectul include o suită completă de 25 de teste unitare și de integrare QA:
 ```bash
