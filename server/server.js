@@ -1027,6 +1027,13 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (!roomManager.hasActionAuthority(room, currentPlayerId, socket.id)) {
+      const err = 'NO_ACTION_AUTHORITY';
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] [${roomCode}] "${actionName}": ${err}`);
+      if (callback) callback({ success: false, error: err });
+      return;
+    }
+
     const player = room.players.find(p => p.id === currentPlayerId);
     const pName = player ? player.name : (currentPlayerId || 'Unknown');
     const phaseBefore = room.engine?.phase || 'UNKNOWN';
@@ -1289,9 +1296,13 @@ io.on('connection', (socket) => {
           }
         }
         socket.leave(code);
-        currentRoomCode = null;
       }
     }
+    // Drop action authority until reconnect-token reclaim. The leaving socket
+    // must not keep firing handleGameAction as this playerId while a stand-in
+    // bot controls the seat.
+    currentRoomCode = null;
+    currentPlayerId = null;
     if (cb) cb({ success: true });
   });
 
