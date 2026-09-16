@@ -19,6 +19,7 @@ import {
   chatLimitKey,
   actionLimitKey
 } from './game/rateLimiter.js';
+import { GAME_PHASES } from './game/GameEngine.js';
 import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1102,10 +1103,13 @@ io.on('connection', (socket) => {
         });
       }
 
-      roomManager.resetTurnTimer(room);
+      if (room.engine?.phase !== GAME_PHASES.TURN_DISCARD && room.engine?.phase !== GAME_PHASES.TURN_ROBBER) {
+        roomManager.resetTurnTimer(room);
+      }
       roomManager.broadcastState(room);
       roomManager.checkAndTriggerBotTurn(room);
       roomManager.checkDiscardTimer(room);
+      roomManager.checkRobberTimer(room);
       if (callback) callback({ success: true, ...result });
     } catch (err) {
       const timeStr = new Date().toLocaleTimeString();

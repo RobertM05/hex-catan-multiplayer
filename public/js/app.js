@@ -18,7 +18,7 @@ import {
   isProgressCardBoughtThisTurn,
   progressCardHandModifiers
 } from './progressCards.js';
-import { TurnTimerUI } from './turnTimer.js';
+import { TurnTimerUI, playerMustDiscard } from './turnTimer.js';
 import { confetti } from './confetti.js';
 
 export function escapeHtml(value) {
@@ -1833,6 +1833,38 @@ export class CatanApp {
     });
   }
 
+  syncPhaseTimer(tickData = null) {
+    const s = this.gameState;
+    const isMyTurn = !!(s && s.players && s.players[s.currentTurnPlayerIndex]?.id === this.myPlayerId);
+    if (s && s.phase === 'TURN_DISCARD' && s.discardDeadline) {
+      this.turnTimerUI.syncDiscard({
+        discardDeadline: s.discardDeadline,
+        isPendingDiscard: playerMustDiscard(s.pendingDiscards, this.myPlayerId)
+      });
+      return;
+    }
+    if (s && s.phase === 'TURN_ROBBER' && s.robberDeadline) {
+      this.turnTimerUI.syncRobber({
+        robberDeadline: s.robberDeadline,
+        isMyTurn
+      });
+      return;
+    }
+    if (tickData) {
+      this.turnTimerUI.update({
+        remaining: tickData.remaining,
+        duration: tickData.duration,
+        isMyTurn
+      });
+    } else if (this.currentRoom) {
+      this.turnTimerUI.update({
+        remaining: this.currentRoom.turnTimeRemaining,
+        duration: this.currentRoom.turnDuration,
+        isMyTurn
+      });
+    }
+  }
+
   checkDiscardState() {
     const modal = document.getElementById('discard-modal');
     if (!modal || !this.gameState) return;
@@ -3363,17 +3395,7 @@ export class CatanApp {
     };
 
     network.onTimerTick = (data) => {
-      const s = this.gameState;
-      const isMyTurn = s && s.players && s.players[s.currentTurnPlayerIndex]?.id === this.myPlayerId;
-      if (s && s.phase === 'TURN_DISCARD' && s.discardDeadline) {
-        this.turnTimerUI.syncDiscard({ discardDeadline: s.discardDeadline, isMyTurn });
-      } else {
-        this.turnTimerUI.update({
-          remaining: data.remaining,
-          duration: data.duration,
-          isMyTurn
-        });
-      }
+      this.syncPhaseTimer(data);
     };
 
     network.onStateUpdate = (payload) => {
@@ -3517,15 +3539,10 @@ export class CatanApp {
     document.getElementById('round-number-display').textContent = s.turnNumber;
 
     // Synchronize Turn Timer immediately (zero-flicker on state refresh / reconnect)
-    if (s.phase === 'TURN_DISCARD' && s.discardDeadline) {
-      this.turnTimerUI.syncDiscard({ discardDeadline: s.discardDeadline, isMyTurn });
-    } else if (this.currentRoom) {
-      this.turnTimerUI.update({
-        remaining: this.currentRoom.turnTimeRemaining,
-        duration: this.currentRoom.turnDuration,
-        isMyTurn
-      });
-    }
+    this.syncPhaseTimer(this.currentRoom ? {
+      remaining: this.currentRoom.turnTimeRemaining,
+      duration: this.currentRoom.turnDuration
+    } : null);
 
     const statusEl = document.getElementById('turn-phase-status');
     if (statusEl) {

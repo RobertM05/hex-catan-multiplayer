@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calculateTimerState,
   getDiscardRemainingSeconds,
+  playerMustDiscard,
   TurnTimerUI
 } from '../public/js/turnTimer.js';
 
@@ -99,5 +100,21 @@ describe('UX-08: Turn Timer Progress, Discard Sync, and Low-Time Warning', () =>
     // Not low time (20s): should reset alert tracking
     ui.update({ remaining: 20, duration: 60, isMyTurn: true });
     assert.equal(warningPlayed, 2);
+  });
+
+  it('should pulse discard HUD for every pending discarder, not only the roller', () => {
+    assert.equal(playerMustDiscard(['p1', 'p3'], 'p3'), true);
+    assert.equal(playerMustDiscard(['p1', 'p3'], 'p2'), false);
+    assert.equal(playerMustDiscard(undefined, 'p1'), false);
+
+    let warningPlayed = 0;
+    const ui = new TurnTimerUI({
+      audio: { playTimerWarning: () => { warningPlayed++; } }
+    });
+    const soon = Date.now() + 4000;
+    ui.syncDiscard({ discardDeadline: soon, isPendingDiscard: false });
+    assert.equal(warningPlayed, 0);
+    ui.syncDiscard({ discardDeadline: soon, isPendingDiscard: true });
+    assert.equal(warningPlayed, 1);
   });
 });
