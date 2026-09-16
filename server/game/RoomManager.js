@@ -357,29 +357,49 @@ export class RoomManager {
     return room;
   }
 
+  isInterruptClockPhase(engine) {
+    // Wedding / Commercial Harbor victim choice uses cardChoiceTimer only.
+    return engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE;
+  }
+
   startTurnTimer(room) {
     if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
     room.turnTimeRemaining = room.turnDuration;
 
     room.turnTimerInterval = setInterval(() => {
-      if (!room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) {
-        clearInterval(room.turnTimerInterval);
-        return;
-      }
-
-      room.turnTimeRemaining--;
-
-      this.io.to(room.code).emit('timer_tick', {
-        remaining: room.turnTimeRemaining,
-        duration: room.turnDuration
-      });
-
-      if (room.turnTimeRemaining <= 0) {
-        this.handleTurnTimeout(room);
-      }
+      this.tickTurnTimer(room);
     }, 1000);
     if (room.turnTimerInterval && typeof room.turnTimerInterval.unref === 'function') {
       room.turnTimerInterval.unref();
+    }
+  }
+
+  tickTurnTimer(room) {
+    if (!room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) {
+      if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
+      return;
+    }
+
+    // Progress-card victim choice uses cardChoiceTimer only; freeze the shared turn clock.
+    if (this.isInterruptClockPhase(room.engine)) {
+      this.io.to(room.code).emit('timer_tick', {
+        remaining: room.turnTimeRemaining,
+        duration: room.turnDuration,
+        paused: true
+      });
+      this.checkCardChoiceTimer(room);
+      return;
+    }
+
+    room.turnTimeRemaining--;
+
+    this.io.to(room.code).emit('timer_tick', {
+      remaining: room.turnTimeRemaining,
+      duration: room.turnDuration
+    });
+
+    if (room.turnTimeRemaining <= 0) {
+      this.handleTurnTimeout(room);
     }
   }
 
@@ -544,16 +564,9 @@ export class RoomManager {
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
-        const still = engine.pendingProgressChoice;
-        if (still) {
-          for (const id of Array.from(still.pending)) {
-            try {
-              engine.autoResolveProgressChoice(id);
-            } catch (err) {
-              console.error('Progress choice timeout error:', err);
-            }
-          }
-        }
+        // Shared turn clock is paused; cardChoiceTimer owns this phase.
+        this.checkCardChoiceTimer(room);
+        return;
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }

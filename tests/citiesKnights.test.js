@@ -2327,4 +2327,46 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     assert.equal(engine.players[0].resources.ore, 0);
   });
 
+  it('CK-LOOP-01: shared turn clock pauses during Wedding/Harbor victim choice', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom(
+      { id: 'h1', name: 'Host', socketId: 's1' },
+      { mode: 'cities_knights', turnDuration: 15 }
+    );
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
+    roomManager.startGame(room.code, 'h1');
+
+    const engine = room.engine;
+    // Skip setup into action phase with Wedding pending choice.
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const [p1, p2] = engine.players;
+    p1.citiesBuilt = ['v1'];
+    p2.citiesBuilt = ['v2', 'v3'];
+    engine.grid.vertices.set('v1', { id: 'v1', building: { type: 'city', playerId: p1.id } });
+    engine.grid.vertices.set('v2', { id: 'v2', building: { type: 'city', playerId: p2.id } });
+    engine.grid.vertices.set('v3', { id: 'v3', building: { type: 'city', playerId: p2.id } });
+    p2.resources.wood = 3;
+    p1.progressCards.push({ id: 'c-wed-timer', type: 'wedding', played: false });
+
+    room.turnTimeRemaining = 8;
+    const res = engine.playProgressCard('h1', 'c-wed-timer');
+    assert.equal(res.pendingChoice, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.ok(roomManager.isInterruptClockPhase(engine));
+
+    for (let i = 0; i < 12; i++) roomManager.tickTurnTimer(room);
+    assert.equal(room.turnTimeRemaining, 8, 'shared turn clock must not tick during victim choice');
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.ok(engine.pendingProgressChoice?.pending.has('p2'));
+
+    roomManager.handleTurnTimeout(room);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE, 'stale turn timeout must not steal card choice');
+    assert.ok(engine.pendingProgressChoice?.pending.has('p2'));
+
+    roomManager.destroyRoom(room.code);
+  });
+
 });
