@@ -232,11 +232,11 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].cityImprovements.trade, 2);
     assert.equal(engine.players[0].commodities.cloth, 7);
 
-    engine.players[0].cityImprovements.trade = 6;
+    engine.players[0].cityImprovements.trade = 5;
     assert.throws(() => engine.improveCityTrack('p1', 'trade'), /IMPROVEMENT_MAX_LEVEL/);
     assert.throws(() => engine.improveCityTrack('p1', 'science'), /NOT_ENOUGH_COMMODITIES/);
   });
-  it('draws a progress card at track levels 3 and 6', () => {
+  it('draws a progress card only at track level 3, not at 5, and refuses beyond 5', () => {
     const engine = makeCkEngine();
     engine.players[0].citiesBuilt.push('v1');
     engine.phase = GAME_PHASES.TURN_ACTION;
@@ -248,10 +248,17 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].progressCards.length, before + 1);
 
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].cityImprovements.trade = 4;
+    const clothBeforeL5 = engine.players[0].commodities.cloth;
     engine.improveCityTrack('p1', 'trade');
-    assert.equal(engine.players[0].cityImprovements.trade, 6);
-    assert.equal(engine.players[0].progressCards.length, before + 2);
+    assert.equal(engine.players[0].cityImprovements.trade, 5);
+    assert.equal(engine.players[0].commodities.cloth, clothBeforeL5 - 5);
+    assert.equal(engine.players[0].progressCards.length, before + 1);
+
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    assert.throws(() => engine.improveCityTrack('p1', 'trade'), /IMPROVEMENT_MAX_LEVEL/);
+    assert.equal(engine.players[0].cityImprovements.trade, 5);
+    assert.equal(engine.players[0].progressCards.length, before + 1);
   });
 
   it('does not give 2:1 bank trades at Trade level 1 (only Level 5 grants 2:1)', () => {

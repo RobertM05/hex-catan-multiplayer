@@ -1408,7 +1408,7 @@ export class GameEngine {
     if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
 
     const currentLevel = player.cityImprovements[track] || 0;
-    if (currentLevel >= 6) throw new Error('IMPROVEMENT_MAX_LEVEL');
+    if (currentLevel >= 5) throw new Error('IMPROVEMENT_MAX_LEVEL');
 
     let cost = currentLevel + 1;
     if (player.craneDiscount) {
@@ -1428,7 +1428,7 @@ export class GameEngine {
       args: { playerName: player.name, track, level: newLevel }
     });
 
-    if (newLevel === 3 || newLevel === 6) {
+    if (newLevel === 3) {
       this.drawProgressCard(player, track);
     }
 
