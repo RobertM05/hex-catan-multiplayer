@@ -239,21 +239,58 @@ describe('QA Audit: Cities & Knights Progress Cards', () => {
     assert.equal(h2.token, t1);
   });
 
-  it('Irrigation and Mining grant 2 resources per touching resource hex', () => {
+  it('Irrigation and Mining grant 2 resources per city-adjacent resource hex', () => {
     const engine = makeCkEngine();
     const p1 = engine.players[0];
-    // Find vertex touching a wheat hex
     const wheatHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.WHEAT);
-    const vWheat = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(wheatHex.id));
+    const vWheat = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(wheatHex.id) && !v.building);
+    vWheat.building = { type: 'city', playerId: 'p1', color: p1.color };
+    p1.citiesBuilt.push(vWheat.id);
+
+    const irrCard = { id: 'prog_irr', type: 'irrigation', track: 'science', played: false, boughtTurn: 1 };
+    p1.progressCards.push(irrCard);
+
+    const wheatBefore = p1.resources.wheat || 0;
+    engine.playProgressCard('p1', irrCard.id);
+    assert.equal(p1.resources.wheat, wheatBefore + 2);
+
+    const oreHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.ORE);
+    const vOre = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(oreHex.id) && !v.building);
+    vOre.building = { type: 'city', playerId: 'p1', color: p1.color };
+    p1.citiesBuilt.push(vOre.id);
+
+    const mineCard = { id: 'prog_mine', type: 'mining', track: 'science', played: false, boughtTurn: 1 };
+    p1.progressCards.push(mineCard);
+
+    const oreBefore = p1.resources.ore || 0;
+    engine.playProgressCard('p1', mineCard.id);
+    assert.equal(p1.resources.ore, oreBefore + 2);
+  });
+
+  it('Irrigation and Mining do not grant for settlements', () => {
+    const engine = makeCkEngine();
+    const p1 = engine.players[0];
+    const wheatHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.WHEAT);
+    const vWheat = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(wheatHex.id) && !v.building);
     vWheat.building = { type: 'settlement', playerId: 'p1', color: p1.color };
     p1.settlementsBuilt.push(vWheat.id);
 
-    const card = { id: 'prog_irr', type: 'irrigation', track: 'science', played: false, boughtTurn: 1 };
-    p1.progressCards.push(card);
+    const irrCard = { id: 'prog_irr_s', type: 'irrigation', track: 'science', played: false, boughtTurn: 1 };
+    p1.progressCards.push(irrCard);
+    const wheatBefore = p1.resources.wheat || 0;
+    engine.playProgressCard('p1', irrCard.id);
+    assert.equal(p1.resources.wheat, wheatBefore);
 
-    const before = p1.resources.wheat || 0;
-    engine.playProgressCard('p1', card.id);
-    assert.equal(p1.resources.wheat, before + 2);
+    const oreHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.ORE);
+    const vOre = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(oreHex.id) && !v.building);
+    vOre.building = { type: 'settlement', playerId: 'p1', color: p1.color };
+    p1.settlementsBuilt.push(vOre.id);
+
+    const mineCard = { id: 'prog_mine_s', type: 'mining', track: 'science', played: false, boughtTurn: 1 };
+    p1.progressCards.push(mineCard);
+    const oreBefore = p1.resources.ore || 0;
+    engine.playProgressCard('p1', mineCard.id);
+    assert.equal(p1.resources.ore, oreBefore);
   });
 
   it('Medicine allows upgrading settlement to city for 2 ore + 1 wheat', () => {
