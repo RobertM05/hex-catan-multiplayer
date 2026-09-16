@@ -1037,7 +1037,7 @@ export class GameEngine {
         produces: production,
         robber,
         barbarian: attack,
-        progressDraws: this.pendingProgressDraws
+        progressDraws: this.getProgressDrawsForPlayer(playerId)
       };
     }
 
@@ -1054,7 +1054,7 @@ export class GameEngine {
       produces: production,
       robber,
       barbarian: this.lastBarbarianResult,
-      progressDraws: this.pendingProgressDraws
+      progressDraws: this.getProgressDrawsForPlayer(playerId)
     };
   }
 
@@ -3659,6 +3659,31 @@ export class GameEngine {
    * SERIALIZATION (WITH FOG-OF-WAR FOR OPPONENT CARDS)
    * ========================================================= */
 
+  isImmediatelyRevealedProgressCard(cardType) {
+    return cardType === 'constitution' || cardType === 'printer';
+  }
+
+  sanitizeProgressDrawForPlayer(draw, viewerId) {
+    const publicType = this.isImmediatelyRevealedProgressCard(draw.cardType);
+    if (draw.playerId === viewerId || publicType) {
+      return {
+        playerId: draw.playerId,
+        track: draw.track,
+        drawn: draw.drawn,
+        cardType: draw.cardType
+      };
+    }
+    return {
+      playerId: draw.playerId,
+      track: draw.track,
+      drawn: draw.drawn
+    };
+  }
+
+  getProgressDrawsForPlayer(viewerId) {
+    return (this.pendingProgressDraws || []).map(draw => this.sanitizeProgressDrawForPlayer(draw, viewerId));
+  }
+
   getStateForPlayer(playerId) {
     return {
       roomId: this.roomId,
@@ -3700,7 +3725,7 @@ export class GameEngine {
         pending: Array.from(this.pendingProgressChoice.pending),
         deadline: this.pendingProgressChoice.deadline
       } : null,
-      pendingProgressDraws: this.pendingProgressDraws,
+      pendingProgressDraws: this.getProgressDrawsForPlayer(playerId),
       pendingAqueductClaims: Array.from(this.pendingAqueductClaims || []),
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
