@@ -96,6 +96,21 @@ Pentru dezvoltare cu auto-reload la modificări de cod:
 npm run dev
 ```
 
+### Docker (production image)
+
+Requires Docker. The image runs Node 22 Alpine as the non-root `node` user and exposes `GET /health` for liveness checks.
+
+```bash
+docker compose up --build
+```
+
+The app is at **`http://localhost:3000`**. Probe: `curl http://localhost:3000/health`.
+
+```bash
+docker build -t hex-catan-multiplayer .
+docker run --rm -p 3000:3000 hex-catan-multiplayer
+```
+
 ### 3. Rulare teste automate
 Proiectul include o suită completă de 25 de teste unitare și de integrare QA:
 ```bash
@@ -192,13 +207,14 @@ Proiectul folosește un sistem modular de CI/CD automatizat prin GitHub Actions,
 1. **Continuous Integration (`ci.yml`)**:
    - **Syntax Check**: Validare statică a codului (`node --check`) pentru toate fișierele backend, frontend și teste.
    - **ESM Import Validation**: Verifică rezoluția importurilor modulelor ES6 (`GameEngine`, `HexGrid`, `BotAI`, `RoomManager`).
-   - **Multi-Version Matrix Test**: Execută suita completă de 25 de teste automate pe **Node.js 18.x, 20.x și 22.x**.
+   - **Multi-Version Matrix Test**: Execută suita completă de teste automate pe **Node.js 20.x și 22.x** (Node 18.x este EOL și nu mai face parte din CI).
    - **Security Audit**: Scanare automată de securitate a dependințelor (`npm audit --audit-level=high`).
    - **Asset Integrity Check**: Asigură prezența și integritatea fișierelor statice din `public/`.
 
 2. **Continuous Deployment (`deploy.yml`)**:
    - Poartă automată de pre-validare (rulează testele înainte de deploy).
    - Suport pentru webhook-uri de auto-deploy (Render, Railway, Fly.io sau VPS).
+   - Verificare post-deploy: interoghează `HEALTH_CHECK_URL` (HTTP 200, 12 încercări × 10s) și declanșează `ROLLBACK_HOOK_URL` la eșec. `timeout-minutes: 10` pe job-ul de deploy previne rulări blocate.
 
 3. **Disaster Recovery / Rollback (`rollback.yml`)**:
    - Trigger manual securizat prin `workflow_dispatch`.

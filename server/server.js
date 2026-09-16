@@ -325,7 +325,7 @@ app.use(express.static(publicDir, {
 }));
 app.use(express.json());
 
-// Socket.IO event handler
+// Optional Socket.IO JWT (guest when unset / no token)
 io.use(async (socket, next) => {
   try {
     const token = extractBearerToken(socket);
@@ -345,9 +345,9 @@ io.use(async (socket, next) => {
   }
 });
 
-// API: Health check and telemetry
-app.get('/api/health', (req, res) => {
-  res.json({
+// Liveness/readiness for orchestrators (`/health`) and existing admin/telemetry (`/api/health`)
+function healthPayload() {
+  return {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
@@ -357,7 +357,11 @@ app.get('/api/health', (req, res) => {
     },
     activeRooms: roomManager.rooms ? roomManager.rooms.size : 0,
     authEnabled: publicAuthConfig().enabled
-  });
+  };
+}
+
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json(healthPayload());
 });
 
 app.get('/api/auth/config', (req, res) => {
