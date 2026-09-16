@@ -189,7 +189,11 @@ export function formatEventStory(e) {
         case 'move_robber':
           return `🥷 ${p} moved Robber to Hex #${e.hexId ?? '?'}${e.targetName ? ` and robbed ${e.targetName}` : ''}`;
         case 'discard_cards':
-          return `📤 ${p} discarded cards after 7 was rolled`;
+          return `📤 ${p} discarded cards`;
+        case 'choose_deserter_knight':
+          return `🏃 ${p} chose which knight deserted`;
+        case 'place_deserter_knight':
+          return `⚔️ ${p} placed a replacement knight at intersection #${e.vertexId ?? '?'}`;
         case 'bank_trade':
           return `⚖️ ${p} traded with Bank: ${e.ratio || 4}x ${capitalizeWord(e.give || 'resource')} for 1x ${capitalizeWord(e.receive || 'resource')}`;
         case 'buy_dev_card':
@@ -1232,6 +1236,18 @@ io.on('connection', (socket) => {
     handleGameAction('respond_progress_choice', data.code, (engine) => engine.respondProgressChoice(currentPlayerId, {
       cards: data?.cards,
       commodity: data?.commodity
+    }), cb, data);
+  });
+
+  socket.on('choose_deserter_knight', (data, cb) => {
+    handleGameAction('choose_deserter_knight', data?.code, (engine) => engine.chooseDeserterKnight(currentPlayerId, data?.vertexId), cb, data);
+  });
+
+  socket.on('place_deserter_knight', (data, cb) => {
+    handleGameAction('place_deserter_knight', data?.code, (engine) => engine.placeDeserterKnight(currentPlayerId, {
+      placeVertexId: data?.placeVertexId || data?.vertexId,
+      placeRank: data?.placeRank,
+      skip: data?.skip
     }), cb, data);
   });
 

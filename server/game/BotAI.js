@@ -960,6 +960,16 @@ export class BotAI {
       return true;
     }
 
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+      engine.autoResolveDeserterKnight();
+      return true;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+      engine.autoResolveDeserterPlacement();
+      return true;
+    }
+
     const cur = engine.getCurrentPlayer();
     if (!cur) return false;
 

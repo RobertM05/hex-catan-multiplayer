@@ -1903,7 +1903,7 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.players[0].victoryPoints, before + 1);
   });
 
-  it('Deserter: should remove opponent knight and place own equal-or-lower knight', () => {
+  it('Deserter: opponent chooses the knight, then player places equal-or-lower rank', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
@@ -1920,11 +1920,16 @@ describe('CK-06: Politics Progress Cards', () => {
     giveRoad(engine, 'p1', placeAt.id);
     assert.equal(engine.players[1].knightsAvailable.basic, 1);
     const beforeP1 = engine.players[0].knightsAvailable.basic;
-    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, {
-      vertexId: vertex.id,
-      placeVertexId: placeAt.id
+    const play = engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, {
+      targetPlayerId: 'p2'
     });
+    assert.equal(play.awaitingKnightChoice, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT);
+    assert.throws(() => engine.chooseDeserterKnight('p1', vertex.id), /NOT_YOUR_CHOICE/);
+    engine.chooseDeserterKnight('p2', vertex.id);
     assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT);
+    engine.placeDeserterKnight('p1', { placeVertexId: placeAt.id });
     assert.equal(engine.players[1].knightsPlaced.length, 0);
     assert.equal(engine.players[1].knightsAvailable.basic, 2);
     const placed = engine.grid.vertices.get(placeAt.id).knight;
@@ -1933,6 +1938,7 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(placed.active, false);
     assert.equal(engine.players[0].knightsAvailable.basic, beforeP1 - 1);
     assert.equal(engine.players[0].knightsPlaced.some(k => k.vertexId === placeAt.id), true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
   it('Deserter: should still remove foe if player has no legal placement', () => {
@@ -1940,17 +1946,23 @@ describe('CK-06: Politics Progress Cards', () => {
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p2', vertex.id);
-    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id });
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    engine.chooseDeserterKnight('p2', vertex.id);
     assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
     assert.equal(engine.players[1].knightsAvailable.basic, 2);
     assert.equal(engine.players[0].knightsPlaced.length, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
-  it('Deserter: should reject removing own knight', () => {
+  it('Deserter: should reject targeting a player with no knights', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id);
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' }),
+      /TARGET_HAS_NO_KNIGHTS/
+    );
     assert.throws(
       () => engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { vertexId: vertex.id }),
       /INVALID_TARGET/
@@ -2027,7 +2039,7 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.players[0].resources.wheat, 0);
   });
 
-  it('Saboteur: leaders ahead in VP discard half their cards', () => {
+  it('Saboteur: leaders ahead in VP must choose which cards to discard', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOL, 'city');
@@ -2037,11 +2049,17 @@ describe('CK-06: Politics Progress Cards', () => {
     engine.recalculateVictoryPoints();
     assert.ok((engine.players[1].victoryPoints || 0) > (engine.players[0].victoryPoints || 0));
     const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'saboteur').id, {});
-    assert.equal(engine.countTotalCards(engine.players[1]), 3);
+    assert.equal(engine.countTotalCards(engine.players[1]), 6);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.equal(engine.discardCause, 'saboteur');
     assert.equal(res.victims.length, 1);
     assert.equal(res.victims[0].playerId, 'p2');
-    assert.equal(res.victims[0].count, 3);
-    assert.equal(res.victims[0].discarded, undefined);
+    assert.equal(res.victims[0].discardNeeded, 3);
+    engine.discardCards('p2', { wood: 1, cloth: 2 });
+    assert.equal(engine.countTotalCards(engine.players[1]), 3);
+    assert.equal(engine.players[1].resources.wood, 3);
+    assert.equal(engine.players[1].commodities.cloth, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
   it('Saboteur: unique VP leader cannot play the card', () => {
@@ -2054,6 +2072,145 @@ describe('CK-06: Politics Progress Cards', () => {
       () => engine.playProgressCard('p1', giveCard(engine.players[0], 'saboteur').id, {}),
       /SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER/
     );
+  });
+
+  it('Deserter: copies active status onto the replacement knight', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    engine.chooseDeserterKnight('p2', vertex.id);
+    engine.placeDeserterKnight('p1', { placeVertexId: placeAt.id });
+    const placed = engine.grid.vertices.get(placeAt.id).knight;
+    assert.equal(placed.active, true);
+    assert.equal(placed.playerId, 'p1');
+  });
+
+  it('Deserter: opponent chooses which of several knights to remove', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vWeak = emptyVertex(engine);
+    const vStrong = emptyVertex(engine, v => v.id !== vWeak.id && !(v.adjacentVertices || []).includes(vWeak.id));
+    plantKnight(engine, 'p2', vWeak.id, { rank: 'basic', active: false });
+    plantKnight(engine, 'p2', vStrong.id, { rank: 'strong', active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vWeak.id && v.id !== vStrong.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    assert.deepEqual(new Set(engine.pendingDeserter.options), new Set([vWeak.id, vStrong.id]));
+    engine.chooseDeserterKnight('p2', vStrong.id);
+    assert.equal(engine.grid.vertices.get(vStrong.id).knight, null);
+    assert.ok(engine.grid.vertices.get(vWeak.id).knight);
+    engine.placeDeserterKnight('p1', { placeVertexId: placeAt.id });
+    const placed = engine.grid.vertices.get(placeAt.id).knight;
+    assert.equal(placed.active, true);
+    assert.equal(placed.rank, 'strong');
+  });
+
+  it('Saboteur: does not auto-discard and returns to action after victim choice', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOL, 'city');
+    engine.players[1].resources = { wood: 2, brick: 2, wool: 0, wheat: 0, ore: 0 };
+    engine.recalculateVictoryPoints();
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'saboteur').id, {});
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.pendingDiscards.has('p2'));
+    assert.equal(engine.countTotalCards(engine.players[1]), 4);
+    const state = engine.getStateForPlayer('p1');
+    assert.equal(state.discardCause, 'saboteur');
+    assert.ok(!state.pendingDiscards.includes('p1'));
+    engine.discardCards('p2', { brick: 2 });
+    assert.equal(engine.players[1].resources.wood, 2);
+    assert.equal(engine.players[1].resources.brick, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.discardCause, null);
+  });
+
+  it('Deserter: turn timeout auto-resolves knight choice (anti-stall)', () => {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
+    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
+    rm.setPlayerReady(room.code, 'p2', true);
+    rm.startGame(room.code, 'p1');
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT);
+    assert.doesNotThrow(() => rm.handleTurnTimeout(room));
+    assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.ok(
+      engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT || engine.phase === GAME_PHASES.TURN_ACTION,
+      `expected placement or action after choose timeout, got ${engine.phase}`
+    );
+    if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+      assert.ok(engine.pendingDeserter);
+      assert.equal(engine.pendingDeserter.playerId, 'p1');
+    }
+    rm.destroyRoom(room.code);
+  });
+
+  it('Deserter: turn timeout auto-resolves placement (anti-stall)', () => {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
+    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
+    rm.setPlayerReady(room.code, 'p2', true);
+    rm.startGame(room.code, 'p1');
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    engine.chooseDeserterKnight('p2', vertex.id);
+    assert.equal(engine.phase, GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT);
+    assert.doesNotThrow(() => rm.handleTurnTimeout(room));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.pendingDeserter, null);
+    assert.equal(engine.players[0].knightsPlaced.some(k => k.active === true), true);
+    rm.destroyRoom(room.code);
+  });
+
+  it('Deserter: serialized pendingDeserter omits internal resolve fields', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+
+    const chooseState = engine.getStateForPlayer('p2');
+    assert.deepEqual(Object.keys(chooseState.pendingDeserter).sort(), [
+      'options',
+      'playerId',
+      'targetPlayerId'
+    ]);
+    assert.deepEqual(chooseState.pendingDeserter.options, [vertex.id]);
+    assert.equal(chooseState.pendingDeserter.removedActive, undefined);
+    assert.equal(chooseState.pendingDeserter.removedStrength, undefined);
+
+    engine.chooseDeserterKnight('p2', vertex.id);
+    const placeState = engine.getStateForPlayer('p1');
+    assert.deepEqual(Object.keys(placeState.pendingDeserter).sort(), [
+      'legalPlaceIds',
+      'playerId',
+      'targetPlayerId'
+    ]);
+    assert.ok(placeState.pendingDeserter.legalPlaceIds.includes(placeAt.id));
+    assert.equal(placeState.pendingDeserter.removedActive, undefined);
+    assert.equal(placeState.pendingDeserter.defaultRank, undefined);
+    assert.equal(placeState.pendingDeserter.removedStrength, undefined);
+    assert.equal(placeState.pendingDeserter.removedFrom, undefined);
   });
 });
 
@@ -2465,6 +2622,25 @@ describe('CK-13: Bot AI C&K', () => {
     engine.pendingMetropolisChoice = { playerId: 'p1', track: 'trade' };
     assert.doesNotThrow(() => BotAI.playCurrentBotStep(engine));
     assert.equal(engine.players[0].metropolis.trade, true);
+  });
+
+  it('bot should auto-resolve Deserter knight choice and placement', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.players[0].progressCards.push({ id: 'd1', type: 'deserter', played: false, boughtTurn: 0 });
+    engine.playProgressCard('p1', 'd1', { targetPlayerId: 'p2' });
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT);
+    assert.equal(BotAI.playCurrentBotStep(engine), true);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT);
+    engine.players[0].isBot = true;
+    assert.equal(BotAI.playCurrentBotStep(engine), true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.players[0].knightsPlaced.some(k => k.active === true), true);
   });
 
   it('bot should play VP progress cards immediately', () => {

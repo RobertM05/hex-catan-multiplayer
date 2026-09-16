@@ -177,6 +177,8 @@ export class CatanAIAgent {
       (state.phase === 'TURN_CHOOSE_METROPOLIS' && state.pendingMetropolisChoice?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' && state.pendingKnightRelocation?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE' && state.pendingProgressChoice?.pending?.includes(this.myPlayerId)) ||
+      (state.phase === 'TURN_CHOOSE_DESERTER_KNIGHT' && state.pendingDeserter?.targetPlayerId === this.myPlayerId) ||
+      (state.phase === 'TURN_PLACE_DESERTER_KNIGHT' && state.pendingDeserter?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId)) ||
       (state.phase === 'TURN_BARBARIAN_REWARD' && state.pendingBarbarianTieDraws?.includes(this.myPlayerId)) ||
       (state.pendingAqueductClaims?.includes(this.myPlayerId))
@@ -250,6 +252,16 @@ export class CatanAIAgent {
       else if (curState.phase === 'TURN_CHOOSE_PROGRESS_RESPONSE') {
         if (curState.pendingProgressChoice?.pending?.includes(this.myPlayerId)) {
           await this.handleProgressChoice(curState, curMe);
+        }
+      }
+      else if (curState.phase === 'TURN_CHOOSE_DESERTER_KNIGHT') {
+        if (curState.pendingDeserter?.targetPlayerId === this.myPlayerId) {
+          await this.handleDeserterKnightChoice(curState, curMe);
+        }
+      }
+      else if (curState.phase === 'TURN_PLACE_DESERTER_KNIGHT') {
+        if (curState.pendingDeserter?.playerId === this.myPlayerId) {
+          await this.handleDeserterPlacement(curState);
         }
       }
       // 8. Barbarian Downgrade (C&K)
@@ -775,6 +787,25 @@ export class CatanAIAgent {
     if (options.length > 0) {
       this.log(`[AI-Agent] Relocating knight to vertex ${options[0]}`);
       await this.sendAction('relocate_displaced_knight', { vertexId: options[0] });
+    }
+  }
+
+  async handleDeserterKnightChoice(state, me) {
+    const options = state.pendingDeserter?.options || (me.knightsPlaced || []).map(k => k.vertexId).filter(Boolean);
+    const chosen = options[0];
+    if (chosen) {
+      this.log(`[AI-Agent] Choosing deserter knight at ${chosen}`);
+      await this.sendAction('choose_deserter_knight', { vertexId: chosen });
+    }
+  }
+
+  async handleDeserterPlacement(state) {
+    const options = state.pendingDeserter?.legalPlaceIds || [];
+    if (options.length > 0) {
+      this.log(`[AI-Agent] Placing deserter knight at ${options[0]}`);
+      await this.sendAction('place_deserter_knight', { placeVertexId: options[0] });
+    } else {
+      await this.sendAction('place_deserter_knight', { skip: true });
     }
   }
 
