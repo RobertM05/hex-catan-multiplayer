@@ -173,6 +173,7 @@ export class CatanAIAgent {
       (state.phase === 'TURN_ROLL' && isMyTurn) ||
       (state.phase === 'TURN_ROBBER' && isMyTurn) ||
       (state.phase === 'TURN_ACTION' && isMyTurn) ||
+      (state.phase === 'TURN_SPECIAL_BUILDING' && isMyTurn) ||
       (state.phase === 'TURN_CHOOSE_METROPOLIS' && state.pendingMetropolisChoice?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' && state.pendingKnightRelocation?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId)) ||
@@ -222,7 +223,7 @@ export class CatanAIAgent {
         }
       }
       // 5. Action Phase
-      else if (curState.phase === 'TURN_ACTION') {
+      else if (curState.phase === 'TURN_ACTION' || curState.phase === 'TURN_SPECIAL_BUILDING') {
         if (curIsMyTurn) {
           await this.handleAction(curState, curMe);
         }
@@ -549,7 +550,7 @@ export class CatanAIAgent {
     }
 
     // 8. Goal-oriented player trade proposal: if missing 1 card for a build goal and have surplus
-    if (!this.hasProposedTradeThisTurn && !state.activeTrade) {
+    if (state.phase !== 'TURN_SPECIAL_BUILDING' && !this.hasProposedTradeThisTurn && !state.activeTrade) {
       const goals = [];
       if ((me.citiesRemaining || 0) > 0 && me.settlementsBuilt?.length > 0) {
         goals.push({ ore: 3, wheat: 2 });

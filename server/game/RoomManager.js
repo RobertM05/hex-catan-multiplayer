@@ -496,7 +496,7 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
-      } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+      } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
         engine.endTurn(curPlayer.id);
       }
 
@@ -661,7 +661,7 @@ export class RoomManager {
         } else if (engine.phase === GAME_PHASES.TURN_ROBBER) {
           const robAction = BotAI.decideRobberMove(engine, curPlayer);
           engine.moveRobber(curPlayer.id, robAction.hexId, robAction.targetPlayerId);
-        } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+        } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
           if (engine.activeTrade && engine.activeTrade.fromPlayerId === curPlayer.id) {
             if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
               const partnerId = Array.from(engine.activeTrade.acceptedBy)[0];
@@ -693,7 +693,7 @@ export class RoomManager {
       } catch (err) {
         console.error('Bot turn execution error:', err);
         // Fallback: try ending turn if stuck in action
-        if (engine.phase === GAME_PHASES.TURN_ACTION) {
+        if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
           try {
             engine.endTurn(curPlayer.id);
             this.resetTurnTimer(room);
