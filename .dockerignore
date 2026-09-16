@@ -1,0 +1,17 @@
+.git
+.github
+.cursor
+node_modules
+npm-debug.log*
+tests
+docs
+coverage
+scratch
+.env
+.env.*
+*.md
+!package.json
+!package-lock.json
+.dockerignore
+Dockerfile
+docker-compose.yml

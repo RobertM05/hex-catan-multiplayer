@@ -371,9 +371,9 @@ app.use(express.static(publicDir, {
 }));
 app.use(express.json());
 
-// API: Health check and telemetry
-app.get('/api/health', (req, res) => {
-  res.json({
+// Liveness/readiness for orchestrators (`/health`) and existing admin/telemetry (`/api/health`)
+function healthPayload() {
+  return {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
@@ -382,7 +382,11 @@ app.get('/api/health', (req, res) => {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
     },
     activeRooms: roomManager.rooms ? roomManager.rooms.size : 0
-  });
+  };
+}
+
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json(healthPayload());
 });
 
 // API: List public rooms
