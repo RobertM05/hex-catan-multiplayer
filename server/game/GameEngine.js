@@ -2155,6 +2155,10 @@ export class GameEngine {
     const completingPeek = this.isPendingProgressPeek(playerId, cardId);
     const card = player.progressCards.find(c => c.id === cardId && (completingPeek || !c.played));
     if (!card) throw new Error('CARD_NOT_FOUND');
+    // Cannot play a progress card the turn it was acquired (Alchemist only on a later TURN_ROLL).
+    if (card.boughtTurn === this.turnNumber) {
+      throw new Error('CANNOT_PLAY_CARD_TURN_BOUGHT');
+    }
     if (card.type === 'alchemist') {
       if (this.phase !== GAME_PHASES.TURN_ROLL || this.hasRolledDice) {
         throw new Error('ALCHEMIST_MUST_BE_PLAYED_BEFORE_ROLL');

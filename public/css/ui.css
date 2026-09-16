@@ -2642,6 +2642,21 @@ body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 .progress-card:hover { transform: translateY(-8px); }
+.progress-card.progress-card-locked {
+  cursor: default;
+  opacity: 0.78;
+}
+.progress-card.progress-card-locked:hover { transform: none; }
+.progress-card .progress-card-lock-badge {
+  font-size: 8px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 2px 4px;
+  margin-top: 2px;
+}
+.progress-bought-lock {
+  margin-bottom: 8px;
+}
 .progress-card.playing { animation: progress-card-play 0.35s ease forwards; }
 @keyframes progress-card-play {
   to { transform: translateX(80px); opacity: 0; }

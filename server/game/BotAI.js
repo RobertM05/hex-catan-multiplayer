@@ -639,7 +639,9 @@ export class BotAI {
   }
 
   static decideProgressCardPlay(engine, me) {
-    const cards = (me.progressCards || []).filter(c => !c.played && !c.revealed);
+    const cards = (me.progressCards || []).filter(c =>
+      !c.played && !c.revealed && c.boughtTurn !== engine.turnNumber
+    );
     const vp = cards.find(c => c.type === 'constitution' || c.type === 'printer');
     if (vp && engine.phase === GAME_PHASES.TURN_ACTION) {
       return { action: 'play_progress_card', cardId: vp.id, options: {} };

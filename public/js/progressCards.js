@@ -72,6 +72,21 @@ export function unplayedProgressCards(cards) {
   return cards.filter(c => !c.played && !c.revealed);
 }
 
+/** Official C&K: a progress card cannot be played the turn it is acquired. */
+export function isProgressCardBoughtThisTurn(card, turnNumber) {
+  return Boolean(card) && card.boughtTurn === turnNumber;
+}
+
+export function progressCardHandModifiers(card, turnNumber) {
+  const locked = isProgressCardBoughtThisTurn(card, turnNumber);
+  return {
+    locked,
+    extraClass: locked ? 'progress-card-locked' : '',
+    titleKey: locked ? 'CANNOT_PLAY_TURN_BOUGHT' : null,
+    badgeKey: locked ? 'PROGRESS_LOCKED_THIS_TURN' : null
+  };
+}
+
 export function revealedProgressCards(cards) {
   if (!Array.isArray(cards)) return [];
   return cards.filter(isRevealedProgressCard).map(c => ({
