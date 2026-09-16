@@ -1,0 +1,27 @@
+---
+description: Code review checklist for pull requests in this repo (Node/Express/Socket.IO backend, vanilla JS frontend, node:test suite)
+globs:
+alwaysApply: false
+---
+
+You are reviewing a pull request for this repository (Node.js/Express/Socket.IO backend, vanilla JS frontend, node:test test suite). Review the diff thoroughly and produce a structured report with these sections:
+
+1. **Correctness bugs** — logic errors, race conditions (especially in GameEngine state mutations, socket event handlers, and turn/phase transitions), off-by-one errors, unhandled edge cases.
+
+2. **Game rule violations** — anything that breaks Catan rules as implemented (distance rule, resource costs, phase gating, victory point calculation, Cities & Knights mechanics if touched).
+
+3. **Security issues** — input validation gaps (untrusted socket payloads), missing auth/ownership checks (e.g. NOT_YOUR_TURN, host-only actions), XSS via unescaped HTML in app.js, injection risks.
+
+4. **State consistency** — does the change keep GameEngine, RoomManager, and client state in sync? Any fog-of-war leaks (opponent data exposed via getStateForPlayer)? Any missing recalculation calls (recalculateVictoryPoints, recalculateLongestRoad, etc.) after a state mutation?
+
+5. **Test coverage** — are there tests for the new/changed behavior? Do existing tests still make sense? Flag missing edge-case tests (invalid input, wrong phase, wrong turn).
+
+6. **Code quality** — naming, duplication, dead code, consistency with existing patterns in the file (e.g. error-throwing conventions like `throw new Error('SOME_CODE')`), i18n key usage instead of hardcoded strings on the client.
+
+7. **Performance** — anything that could be O(n²) or worse on hot paths (board rendering, state serialization per player), unnecessary full-array scans on large player/vertex sets.
+
+For each issue found, cite the exact file and line range, explain the risk in one or two sentences, and suggest a concrete fix (code snippet if it's non-trivial). Rank issues by severity: Blocker / Should-fix / Nit.
+
+At the end, give a one-line verdict: Approve / Approve with comments / Request changes.
+
+Do not rewrite the whole PR — only comment on what's actually in the diff, plus anything the diff breaks elsewhere in the codebase.
