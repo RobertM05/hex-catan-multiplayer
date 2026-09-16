@@ -18,6 +18,7 @@ import {
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
+import { STRINGS } from '../public/js/i18n.js';
 
 const clientRoot = join(dirname(fileURLToPath(import.meta.url)), '../public/js');
 const appJs = readFileSync(join(clientRoot, 'app.js'), 'utf8');
@@ -1738,13 +1739,35 @@ describe('CK-07: Science Progress Cards', () => {
     );
   });
 
-  it('Irrigation: should grant 2 wheat per adjacent wheat hex', () => {
+  it('Irrigation: should grant 2 wheat per wheat hex adjacent to a city', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WHEAT, 'city');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wheat = 0;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'irrigation').id, {});
+    assert.equal(res.gained % 2, 0);
+    assert.ok(res.gained >= 2);
+    assert.equal(engine.players[0].resources.wheat, res.gained);
+  });
+
+  it('Irrigation: should not grant wheat for settlements', () => {
     const engine = makeCkEngine();
     attachBuilding(engine, 'p1', RESOURCE_TYPES.WHEAT, 'settlement');
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.wheat = 0;
     const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'irrigation').id, {});
-    assert.equal(res.gained % 2, 0);
+    assert.equal(res.gained, 0);
+    assert.equal(engine.players[0].resources.wheat, 0);
+  });
+
+  it('Irrigation: should still grant wheat for a metropolis', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.WHEAT, 'city');
+    const vid = engine.players[0].citiesBuilt.at(-1);
+    engine.grid.vertices.get(vid).building.type = 'metropolis';
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wheat = 0;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'irrigation').id, {});
     assert.ok(res.gained >= 2);
     assert.equal(engine.players[0].resources.wheat, res.gained);
   });
@@ -1766,7 +1789,7 @@ describe('CK-07: Science Progress Cards', () => {
     assert.ok(hex);
   });
 
-  it('Mining: should grant 2 ore per adjacent ore hex', () => {
+  it('Mining: should grant 2 ore per ore hex adjacent to a city', () => {
     const engine = makeCkEngine();
     attachBuilding(engine, 'p1', RESOURCE_TYPES.ORE, 'city');
     engine.phase = GAME_PHASES.TURN_ACTION;
@@ -1775,6 +1798,23 @@ describe('CK-07: Science Progress Cards', () => {
     assert.equal(res.gained % 2, 0);
     assert.ok(res.gained >= 2);
     assert.equal(engine.players[0].resources.ore, res.gained);
+  });
+
+  it('Mining: should not grant ore for settlements', () => {
+    const engine = makeCkEngine();
+    attachBuilding(engine, 'p1', RESOURCE_TYPES.ORE, 'settlement');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 0;
+    const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'mining').id, {});
+    assert.equal(res.gained, 0);
+    assert.equal(engine.players[0].resources.ore, 0);
+  });
+
+  it('Irrigation and Mining card copy mention cities, not settlements', () => {
+    assert.match(STRINGS.CARD_IRRIGATION_DESC, /your cities/);
+    assert.match(STRINGS.CARD_MINING_DESC, /your cities/);
+    assert.equal(/settlement|buildings/i.test(STRINGS.CARD_IRRIGATION_DESC), false);
+    assert.equal(/settlement|buildings/i.test(STRINGS.CARD_MINING_DESC), false);
   });
 
   it('Printer: should immediately grant 1 VP', () => {

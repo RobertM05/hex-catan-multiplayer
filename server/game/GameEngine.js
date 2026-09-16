@@ -2595,10 +2595,12 @@ export class GameEngine {
       }
       case 'irrigation':
       case 'mining': {
+        // CK-38: only cities (and metropolises) count — settlements do not.
         const resource = card.type === 'irrigation' ? 'wheat' : 'ore';
         const seen = new Set();
         for (const v of this.grid.vertices.values()) {
           if (v.building?.playerId !== playerId) continue;
+          if (v.building.type !== 'city' && v.building.type !== 'metropolis') continue;
           for (const hexId of v.hexes || []) {
             if (seen.has(hexId)) continue;
             if (this.grid.hexes.get(hexId)?.resource === resource) seen.add(hexId);
