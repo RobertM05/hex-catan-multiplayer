@@ -1088,6 +1088,12 @@ export class GameEngine {
     return resource;
   }
 
+  /**
+   * Arms pending Aqueduct claims for blank non-7 production.
+   * Does NOT auto-grant: humans use claimAqueductResource / the chooser;
+   * bots and timeouts resolve via BotAI.resolvePendingAqueductClaims.
+   * Optional `choices` map still grants immediately (tests / explicit callers).
+   */
   applyAqueductBenefit(production, choices = {}) {
     this.armAqueductEligibility(production);
     const results = {};
@@ -2805,6 +2811,7 @@ export class GameEngine {
     this.freeRoadsRemaining = 0;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
+    this.clearAqueductRoll();
     player.merchantFleetActive = false;
     player.craneDiscount = false;
     player.medicineActive = false;

@@ -2362,4 +2362,13 @@ describe('UX-01: Aqueduct resource chooser', () => {
     assert.equal(engine.players[0].resources.ore, 1);
     assert.equal(engine.pendingAqueductClaims.has('p1'), false);
   });
+
+  it('clears pending Aqueduct claims on endTurn so the claim window cannot outlive the roll', () => {
+    const engine = makeCkEngine();
+    armChooser(engine);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), true);
+    engine.endTurn('p1');
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    assert.throws(() => engine.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_NOT_ELIGIBLE/);
+  });
 });
