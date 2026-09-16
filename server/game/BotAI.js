@@ -4,7 +4,7 @@
  * Can participate in setup, dice rolling, discarding, robber movement, building, and trading.
  */
 
-import { GAME_PHASES, GAME_MODES, COSTS, DEV_CARD_TYPES, IMPROVEMENT_TRACKS } from './GameEngine.js';
+import { GAME_PHASES, GAME_MODES, COSTS, DEV_CARD_TYPES, IMPROVEMENT_TRACKS, COMMODITY_VALUES } from './GameEngine.js';
 import { RESOURCE_TYPES } from './HexGrid.js';
 
 export class BotAI {
@@ -689,8 +689,16 @@ export class BotAI {
     }
     const tm = cards.find(c => c.type === 'trade_monopoly');
     if (tm) {
-      const res = ['wood', 'brick', 'wheat', 'ore', 'wool'].sort((a, b) => (me.resources[a] || 0) - (me.resources[b] || 0))[0];
-      return { action: 'play_progress_card', cardId: tm.id, options: { resource: res } };
+      const stealCount = (type) => engine.players.reduce(
+        (n, p) => (p.id === me.id ? n : n + Math.min(1, p.commodities?.[type] || 0)),
+        0
+      );
+      const commodity = [...COMMODITY_VALUES].sort((a, b) => {
+        const stealDiff = stealCount(b) - stealCount(a);
+        if (stealDiff !== 0) return stealDiff;
+        return (me.commodities?.[a] || 0) - (me.commodities?.[b] || 0);
+      })[0];
+      return { action: 'play_progress_card', cardId: tm.id, options: { commodity } };
     }
     const master = cards.find(c => c.type === 'master_merchant');
     if (master) {
