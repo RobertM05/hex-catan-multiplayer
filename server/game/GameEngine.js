@@ -2762,6 +2762,13 @@ export class GameEngine {
     }
 
     if (completingPeek) {
+      // A completed peek/steal flow consumes the Spy / Master Merchant card:
+      // recycle it under its deck instead of leaving a spent copy in hand.
+      if (!PROGRESS_VP_CARD_TYPES.has(card.type)) {
+        const idx = player.progressCards.findIndex(c => c.id === card.id);
+        if (idx !== -1) player.progressCards.splice(idx, 1);
+        this.placeProgressCardUnderDeck(card);
+      }
       return result;
     }
 
@@ -2769,7 +2776,9 @@ export class GameEngine {
     if (this.pendingProgressDiscard && this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
       this.pendingProgressDiscard.delete(player.id);
     }
-    if (!PROGRESS_VP_CARD_TYPES.has(card.type)) {
+    // Keep a card in hand while its two-step peek/steal flow is still pending
+    // so the follow-up steal can resolve on the same card instance.
+    if (!PROGRESS_VP_CARD_TYPES.has(card.type) && this.pendingProgressPeek?.cardId !== card.id) {
       const idx = player.progressCards.findIndex(c => c.id === card.id);
       if (idx !== -1) player.progressCards.splice(idx, 1);
       this.placeProgressCardUnderDeck(card);
