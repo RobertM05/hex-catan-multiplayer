@@ -948,7 +948,8 @@ export class CatanApp {
 
     this.boardRenderer.onKnightClick = (vertexId, knight, evt) => {
       if (!this.gameState) return;
-      if (this.gameState.phase === 'TURN_CHOOSE_DESERTER_KNIGHT' || this.selectedAction?.type === 'deserter_knight' || this.selectedAction?.type === 'progress_vertex') {
+      if (this.selectedAction?.validIds?.has(vertexId) &&
+        ['deserter_knight', 'deserter_place', 'progress_vertex'].includes(this.selectedAction.type)) {
         this.boardRenderer.onVertexClick?.(vertexId);
         return;
       }

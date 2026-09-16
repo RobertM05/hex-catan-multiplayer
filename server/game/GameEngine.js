@@ -600,35 +600,6 @@ export class GameEngine {
     return this.countResources(player) + this.countCommodities(player);
   }
 
-  forceDiscardHalfFromLargestStacks(player) {
-    const need = Math.floor(this.countTotalCards(player) / 2);
-    if (need <= 0) return {};
-    const discarded = {};
-    let left = need;
-    while (left > 0) {
-      let maxKey = null;
-      let maxCount = -1;
-      const consider = (bag) => {
-        for (const [key, count] of Object.entries(bag || {})) {
-          const remaining = count - (discarded[key] || 0);
-          if (remaining > maxCount && remaining > 0) {
-            maxCount = remaining;
-            maxKey = key;
-          }
-        }
-      };
-      consider(player.resources);
-      consider(player.commodities);
-      if (!maxKey) break;
-      discarded[maxKey] = (discarded[maxKey] || 0) + 1;
-      left--;
-    }
-    for (const [type, n] of Object.entries(discarded)) {
-      this.adjustPlayerCard(player, type, -n);
-    }
-    return discarded;
-  }
-
   getBuiltCityWallCount(player) {
     let walls = 0;
     for (const vid of player.citiesBuilt || []) {
