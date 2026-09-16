@@ -93,6 +93,8 @@ export const GAME_PHASES = {
   TURN_BARBARIAN_REWARD: 'TURN_BARBARIAN_REWARD',
   TURN_CHOOSE_METROPOLIS: 'TURN_CHOOSE_METROPOLIS',
   TURN_CHOOSE_KNIGHT_RELOCATE: 'TURN_CHOOSE_KNIGHT_RELOCATE',
+  TURN_CHOOSE_DESERTER_KNIGHT: 'TURN_CHOOSE_DESERTER_KNIGHT',
+  TURN_PLACE_DESERTER_KNIGHT: 'TURN_PLACE_DESERTER_KNIGHT',
   GAME_OVER: 'GAME_OVER'
 };
 
@@ -164,11 +166,13 @@ export class GameEngine {
     this.metropolises = { trade: null, politics: null, science: null };
     this.pendingMetropolisChoice = null;
     this.pendingKnightRelocation = null;
+    this.pendingDeserter = null;
     this.previousPhase = null;
 
-    // Discard tracking for 7-roll
+    // Discard tracking for 7-roll (and Saboteur victim choice)
     this.pendingDiscards = new Set(); // playerIds needing to discard
     this.discardDeadline = null; // timestamp by which pending players must discard
+    this.discardCause = null; // 'saboteur' | null (7-roll / robber)
 
     // Trade state
     this.activeTrade = null; // { fromPlayerId, give, want, responses: { [playerId]: boolean } }
@@ -259,6 +263,9 @@ export class GameEngine {
       }
     }
     this.pendingDiscards.delete(playerId);
+    if (this.phase === GAME_PHASES.TURN_DISCARD && this.pendingDiscards.size === 0) {
+      this.finishDiscardPhase();
+    }
     this.pendingBarbarianDowngrades.delete(playerId);
     if (this.pendingBarbarianTieDraws) {
       this.pendingBarbarianTieDraws.delete(playerId);
@@ -283,6 +290,14 @@ export class GameEngine {
       this.pendingKnightRelocation = null;
       if (this.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+        this.previousPhase = null;
+      }
+    }
+
+    if (this.pendingDeserter && (this.pendingDeserter.playerId === playerId || this.pendingDeserter.targetPlayerId === playerId)) {
+      this.pendingDeserter = null;
+      if (this.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT || this.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+        this.phase = GAME_PHASES.TURN_ACTION;
         this.previousPhase = null;
       }
     }
@@ -972,6 +987,7 @@ export class GameEngine {
   }
 
   enterRobberFlow() {
+    this.discardCause = null;
     if (this.pendingDiscards.size > 0) {
       this.phase = GAME_PHASES.TURN_DISCARD;
       this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
@@ -984,6 +1000,16 @@ export class GameEngine {
       this.phase = GAME_PHASES.TURN_ROBBER;
       this.discardDeadline = null;
     }
+  }
+
+  finishDiscardPhase() {
+    if (this.discardCause === 'saboteur') {
+      this.phase = GAME_PHASES.TURN_ACTION;
+    } else {
+      this.phase = GAME_PHASES.TURN_ROBBER;
+    }
+    this.discardCause = null;
+    this.discardDeadline = null;
   }
 
   produceForRoll(rollSum) {
@@ -1193,8 +1219,7 @@ export class GameEngine {
     });
 
     if (this.pendingDiscards.size === 0) {
-      this.phase = GAME_PHASES.TURN_ROBBER;
-      this.discardDeadline = null;
+      this.finishDiscardPhase();
     }
 
     return { remainingPending: Array.from(this.pendingDiscards) };
@@ -1749,6 +1774,165 @@ export class GameEngine {
     this.previousPhase = null;
   }
 
+  pickDeserterPlaceRank(player, maxStrength, preferredRank = null) {
+    if (preferredRank) {
+      const str = KNIGHT_RANKS[preferredRank]?.strength;
+      if (str && str <= maxStrength && (player.knightsAvailable[preferredRank] || 0) > 0) {
+        return preferredRank;
+      }
+      throw new Error('INVALID_RANK');
+    }
+    for (const rank of ['mighty', 'strong', 'basic']) {
+      if (KNIGHT_RANKS[rank].strength <= maxStrength && (player.knightsAvailable[rank] || 0) > 0) {
+        return rank;
+      }
+    }
+    return null;
+  }
+
+  placeDeserterReplacement(player, placeId, placeRank, active) {
+    const dest = this.grid.vertices.get(placeId);
+    if (!dest || dest.building || dest.knight) throw new Error('VERTEX_OCCUPIED');
+    player.knightsAvailable[placeRank]--;
+    const knight = {
+      playerId: player.id,
+      vertexId: placeId,
+      rank: placeRank,
+      active: !!active,
+      strength: KNIGHT_RANKS[placeRank].strength,
+      hiredTurn: this.turnNumber,
+      lastActionTurn: this.turnNumber
+    };
+    dest.knight = knight;
+    player.knightsPlaced.push(knight);
+    return knight;
+  }
+
+  chooseDeserterKnight(playerId, vertexId) {
+    if (this.phase !== GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) throw new Error('NOT_IN_DESERTER_KNIGHT_PHASE');
+    const pending = this.pendingDeserter;
+    if (!pending || pending.targetPlayerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
+
+    const vertex = this.grid.vertices.get(vertexId);
+    const removedKnight = vertex?.knight;
+    if (!removedKnight || removedKnight.playerId !== playerId) throw new Error('INVALID_TARGET');
+
+    const target = this.players.find(p => p.id === playerId);
+    const player = this.players.find(p => p.id === pending.playerId);
+    if (!target || !player) throw new Error('PLAYER_NOT_FOUND');
+
+    const removedStrength = KNIGHT_RANKS[removedKnight.rank]?.strength || removedKnight.strength || 1;
+    const removedActive = !!removedKnight.active;
+    this.returnKnightToSupply(target, removedKnight);
+
+    this.logEvent({
+      type: 'DESERTER_KNIGHT_REMOVED',
+      messageKey: 'LOG_DESERTER_KNIGHT_REMOVED',
+      args: { targetName: target.name, playerName: player.name }
+    });
+
+    const placeRank = this.pickDeserterPlaceRank(player, removedStrength);
+    const legalIds = this.listLegalKnightPlacementVertices(player.id);
+    if (!placeRank || legalIds.length === 0) {
+      this.pendingDeserter = null;
+      this.phase = GAME_PHASES.TURN_ACTION;
+      this.previousPhase = null;
+      return {
+        removedFrom: vertexId,
+        targetPlayerId: target.id,
+        placedVertexId: null,
+        placedRank: null,
+        placedActive: null
+      };
+    }
+
+    this.pendingDeserter = {
+      playerId: player.id,
+      targetPlayerId: target.id,
+      removedFrom: vertexId,
+      removedStrength,
+      removedActive,
+      legalPlaceIds: legalIds,
+      defaultRank: placeRank
+    };
+    this.phase = GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT;
+    return {
+      removedFrom: vertexId,
+      targetPlayerId: target.id,
+      awaitingPlacement: true,
+      legalPlaceIds: legalIds,
+      removedActive
+    };
+  }
+
+  placeDeserterKnight(playerId, options = {}) {
+    if (this.phase !== GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) throw new Error('NOT_IN_DESERTER_PLACE_PHASE');
+    const pending = this.pendingDeserter;
+    if (!pending || pending.playerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
+
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+
+    if (options.skip) {
+      this.pendingDeserter = null;
+      this.phase = GAME_PHASES.TURN_ACTION;
+      this.previousPhase = null;
+      return { skipped: true, placedVertexId: null };
+    }
+
+    const legalIds = pending.legalPlaceIds || this.listLegalKnightPlacementVertices(playerId);
+    let placeId = options.placeVertexId || options.vertexId;
+    if (placeId && !legalIds.includes(placeId)) throw new Error('INVALID_PLACEMENT');
+    if (!placeId) placeId = legalIds[0] || null;
+    if (!placeId) {
+      this.pendingDeserter = null;
+      this.phase = GAME_PHASES.TURN_ACTION;
+      this.previousPhase = null;
+      return { placedVertexId: null };
+    }
+
+    const placeRank = this.pickDeserterPlaceRank(player, pending.removedStrength, options.placeRank || null)
+      || pending.defaultRank;
+    if (!placeRank) throw new Error('NO_KNIGHTS_AVAILABLE');
+
+    const knight = this.placeDeserterReplacement(player, placeId, placeRank, pending.removedActive);
+    this.pendingDeserter = null;
+    this.phase = GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+    return {
+      removedFrom: pending.removedFrom,
+      targetPlayerId: pending.targetPlayerId,
+      placedVertexId: placeId,
+      placedRank: placeRank,
+      placedActive: knight.active
+    };
+  }
+
+  autoResolveDeserterKnight() {
+    const pending = this.pendingDeserter;
+    if (!pending || this.phase !== GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) return;
+    const target = this.players.find(p => p.id === pending.targetPlayerId);
+    const knights = (target?.knightsPlaced || []).filter(k => k.vertexId);
+    knights.sort((a, b) => {
+      if (!!a.active !== !!b.active) return a.active ? 1 : -1;
+      return (a.strength || 1) - (b.strength || 1);
+    });
+    const vertexId = knights[0]?.vertexId || pending.options?.[0];
+    if (vertexId) {
+      this.chooseDeserterKnight(pending.targetPlayerId, vertexId);
+      return;
+    }
+    this.pendingDeserter = null;
+    this.phase = GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+  }
+
+  autoResolveDeserterPlacement() {
+    const pending = this.pendingDeserter;
+    if (!pending || this.phase !== GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) return;
+    this.placeDeserterKnight(pending.playerId, { placeVertexId: pending.legalPlaceIds?.[0] });
+  }
+
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
@@ -2240,58 +2424,20 @@ export class GameEngine {
         this.checkVictory();
         break;
       case 'deserter': {
-        const targetVertex = this.grid.vertices.get(options.vertexId);
-        if (!targetVertex?.knight || targetVertex.knight.playerId === playerId) {
-          throw new Error('INVALID_TARGET');
-        }
-        const removedKnight = targetVertex.knight;
-        const target = this.players.find(p => p.id === removedKnight.playerId);
-        if (!target) throw new Error('INVALID_TARGET');
-        const removedStrength = KNIGHT_RANKS[removedKnight.rank]?.strength || removedKnight.strength || 1;
-        let placeRank = options.placeRank || null;
-        if (placeRank) {
-          const str = KNIGHT_RANKS[placeRank]?.strength;
-          if (!str || str > removedStrength || !(player.knightsAvailable[placeRank] > 0)) {
-            throw new Error('INVALID_RANK');
-          }
-        } else {
-          for (const rank of ['mighty', 'strong', 'basic']) {
-            if (KNIGHT_RANKS[rank].strength <= removedStrength && (player.knightsAvailable[rank] || 0) > 0) {
-              placeRank = rank;
-              break;
-            }
-          }
-        }
-        if (!placeRank) throw new Error('NO_KNIGHTS_AVAILABLE');
-
-        const saved = targetVertex.knight;
-        targetVertex.knight = null;
-        const legalIds = this.listLegalKnightPlacementVertices(playerId);
-        targetVertex.knight = saved;
-        let placeId = options.placeVertexId;
-        if (placeId && !legalIds.includes(placeId)) throw new Error('INVALID_PLACEMENT');
-        if (!placeId) placeId = legalIds[0] || null;
-
-        this.returnKnightToSupply(target, removedKnight);
-        if (placeId) {
-          const dest = this.grid.vertices.get(placeId);
-          player.knightsAvailable[placeRank]--;
-          const knight = {
-            playerId,
-            vertexId: placeId,
-            rank: placeRank,
-            active: false,
-            strength: KNIGHT_RANKS[placeRank].strength,
-            hiredTurn: this.turnNumber,
-            lastActionTurn: this.turnNumber
-          };
-          dest.knight = knight;
-          player.knightsPlaced.push(knight);
-        }
-        result.removedFrom = options.vertexId;
+        const target = this.players.find(p => p.id === options.targetPlayerId);
+        if (!target || target.id === playerId) throw new Error('INVALID_TARGET');
+        const targetKnights = (target.knightsPlaced || []).filter(k => k.vertexId);
+        if (!targetKnights.length) throw new Error('TARGET_HAS_NO_KNIGHTS');
+        this.pendingDeserter = {
+          playerId,
+          targetPlayerId: target.id,
+          options: targetKnights.map(k => k.vertexId)
+        };
+        this.previousPhase = this.phase;
+        this.phase = GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT;
         result.targetPlayerId = target.id;
-        result.placedVertexId = placeId;
-        result.placedRank = placeId ? placeRank : null;
+        result.awaitingKnightChoice = true;
+        result.options = this.pendingDeserter.options;
         break;
       }
       case 'diplomat': {
@@ -2351,13 +2497,22 @@ export class GameEngine {
           throw new Error('SABOTEUR_MUST_NOT_BE_UNIQUE_LEADER');
         }
         const victims = [];
+        this.pendingDiscards.clear();
         for (const other of this.players) {
           if (other.id === playerId) continue;
           if ((other.victoryPoints || 0) < myVp) continue;
-          const discarded = this.forceDiscardHalfFromLargestStacks(other);
-          victims.push({ playerId: other.id, discarded });
+          const discardNeeded = Math.floor(this.countTotalCards(other) / 2);
+          victims.push({ playerId: other.id, discardNeeded });
+          if (discardNeeded > 0) this.pendingDiscards.add(other.id);
+        }
+        if (this.pendingDiscards.size > 0) {
+          this.discardCause = 'saboteur';
+          this.previousPhase = this.phase;
+          this.phase = GAME_PHASES.TURN_DISCARD;
+          this.discardDeadline = Date.now() + DISCARD_TIMEOUT_MS;
         }
         result.victims = victims;
+        result.awaitingDiscards = this.pendingDiscards.size > 0;
         break;
       }
       case 'wedding': {
@@ -3181,6 +3336,7 @@ export class GameEngine {
       knightsOverview: this.getKnightsOverview(),
       pendingDiscards: Array.from(this.pendingDiscards),
       discardDeadline: this.discardDeadline,
+      discardCause: this.discardCause,
       pendingBarbarianDowngrades: Array.from(this.pendingBarbarianDowngrades),
       pendingBarbarianTieDraws: Array.from(this.pendingBarbarianTieDraws),
       lastBarbarianResult: this.lastBarbarianResult,
@@ -3190,6 +3346,7 @@ export class GameEngine {
       metropolises: this.metropolises,
       pendingMetropolisChoice: this.pendingMetropolisChoice,
       pendingKnightRelocation: this.pendingKnightRelocation,
+      pendingDeserter: this.pendingDeserter,
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,

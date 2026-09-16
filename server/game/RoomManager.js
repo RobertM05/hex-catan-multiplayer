@@ -496,6 +496,10 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
+      } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+        engine.autoResolveDeserterKnight();
+      } else if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+        engine.autoResolveDeserterPlacement();
       } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
         engine.endTurn(curPlayer.id);
       }
@@ -629,6 +633,44 @@ export class RoomManager {
               this.checkAndTriggerBotTurn(room);
             } catch (err) {
               console.error('Bot knight relocate error:', err);
+            }
+          }
+        }, 800);
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+      const pending = engine.pendingDeserter;
+      const chooser = pending && engine.players.find(p => p.id === pending.targetPlayerId);
+      if (chooser && chooser.isBot) {
+        setTimeout(() => {
+          if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+            try {
+              engine.autoResolveDeserterKnight();
+              this.broadcastState(room);
+              this.checkAndTriggerBotTurn(room);
+            } catch (err) {
+              console.error('Bot deserter knight choice error:', err);
+            }
+          }
+        }, 800);
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+      const pending = engine.pendingDeserter;
+      const placer = pending && engine.players.find(p => p.id === pending.playerId);
+      if (placer && placer.isBot) {
+        setTimeout(() => {
+          if (room.isStarted && engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+            try {
+              engine.autoResolveDeserterPlacement();
+              this.broadcastState(room);
+              this.checkAndTriggerBotTurn(room);
+            } catch (err) {
+              console.error('Bot deserter placement error:', err);
             }
           }
         }, 800);

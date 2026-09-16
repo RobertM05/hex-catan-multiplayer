@@ -30,6 +30,14 @@ describe('UX-04 phase to status mapping', () => {
     assert.equal(mapPhaseToStatusKey('TURN_BARBARIAN_RESOLVE', false), 'STATUS_WAIT_BARBARIAN');
   });
 
+  it('maps deserter choice phases using extras for the chooser vs spectators', () => {
+    assert.equal(mapPhaseToStatusKey('TURN_CHOOSE_DESERTER_KNIGHT', false, { isDeserterChooser: true }), 'STATUS_YOUR_DESERTER_KNIGHT');
+    assert.equal(mapPhaseToStatusKey('TURN_CHOOSE_DESERTER_KNIGHT', true, { isDeserterChooser: false }), 'STATUS_WAIT_DESERTER_KNIGHT');
+    assert.equal(mapPhaseToStatusKey('TURN_PLACE_DESERTER_KNIGHT', true, { isDeserterPlacer: true }), 'STATUS_YOUR_DESERTER_PLACE');
+    assert.equal(mapPhaseToStatusKey('TURN_PLACE_DESERTER_KNIGHT', false, { isDeserterPlacer: false }), 'STATUS_WAIT_DESERTER_PLACE');
+    assert.equal(mapPhaseToStatusKey('TURN_DISCARD', false, { mustDiscard: true }), 'STATUS_YOUR_DISCARD');
+  });
+
   it('falls back to a generic waiting message for unknown phases', () => {
     assert.equal(mapPhaseToStatusKey('SOME_NEW_PHASE', false), 'STATUS_WAIT_GENERIC');
     assert.equal(mapPhaseToStatusKey(undefined, true), 'STATUS_WAIT_GENERIC');

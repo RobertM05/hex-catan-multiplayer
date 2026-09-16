@@ -888,6 +888,12 @@ export class BoardRenderer {
           e.stopPropagation();
           if (this.onVertexClick) this.onVertexClick(v.id);
         });
+      } else if (this.selectedAction?.type === 'progress_vertex' && this.selectedAction.validIds?.has(v.id)) {
+        g.style.cursor = 'pointer';
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.onVertexClick) this.onVertexClick(v.id);
+        });
       } else if (knight.playerId === this.currentPlayerId) {
         g.style.cursor = 'pointer';
         g.addEventListener('click', (e) => {

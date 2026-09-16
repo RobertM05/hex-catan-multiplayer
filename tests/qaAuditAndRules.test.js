@@ -572,6 +572,21 @@ describe('CORE-01: Soft-Lock Prevention & Interrupted Phase Recovery', () => {
     assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
+  it('should clean up pendingDeserter and revert phase when chooser disconnects', () => {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'P1' });
+    engine.addPlayer({ id: 'p2', name: 'P2' });
+    engine.startGame('standard');
+
+    engine.phase = GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT;
+    engine.pendingDeserter = { playerId: 'p1', targetPlayerId: 'p2', options: ['v1'] };
+
+    engine.removePlayer('p2');
+
+    assert.equal(engine.pendingDeserter, null);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
   it('should reset setupStep to settlement if active player disconnects after placing settlement', () => {
     const engine = new GameEngine();
     engine.addPlayer({ id: 'p1', name: 'P1' });
@@ -654,7 +669,13 @@ describe('CK-16: Official C&K Rules Alignment', () => {
     const res = engine.playProgressCard('p1', 'sab1', {});
     assert.equal(res.victims.length, 1);
     assert.equal(res.victims[0].playerId, 'p2');
+    assert.equal(res.victims[0].discardNeeded, 3);
+    assert.equal(engine.countTotalCards(engine.players[1]), 6);
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.equal(engine.discardCause, 'saboteur');
+    engine.discardCards('p2', { wood: 3 });
     assert.equal(engine.countTotalCards(engine.players[1]), 3);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
   it('Master Merchant rejects target when target VP <= player VP', () => {

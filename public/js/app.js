@@ -889,6 +889,14 @@ export class CatanApp {
           await network.sendAction('relocate_displaced_knight', { vertexId });
           audio.playBuild();
           this.clearActiveAction();
+        } else if (this.gameState.phase === 'TURN_CHOOSE_DESERTER_KNIGHT' || (this.selectedAction && this.selectedAction.type === 'deserter_knight')) {
+          await network.sendAction('choose_deserter_knight', { vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
+        } else if (this.gameState.phase === 'TURN_PLACE_DESERTER_KNIGHT' || (this.selectedAction && this.selectedAction.type === 'deserter_place')) {
+          await network.sendAction('place_deserter_knight', { placeVertexId: vertexId });
+          audio.playBuild();
+          this.clearActiveAction();
         }
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -939,7 +947,12 @@ export class CatanApp {
     };
 
     this.boardRenderer.onKnightClick = (vertexId, knight, evt) => {
-      if (!this.gameState || this.gameState.phase !== 'TURN_ACTION') return;
+      if (!this.gameState) return;
+      if (this.gameState.phase === 'TURN_CHOOSE_DESERTER_KNIGHT' || this.selectedAction?.type === 'deserter_knight' || this.selectedAction?.type === 'progress_vertex') {
+        this.boardRenderer.onVertexClick?.(vertexId);
+        return;
+      }
+      if (this.gameState.phase !== 'TURN_ACTION') return;
       const cur = this.gameState.players[this.gameState.currentTurnPlayerIndex];
       if (!cur || cur.id !== this.myPlayerId) return;
       evt?.stopPropagation();
@@ -1818,8 +1831,15 @@ export class CatanApp {
       const neededCountEl = document.getElementById('discard-needed-count');
       if (neededCountEl) neededCountEl.textContent = needed;
       const thresholdHint = document.getElementById('discard-threshold-hint');
+      const isSaboteur = this.gameState.discardCause === 'saboteur';
+      const titleEl = document.querySelector('#discard-modal .modal-title');
+      const instructionEl = document.querySelector('#discard-modal .modal-lede');
+      if (titleEl) titleEl.textContent = i18n.t(isSaboteur ? 'DISCARD_TITLE_SABOTEUR' : 'DISCARD_TITLE');
+      if (instructionEl) instructionEl.textContent = i18n.t(isSaboteur ? 'DISCARD_INSTRUCTION_SABOTEUR' : 'DISCARD_INSTRUCTION');
       if (thresholdHint) {
-        thresholdHint.textContent = i18n.t('DISCARD_THRESHOLD_HINT', { needed, threshold, walls: wallsBuilt });
+        thresholdHint.textContent = isSaboteur
+          ? i18n.t('DISCARD_SABOTEUR_HINT', { needed })
+          : i18n.t('DISCARD_THRESHOLD_HINT', { needed, threshold, walls: wallsBuilt });
       }
 
       const isAlreadyActive = modal.classList.contains('active');
@@ -2915,6 +2935,37 @@ export class CatanApp {
       return;
     }
 
+    if (type === 'deserter') {
+      const opponentsWithKnights = (this.gameState?.players || []).filter(p => {
+        if (p.id === this.myPlayerId) return false;
+        return (p.knightsPlaced || []).some(k => k.vertexId);
+      });
+      if (opponentsWithKnights.length === 0) {
+        box.innerHTML = `<div class="progress-notice-box warning">
+          <p>${i18n.t('ERROR_TARGET_HAS_NO_KNIGHTS')}</p>
+        </div>`;
+        if (playBtn) playBtn.disabled = true;
+        return;
+      }
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_DESERTER_OPPONENT')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;">
+          ${opponentsWithKnights.map(p => {
+            const count = (p.knightsPlaced || []).filter(k => k.vertexId).length;
+            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count})</button>`;
+          }).join('')}
+        </div>`;
+      if (playBtn) playBtn.disabled = true;
+      box.querySelectorAll('.progress-target-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.targetPlayerId = b.dataset.id;
+          box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
     if (type === 'master_merchant') {
       const opponents = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId);
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>
@@ -2941,7 +2992,6 @@ export class CatanApp {
       merchant: 'PROGRESS_SELECT_HEX',
       inventor: 'PROGRESS_SELECT_HEX',
       smith: 'PROGRESS_SELECT_KNIGHTS',
-      deserter: 'PROGRESS_SELECT_KNIGHT',
       intrigue: 'PROGRESS_SELECT_KNIGHT',
       engineer: 'PROGRESS_SELECT_CITY',
       diplomat: 'PROGRESS_SELECT_ROAD'
@@ -2993,12 +3043,6 @@ export class CatanApp {
         if (!v.knight || v.knight.playerId === this.myPlayerId) return;
         const hasRoad = (v.adjacentEdges || []).some(eid => this.gameState.grid.edges[eid]?.road?.playerId === this.myPlayerId);
         if (hasRoad) ids.add(v.id);
-      });
-      this.selectedAction = { type: 'progress_vertex', validIds: ids };
-    } else if (type === 'deserter') {
-      const ids = new Set();
-      vertices.forEach(v => {
-        if (v.knight && v.knight.playerId !== this.myPlayerId) ids.add(v.id);
       });
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
     } else if (type === 'engineer') {
@@ -3076,35 +3120,6 @@ export class CatanApp {
     if (type === 'engineer') {
       if (banner) banner.classList.add('is-hidden');
       this.progressPlay.options.vertexId = vertexId;
-      this.confirmProgressCardPlay();
-      return;
-    }
-    if (type === 'deserter') {
-      if (!this.progressPlay.options.vertexId) {
-        this.progressPlay.options.vertexId = vertexId;
-        const me = this.gameState.players.find(p => p.id === this.myPlayerId);
-        const ids = new Set();
-        Object.values(this.gameState.grid.vertices).forEach(v => {
-          if (v.building) return;
-          if (v.knight && v.id !== vertexId) return;
-          const hasRoad = (v.adjacentEdges || []).some(eid => this.gameState.grid.edges[eid]?.road?.playerId === me.id);
-          if (!hasRoad) return;
-          const blocked = (v.adjacentVertices || []).some(adj => {
-            const n = this.gameState.grid.vertices[adj];
-            return n && (n.building || (n.knight && n.id !== vertexId));
-          });
-          if (!blocked) ids.add(v.id);
-        });
-        this.selectedAction = { type: 'progress_vertex', validIds: ids };
-        this.boardRenderer.render(this.gameState.grid, this.selectedAction);
-        const hint = document.getElementById('progress-card-target-ui');
-        if (hint) hint.innerHTML = `<p>${i18n.t('PROGRESS_SELECT_KNIGHT_PLACE')}</p>`;
-        const bannerText = document.getElementById('board-pick-banner-text');
-        if (bannerText) bannerText.textContent = `🎯 ${i18n.t('PROGRESS_SELECT_KNIGHT_PLACE')}`;
-        return;
-      }
-      if (banner) banner.classList.add('is-hidden');
-      this.progressPlay.options.placeVertexId = vertexId;
       this.confirmProgressCardPlay();
       return;
     }
@@ -3404,6 +3419,24 @@ export class CatanApp {
       } else {
         this.boardRenderer.render(s.grid, null, null, s.players);
       }
+    } else if (s.phase === 'TURN_CHOOSE_DESERTER_KNIGHT') {
+      const pending = s.pendingDeserter;
+      if (pending && pending.targetPlayerId === this.myPlayerId) {
+        const validIds = new Set(pending.options || []);
+        this.selectedAction = { type: 'deserter_knight', validIds };
+        this.boardRenderer.render(s.grid, { type: 'progress_vertex', validIds }, null, s.players);
+      } else {
+        this.boardRenderer.render(s.grid, null, null, s.players);
+      }
+    } else if (s.phase === 'TURN_PLACE_DESERTER_KNIGHT') {
+      const pending = s.pendingDeserter;
+      if (pending && pending.playerId === this.myPlayerId) {
+        const validIds = new Set(pending.legalPlaceIds || []);
+        this.selectedAction = { type: 'deserter_place', validIds };
+        this.boardRenderer.render(s.grid, { type: 'progress_vertex', validIds }, null, s.players);
+      } else {
+        this.boardRenderer.render(s.grid, null, null, s.players);
+      }
     } else if (s.phase === 'TURN_ROBBER' && s.players[s.currentTurnPlayerIndex].id === this.myPlayerId) {
       // Robber target highlight
       this.boardRenderer.render(s.grid, { type: 'robber' });
@@ -3436,7 +3469,11 @@ export class CatanApp {
 
     const statusEl = document.getElementById('turn-phase-status');
     if (statusEl) {
-      let statusKey = mapPhaseToStatusKey(s.phase, isMyTurn);
+      let statusKey = mapPhaseToStatusKey(s.phase, isMyTurn, {
+        mustDiscard: s.phase === 'TURN_DISCARD' && s.pendingDiscards?.includes(this.myPlayerId),
+        isDeserterChooser: s.pendingDeserter?.targetPlayerId === this.myPlayerId,
+        isDeserterPlacer: s.pendingDeserter?.playerId === this.myPlayerId
+      });
       if (this.isCitiesKnights() && s.phase === 'SETUP_ROUND_2') {
         statusKey = isMyTurn ? 'STATUS_YOUR_SETUP_CK' : 'STATUS_WAIT_SETUP_CK';
       }
@@ -3650,11 +3687,30 @@ export class CatanApp {
       } else if (chooser) {
         hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
       }
+    } else if (s.phase === 'TURN_CHOOSE_DESERTER_KNIGHT') {
+      const pending = s.pendingDeserter;
+      const chooser = pending && s.players.find(p => p.id === pending.targetPlayerId);
+      if (pending && pending.targetPlayerId === this.myPlayerId) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_DESERTER_KNIGHT');
+      } else if (chooser) {
+        hintText = i18n.t('SETUP_HINT_WAITING', { playerName: chooser.name });
+      }
+    } else if (s.phase === 'TURN_PLACE_DESERTER_KNIGHT') {
+      const pending = s.pendingDeserter;
+      const placer = pending && s.players.find(p => p.id === pending.playerId);
+      if (pending && pending.playerId === this.myPlayerId) {
+        isActionable = true;
+        hintText = i18n.t('ACTION_HINT_DESERTER_PLACE');
+      } else if (placer) {
+        hintText = i18n.t('SETUP_HINT_WAITING', { playerName: placer.name });
+      }
     } else if (s.phase === 'TURN_ROLL') {
       isActionable = isMyTurn;
       hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
     } else if (s.phase === 'TURN_DISCARD') {
-      hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn), { name: curPlayer?.name || '' });
+      const mustDiscard = s.pendingDiscards?.includes(this.myPlayerId);
+      hintText = i18n.t(mapPhaseToStatusKey(s.phase, isMyTurn, { mustDiscard }), { name: curPlayer?.name || '' });
     } else if (s.phase === 'TURN_ACTION') {
       if (isMyTurn) {
         if (this.selectedAction && this.selectedAction.type === 'road') {

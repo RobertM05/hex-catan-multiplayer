@@ -94,6 +94,16 @@ describe('Monte Carlo Simulation', () => {
               continue;
            }
 
+           if (engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+              engine.autoResolveDeserterKnight();
+              continue;
+           }
+
+           if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+              engine.autoResolveDeserterPlacement();
+              continue;
+           }
+
            if (!curPlayer) { errors++; failed = true; break; }
 
            if (engine.phase === GAME_PHASES.SETUP_ROUND_1 || engine.phase === GAME_PHASES.SETUP_ROUND_2) {
@@ -221,6 +231,16 @@ describe('Monte Carlo Simulation', () => {
 
            if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
               engine.autoResolveKnightRelocation();
+              continue;
+           }
+
+           if (engine.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+              engine.autoResolveDeserterKnight();
+              continue;
+           }
+
+           if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+              engine.autoResolveDeserterPlacement();
               continue;
            }
 

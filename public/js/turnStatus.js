@@ -11,12 +11,17 @@ export const BUILD_COSTS = {
   WALL: { brick: 2 }
 };
 
-export function mapPhaseToStatusKey(phase, isMyTurn) {
+export function mapPhaseToStatusKey(phase, isMyTurn, extras = {}) {
   switch (phase) {
     case 'TURN_ROLL':
       return isMyTurn ? 'STATUS_YOUR_ROLL' : 'STATUS_WAIT_ROLL';
     case 'TURN_DISCARD':
+      if (extras.mustDiscard) return 'STATUS_YOUR_DISCARD';
       return isMyTurn ? 'STATUS_YOUR_DISCARD' : 'STATUS_WAIT_DISCARD';
+    case 'TURN_CHOOSE_DESERTER_KNIGHT':
+      return extras.isDeserterChooser ? 'STATUS_YOUR_DESERTER_KNIGHT' : 'STATUS_WAIT_DESERTER_KNIGHT';
+    case 'TURN_PLACE_DESERTER_KNIGHT':
+      return extras.isDeserterPlacer ? 'STATUS_YOUR_DESERTER_PLACE' : 'STATUS_WAIT_DESERTER_PLACE';
     case 'TURN_ROBBER':
       return isMyTurn ? 'STATUS_YOUR_ROBBER' : 'STATUS_WAIT_ROBBER';
     case 'TURN_ACTION':
@@ -47,6 +52,8 @@ export function mapPhaseToOpponentStateKey(phase, isActivePlayer) {
     case 'TURN_ACTION':
     case 'SETUP_ROUND_1':
     case 'SETUP_ROUND_2':
+    case 'TURN_CHOOSE_DESERTER_KNIGHT':
+    case 'TURN_PLACE_DESERTER_KNIGHT':
       return 'OPP_STATE_ACTING';
     default:
       return 'OPP_STATE_WAITING';
