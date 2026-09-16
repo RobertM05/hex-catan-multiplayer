@@ -249,7 +249,7 @@ describe('SEC-13: eventLog fog-of-war for typed resource gains', () => {
     }, viewer);
     assert.equal(produced.messageKey, 'LOG_RESOURCE_PRODUCED_HIDDEN');
     assert.equal(produced.args.resource, undefined);
-    assert.match(i18n.t(produced.messageKey, produced.args), /Alice received 2 cards/);
+    assert.match(i18n.t(produced.messageKey, produced.args), /Alice received 2 card\(s\)/);
     assert.equal(/ore/i.test(i18n.t(produced.messageKey, produced.args)), false);
 
     const own = redactEventLogEntryForViewer({

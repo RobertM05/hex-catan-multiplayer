@@ -152,7 +152,13 @@ export function sanitizeEventLogEntryForPlayer(entry, viewerId) {
   const args = entry.args && typeof entry.args === 'object' ? entry.args : {};
   const isOwner = Boolean(viewerId) && args.playerId === viewerId;
   if (isOwner) {
-    return { ...entry, args: { ...args } };
+    return {
+      ...entry,
+      args: {
+        ...args,
+        resources: args.resources && typeof args.resources === 'object' ? { ...args.resources } : args.resources
+      }
+    };
   }
 
   const publicArgs = {
