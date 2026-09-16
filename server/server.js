@@ -30,6 +30,10 @@ const spawnedAgents = new Map(); // roomCode -> childProcess[]
 
 // --- Real-time IP & Traffic Telemetry Infrastructure ---
 export const MAX_TRAFFIC_LOGS = 200;
+export const TRAFFIC_LIMITS = {
+  uniqueIps: 5000,
+  playerIps: 1000
+};
 export const trafficBuffer = [];
 export const trafficStats = {
   totalHttpRequests: 0,
@@ -39,8 +43,44 @@ export const trafficStats = {
   playerIps: new Map() // playerName -> { name, ip, ips: Set, country, roomCode, firstSeen, lastSeen, actionCount }
 };
 
+function evictOldestUniqueIp() {
+  const oldest = trafficStats.uniqueIps.values().next().value;
+  if (oldest !== undefined) trafficStats.uniqueIps.delete(oldest);
+}
+
+function evictOldestPlayerIp() {
+  let oldestKey = null;
+  let oldestTs = Infinity;
+  for (const [key, entry] of trafficStats.playerIps) {
+    const ts = Date.parse(entry.lastSeen) || 0;
+    if (ts < oldestTs) {
+      oldestTs = ts;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey != null) trafficStats.playerIps.delete(oldestKey);
+}
+
+export function trackUniqueIp(ip) {
+  if (!ip || ip === 'unknown') return;
+  if (trafficStats.uniqueIps.has(ip)) {
+    trafficStats.uniqueIps.delete(ip);
+    trafficStats.uniqueIps.add(ip);
+    return;
+  }
+  while (trafficStats.uniqueIps.size >= TRAFFIC_LIMITS.uniqueIps) {
+    evictOldestUniqueIp();
+  }
+  trafficStats.uniqueIps.add(ip);
+}
+
 export function recordPlayerIp(name, ip, country = null, roomCode = null) {
   if (!name || !ip || ip === 'unknown') return null;
+  if (!trafficStats.playerIps.has(name)) {
+    while (trafficStats.playerIps.size >= TRAFFIC_LIMITS.playerIps) {
+      evictOldestPlayerIp();
+    }
+  }
   const existing = trafficStats.playerIps.get(name) || {
     name,
     ip,
@@ -217,7 +257,7 @@ export function recordTrafficEvent(entry) {
     trafficBuffer.shift();
   }
   if (entry.ip && entry.ip !== 'unknown') {
-    trafficStats.uniqueIps.add(entry.ip);
+    trackUniqueIp(entry.ip);
   }
   return record;
 }
@@ -463,7 +503,7 @@ export function clearTrafficLogs() {
   trafficStats.uniqueIps.clear();
   trafficStats.playerIps.clear();
   for (const s of trafficStats.activeSockets.values()) {
-    if (s.ip && s.ip !== 'unknown') trafficStats.uniqueIps.add(s.ip);
+    if (s.ip && s.ip !== 'unknown') trackUniqueIp(s.ip);
     if (s.playerName && s.ip && s.ip !== 'unknown') {
       recordPlayerIp(s.playerName, s.ip, s.country, s.roomCode);
     }
