@@ -14,7 +14,8 @@ import {
   GAME_PHASES,
   GAME_MODES,
   normalizeGameMode,
-  PROGRESS_CARD_DECKS
+  PROGRESS_CARD_DECKS,
+  PROGRESS_CARD_HAND_LIMIT
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
@@ -2798,5 +2799,131 @@ describe('CK-32: Progress cards cannot be played the turn they are drawn', () =>
     const action = BotAI.decideProgressCardPlay(engine, engine.players[0]);
     assert.equal(action?.action, 'play_progress_card');
     assert.equal(action.cardId, 'alc-bot');
+  });
+});
+
+describe('LOOP-01: progress-card hand limit + turn timeout', () => {
+  function giveUnplayedProgressCards(player, count, type = 'crane') {
+    for (let i = 0; i < count; i++) {
+      player.progressCards.push({
+        id: `${type}-${player.id}-${i}`,
+        type,
+        played: false,
+        revealed: false,
+        boughtTurn: 1
+      });
+    }
+  }
+
+  function makeCkRoom() {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
+    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
+    rm.setPlayerReady(room.code, 'p2', true);
+    rm.startGame(room.code, 'p1');
+    return { rm, room, engine: room.engine };
+  }
+
+  it('autoDiscardProgressCards drops a human hand to the limit and clears pending', () => {
+    const engine = makeCkEngine();
+    const human = engine.players[0];
+    giveUnplayedProgressCards(human, 6);
+    engine.pendingProgressDiscard.add('p1');
+
+    const result = engine.autoDiscardProgressCards('p1');
+    assert.equal(result.auto, true);
+    assert.equal(result.remaining, PROGRESS_CARD_HAND_LIMIT);
+    assert.equal(engine.countUnplayedProgressCards(human), PROGRESS_CARD_HAND_LIMIT);
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    assert.equal(result.discarded.length, 2);
+  });
+
+  it('autoDiscardProgressCards is a no-op at the limit so endTurn still works', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const human = engine.players[0];
+    giveUnplayedProgressCards(human, PROGRESS_CARD_HAND_LIMIT);
+    engine.pendingProgressDiscard.add('p1');
+
+    const result = engine.autoDiscardProgressCards('p1');
+    assert.equal(result.discarded.length, 0);
+    assert.equal(engine.countUnplayedProgressCards(human), PROGRESS_CARD_HAND_LIMIT);
+    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
+    assert.doesNotThrow(() => engine.endTurn('p1'));
+  });
+
+  it('human over the progress limit + turn timeout discards excess and advances the turn', () => {
+    const { rm, room, engine } = makeCkRoom();
+    try {
+      engine.phase = GAME_PHASES.TURN_ACTION;
+      engine.currentTurnPlayerIndex = 0;
+      const human = engine.players[0];
+      assert.equal(human.isBot, false);
+      giveUnplayedProgressCards(human, 5, 'trade_monopoly');
+      giveUnplayedProgressCards(human, 1, 'alchemist');
+      engine.pendingProgressDiscard.add(human.id);
+      assert.equal(engine.countUnplayedProgressCards(human), 6);
+
+      const timedOutId = human.id;
+      room.turnTimeRemaining = 0;
+      rm.handleTurnTimeout(room);
+
+      assert.ok(
+        engine.countUnplayedProgressCards(human) <= PROGRESS_CARD_HAND_LIMIT,
+        'timeout must force the hand down to the limit'
+      );
+      assert.equal(engine.pendingProgressDiscard.has(human.id), false);
+      assert.equal(engine.getCurrentPlayer().id, 'p2');
+      assert.equal(engine.phase, GAME_PHASES.TURN_ROLL);
+      assert.equal(room.turnTimeRemaining, room.turnDuration);
+
+      // Second timeout is the next player's roll, not an infinite reset on the over-limit human.
+      rm.handleTurnTimeout(room);
+      assert.notEqual(engine.getCurrentPlayer().id, timedOutId);
+      assert.ok(engine.countUnplayedProgressCards(human) <= PROGRESS_CARD_HAND_LIMIT);
+    } finally {
+      rm.destroyRoom(room.code);
+    }
+  });
+
+  it('turn timeout during TURN_ROLL does not auto-discard progress cards', () => {
+    const { rm, room, engine } = makeCkRoom();
+    try {
+      engine.phase = GAME_PHASES.TURN_ROLL;
+      engine.currentTurnPlayerIndex = 0;
+      const human = engine.players[0];
+      giveUnplayedProgressCards(human, 5);
+      engine.pendingProgressDiscard.add(human.id);
+      const givenIds = human.progressCards.map(c => c.id);
+
+      rm.handleTurnTimeout(room);
+
+      const stillHeld = human.progressCards.filter(c => givenIds.includes(c.id));
+      assert.equal(stillHeld.length, 5, 'timeout during roll must not discard existing progress cards');
+      assert.equal(engine.getCurrentPlayer().id, human.id);
+    } finally {
+      rm.destroyRoom(room.code);
+    }
+  });
+
+  it('bot over the progress limit + turn timeout also discards and advances', () => {
+    const { rm, room, engine } = makeCkRoom();
+    try {
+      engine.phase = GAME_PHASES.TURN_ACTION;
+      engine.currentTurnPlayerIndex = 0;
+      const bot = engine.players[0];
+      bot.isBot = true;
+      room.players[0].isBot = true;
+      giveUnplayedProgressCards(bot, 5);
+      engine.pendingProgressDiscard.add(bot.id);
+
+      rm.handleTurnTimeout(room);
+
+      assert.ok(engine.countUnplayedProgressCards(bot) <= PROGRESS_CARD_HAND_LIMIT);
+      assert.equal(engine.pendingProgressDiscard.has(bot.id), false);
+      assert.equal(engine.getCurrentPlayer().id, 'p2');
+    } finally {
+      rm.destroyRoom(room.code);
+    }
   });
 });
