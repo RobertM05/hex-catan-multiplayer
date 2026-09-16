@@ -1103,13 +1103,14 @@ io.on('connection', (socket) => {
         });
       }
 
-      if (room.engine?.phase !== GAME_PHASES.TURN_DISCARD && room.engine?.phase !== GAME_PHASES.TURN_ROBBER) {
+      if (room.engine?.phase !== GAME_PHASES.TURN_DISCARD && room.engine?.phase !== GAME_PHASES.TURN_ROBBER && room.engine?.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
         roomManager.resetTurnTimer(room);
       }
       roomManager.broadcastState(room);
       roomManager.checkAndTriggerBotTurn(room);
       roomManager.checkDiscardTimer(room);
       roomManager.checkRobberTimer(room);
+      roomManager.checkCardChoiceTimer(room);
       if (callback) callback({ success: true, ...result });
     } catch (err) {
       const timeStr = new Date().toLocaleTimeString();
@@ -1239,6 +1240,13 @@ io.on('connection', (socket) => {
 
   socket.on('play_progress_card', (data, cb) => {
     handleGameAction('play_progress_card', data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb, data);
+  });
+
+  socket.on('respond_progress_choice', (data, cb) => {
+    handleGameAction('respond_progress_choice', data.code, (engine) => engine.respondProgressChoice(currentPlayerId, {
+      cards: data?.cards,
+      commodity: data?.commodity
+    }), cb, data);
   });
 
   socket.on('discard_progress_card', (data, cb) => {

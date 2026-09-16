@@ -931,6 +931,16 @@ export class BotAI {
       return true;
     }
 
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      const pending = engine.pendingProgressChoice;
+      if (pending) {
+        for (const pId of Array.from(pending.pending)) {
+          engine.autoResolveProgressChoice(pId);
+        }
+      }
+      return true;
+    }
+
     const cur = engine.getCurrentPlayer();
     if (!cur) return false;
 

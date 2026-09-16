@@ -84,6 +84,8 @@ export const STRINGS = {
     STATUS_WAIT_ROLL: "Waiting for {name} to roll the dice",
     STATUS_YOUR_DISCARD: "Your turn: discard cards",
     STATUS_WAIT_DISCARD: "Waiting for {name} to discard cards",
+    STATUS_YOUR_PROGRESS_CHOICE: "Choose cards for the progress card",
+    STATUS_WAIT_PROGRESS_CHOICE: "Waiting for players to respond to {name}'s card",
     STATUS_YOUR_ROBBER: "Your turn: move the robber",
     STATUS_WAIT_ROBBER: "Waiting for {name} to move the robber",
     STATUS_YOUR_ACTION: "Your turn: take actions",
@@ -425,6 +427,13 @@ export const STRINGS = {
     LOG_SEVEN_DISCARD_ONLY: "Rolled a 7 — players discard if needed, but the robber stays put until the first barbarian attack.",
     DISCARD_MUST_LABEL: "Must discard:",
     DISCARD_SELECTED_LABEL: "Selected:",
+    PROGRESS_CHOICE_WEDDING_TITLE: "Wedding gift",
+    PROGRESS_CHOICE_WEDDING_HINT: "Give {count} card(s) to {name}. After 30s the largest stacks are taken automatically.",
+    PROGRESS_CHOICE_HARBOR_TITLE: "Commercial Harbor",
+    PROGRESS_CHOICE_HARBOR_HINT: "{name} offers {resource}. Choose one commodity to exchange. After 30s a commodity is picked automatically.",
+    PROGRESS_CHOICE_GIVE: "Give cards",
+    ERROR_MUST_CHOOSE_WEDDING_CARDS: "Choose the required wedding cards.",
+    ERROR_MUST_CHOOSE_HARBOR_COMMODITY: "Choose a commodity to exchange.",
 
     // Victory Screen
     VICTORY_TITLE: "Victory!",

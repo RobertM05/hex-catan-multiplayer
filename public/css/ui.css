@@ -2469,6 +2469,11 @@ input[type="number"] {
   gap: 6px;
 }
 
+.progress-choice-buttons {
+  grid-template-columns: repeat(4, 1fr);
+  margin: 8px 0;
+}
+
 .yop-picks {
   display: grid;
   grid-template-columns: 1fr 1fr;

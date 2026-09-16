@@ -105,6 +105,7 @@ export const GAME_PHASES = {
   TURN_BARBARIAN_REWARD: 'TURN_BARBARIAN_REWARD',
   TURN_CHOOSE_METROPOLIS: 'TURN_CHOOSE_METROPOLIS',
   TURN_CHOOSE_KNIGHT_RELOCATE: 'TURN_CHOOSE_KNIGHT_RELOCATE',
+  TURN_CHOOSE_PROGRESS_RESPONSE: 'TURN_CHOOSE_PROGRESS_RESPONSE',
   GAME_OVER: 'GAME_OVER'
 };
 
@@ -142,6 +143,8 @@ export const DEV_CARD_TYPES = {
 export const DISCARD_TIMEOUT_MS = 30000;
 // Forced robber placement after discard (or knight) — independent of the shared turn clock
 export const ROBBER_TIMEOUT_MS = 15000;
+// Wedding / Commercial Harbor victim replies. After this, auto-pick largest stacks / first commodity.
+export const CARD_CHOICE_TIMEOUT_MS = 30000;
 
 export class GameEngine {
   constructor(options = {}) {
@@ -186,6 +189,7 @@ export class GameEngine {
     this.specialBuildingOriginIndex = null;
     this.pendingAqueductClaims = new Set();
     this.claimedAqueductThisRoll = new Set();
+    this.pendingProgressChoice = null;
 
     // Discard tracking for 7-roll
     this.pendingDiscards = new Set(); // playerIds needing to discard
@@ -308,6 +312,19 @@ export class GameEngine {
       if (this.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
         this.previousPhase = null;
+      }
+    }
+
+    if (this.pendingProgressChoice) {
+      this.pendingProgressChoice.pending.delete(playerId);
+      if (this.pendingProgressChoice.playerId === playerId) {
+        this.pendingProgressChoice = null;
+        if (this.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+          this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+          this.previousPhase = null;
+        }
+      } else {
+        this.finishProgressChoiceIfDone();
       }
     }
 
@@ -1406,6 +1423,141 @@ export class GameEngine {
     return { discarded, remaining: this.countUnplayedProgressCards(player), auto: true };
   }
 
+  listLargestCardTypes(player, count) {
+    const given = [];
+    const taken = {};
+    while (given.length < count) {
+      let maxKey = null;
+      let maxCount = -1;
+      const consider = (bag) => {
+        for (const [key, countOwned] of Object.entries(bag || {})) {
+          const remaining = countOwned - (taken[key] || 0);
+          if (remaining > maxCount && remaining > 0) {
+            maxCount = remaining;
+            maxKey = key;
+          }
+        }
+      };
+      consider(player.resources);
+      if (this.isCitiesKnights()) consider(player.commodities);
+      if (!maxKey) break;
+      taken[maxKey] = (taken[maxKey] || 0) + 1;
+      given.push(maxKey);
+    }
+    return given;
+  }
+
+  canGiveCardTypes(player, types) {
+    if (!Array.isArray(types) || types.length === 0) return false;
+    const need = {};
+    for (const type of types) {
+      if (!RESOURCE_VALUES.includes(type) && !COMMODITY_VALUES.includes(type)) return false;
+      need[type] = (need[type] || 0) + 1;
+      if (this.getPlayerCardCount(player, type) < need[type]) return false;
+    }
+    return true;
+  }
+
+  transferCardTypes(fromPlayer, toPlayer, types) {
+    for (const type of types) {
+      this.adjustPlayerCard(fromPlayer, type, -1);
+      this.adjustPlayerCard(toPlayer, type, 1);
+    }
+  }
+
+  beginProgressChoice(kind, playerId, pendingIds, extra = {}) {
+    this.previousPhase = this.phase;
+    this.phase = GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE;
+    this.pendingProgressChoice = {
+      kind,
+      playerId,
+      pending: new Set(pendingIds),
+      deadline: Date.now() + CARD_CHOICE_TIMEOUT_MS,
+      resource: extra.resource || null
+    };
+  }
+
+  finishProgressChoiceIfDone() {
+    const pending = this.pendingProgressChoice;
+    if (!pending || pending.pending.size > 0) return;
+    this.pendingProgressChoice = null;
+    this.phase = this.previousPhase || GAME_PHASES.TURN_ACTION;
+    this.previousPhase = null;
+  }
+
+  applyWeddingGift(host, giver, cards) {
+    this.transferCardTypes(giver, host, cards);
+    this.logEvent({
+      type: 'WEDDING_GIFT',
+      messageKey: 'LOG_WEDDING_GIFT',
+      args: { targetName: giver.name, playerName: host.name, count: cards.length }
+    });
+    return { playerId: giver.id, targetName: giver.name, cards };
+  }
+
+  applyHarborExchange(host, other, commodity, resource) {
+    if (this.getPlayerCardCount(host, resource) < 1) return null;
+    if (this.getPlayerCardCount(other, commodity) < 1) return null;
+    this.adjustPlayerCard(host, resource, -1);
+    this.adjustPlayerCard(other, resource, 1);
+    this.adjustPlayerCard(other, commodity, -1);
+    this.adjustPlayerCard(host, commodity, 1);
+    return { playerId: other.id, commodity };
+  }
+
+  respondProgressChoice(playerId, payload = {}, { auto = false } = {}) {
+    if (this.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      throw new Error('NOT_IN_PROGRESS_CHOICE');
+    }
+    const pending = this.pendingProgressChoice;
+    if (!pending?.pending.has(playerId)) throw new Error('NO_PROGRESS_CHOICE_NEEDED');
+    const host = this.players.find(p => p.id === pending.playerId);
+    const actor = this.players.find(p => p.id === playerId);
+    if (!host || !actor) throw new Error('PLAYER_NOT_FOUND');
+
+    if (pending.kind === 'wedding') {
+      const takeCount = Math.min(2, this.countTotalCards(actor));
+      if (takeCount <= 0) {
+        pending.pending.delete(playerId);
+        this.finishProgressChoiceIfDone();
+        return { skipped: true };
+      }
+      let cards = Array.isArray(payload.cards) ? payload.cards.slice(0, takeCount) : [];
+      if (cards.length !== takeCount || !this.canGiveCardTypes(actor, cards)) {
+        if (!auto) throw new Error('MUST_CHOOSE_WEDDING_CARDS');
+        cards = this.listLargestCardTypes(actor, takeCount);
+      }
+      const gift = this.applyWeddingGift(host, actor, cards);
+      pending.pending.delete(playerId);
+      this.finishProgressChoiceIfDone();
+      return { gift, auto };
+    }
+
+    if (pending.kind === 'commercial_harbor') {
+      const resource = pending.resource;
+      if (this.getPlayerCardCount(host, resource) < 1) {
+        pending.pending.delete(playerId);
+        this.finishProgressChoiceIfDone();
+        return { skipped: true };
+      }
+      let commodity = payload.commodity;
+      if (!COMMODITY_VALUES.includes(commodity) || this.getPlayerCardCount(actor, commodity) < 1) {
+        if (!auto) throw new Error('MUST_CHOOSE_HARBOR_COMMODITY');
+        commodity = COMMODITY_VALUES.find(com => this.getPlayerCardCount(actor, com) > 0);
+      }
+      const exchange = commodity ? this.applyHarborExchange(host, actor, commodity, resource) : null;
+      pending.pending.delete(playerId);
+      this.finishProgressChoiceIfDone();
+      return { exchange, auto };
+    }
+
+    throw new Error('UNKNOWN_PROGRESS_CHOICE');
+  }
+
+  autoResolveProgressChoice(playerId) {
+    return this.respondProgressChoice(playerId, {}, { auto: true });
+  }
+
   moveRobber(playerId, hexId, targetPlayerId = null) {
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
@@ -2420,28 +2572,25 @@ export class GameEngine {
         const commodities = options.commodities || {};
         if (!resource || !RESOURCE_VALUES.includes(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
         const exchanges = [];
+        const pendingIds = [];
         for (const other of this.players) {
           if (other.id === playerId) continue;
-          let commodity = commodities[other.id];
-          if (!commodity) {
-            for (const com of COMMODITY_VALUES) {
-              if (this.getPlayerCardCount(other, com) > 0) {
-                commodity = com;
-                break;
-              }
-            }
-          }
-          if (!COMMODITY_VALUES.includes(commodity)) continue;
+          const hasCommodity = COMMODITY_VALUES.some(com => this.getPlayerCardCount(other, com) > 0);
+          if (!hasCommodity) continue;
           if (this.getPlayerCardCount(player, resource) < 1) break;
-          if (this.getPlayerCardCount(other, commodity) < 1) continue;
-          this.adjustPlayerCard(player, resource, -1);
-          this.adjustPlayerCard(other, resource, 1);
-          this.adjustPlayerCard(other, commodity, -1);
-          this.adjustPlayerCard(player, commodity, 1);
-          exchanges.push({ playerId: other.id, commodity });
+          const commodity = commodities[other.id];
+          if (COMMODITY_VALUES.includes(commodity) && this.getPlayerCardCount(other, commodity) > 0) {
+            const exchange = this.applyHarborExchange(player, other, commodity, resource);
+            if (exchange) exchanges.push(exchange);
+          } else {
+            pendingIds.push(other.id);
+          }
         }
         result.exchanges = exchanges;
-        if (exchanges.length > 0) {
+        if (pendingIds.length > 0) {
+          this.beginProgressChoice('commercial_harbor', playerId, pendingIds, { resource });
+          result.pendingChoice = true;
+        } else if (exchanges.length > 0) {
           this.logEvent({
             type: 'COMMERCIAL_HARBOR_TRADE',
             messageKey: 'LOG_COMMERCIAL_HARBOR_TRADE',
@@ -2606,50 +2755,24 @@ export class GameEngine {
           throw new Error('NO_PLAYERS_WITH_MORE_VP');
         }
         const gifts = [];
+        const pendingIds = [];
         for (const target of targets) {
-          const totalCards = this.countTotalCards(target);
-          const takeCount = Math.min(2, totalCards);
+          const takeCount = Math.min(2, this.countTotalCards(target));
           if (takeCount <= 0) continue;
-
-          let givenCards = [];
-          if (options.gifts && Array.isArray(options.gifts[target.id])) {
-            const requested = options.gifts[target.id].slice(0, takeCount);
-            for (const cType of requested) {
-              if (this.getPlayerCardCount(target, cType) > 0) {
-                givenCards.push(cType);
-                this.adjustPlayerCard(target, cType, -1);
-              }
-            }
+          const requested = options.gifts && Array.isArray(options.gifts[target.id])
+            ? options.gifts[target.id].slice(0, takeCount)
+            : null;
+          if (requested && requested.length === takeCount && this.canGiveCardTypes(target, requested)) {
+            gifts.push(this.applyWeddingGift(player, target, requested));
+          } else {
+            pendingIds.push(target.id);
           }
-          while (givenCards.length < takeCount) {
-            let maxKey = null;
-            let maxCount = -1;
-            const consider = (bag) => {
-              for (const [key, count] of Object.entries(bag || {})) {
-                if (count > maxCount && count > 0) {
-                  maxCount = count;
-                  maxKey = key;
-                }
-              }
-            };
-            consider(target.resources);
-            consider(target.commodities);
-            if (!maxKey) break;
-            this.adjustPlayerCard(target, maxKey, -1);
-            givenCards.push(maxKey);
-          }
-
-          for (const cardType of givenCards) {
-            this.adjustPlayerCard(player, cardType, 1);
-          }
-          gifts.push({ playerId: target.id, targetName: target.name, cards: givenCards });
-          this.logEvent({
-            type: 'WEDDING_GIFT',
-            messageKey: 'LOG_WEDDING_GIFT',
-            args: { targetName: target.name, playerName: player.name, count: givenCards.length }
-          });
         }
         result.gifts = gifts;
+        if (pendingIds.length > 0) {
+          this.beginProgressChoice('wedding', playerId, pendingIds);
+          result.pendingChoice = true;
+        }
         break;
       }
       case 'spy': {
@@ -3570,6 +3693,13 @@ export class GameEngine {
       pendingKnightRelocation: this.pendingKnightRelocation,
       specialBuildingQueue: this.specialBuildingQueue,
       specialBuildingOriginIndex: this.specialBuildingOriginIndex,
+      pendingProgressChoice: this.pendingProgressChoice ? {
+        kind: this.pendingProgressChoice.kind,
+        playerId: this.pendingProgressChoice.playerId,
+        resource: this.pendingProgressChoice.resource,
+        pending: Array.from(this.pendingProgressChoice.pending),
+        deadline: this.pendingProgressChoice.deadline
+      } : null,
       pendingProgressDraws: this.pendingProgressDraws,
       pendingAqueductClaims: Array.from(this.pendingAqueductClaims || []),
       activeTrade: this.activeTrade ? {

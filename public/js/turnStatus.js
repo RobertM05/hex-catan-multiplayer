@@ -30,6 +30,8 @@ export function mapPhaseToStatusKey(phase, isMyTurn) {
     case 'TURN_BARBARIAN_DOWNGRADE':
     case 'TURN_BARBARIAN_REWARD':
       return isMyTurn ? 'STATUS_YOUR_BARBARIAN' : 'STATUS_WAIT_BARBARIAN';
+    case 'TURN_CHOOSE_PROGRESS_RESPONSE':
+      return isMyTurn ? 'STATUS_WAIT_PROGRESS_CHOICE' : 'STATUS_WAIT_PROGRESS_CHOICE';
     case 'GAME_OVER':
       return 'STATUS_GAME_OVER';
     default:

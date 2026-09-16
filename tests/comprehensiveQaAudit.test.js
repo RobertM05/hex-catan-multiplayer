@@ -52,7 +52,7 @@ describe('QA Audit: Base Game Dev Cards', () => {
     const p2 = engine.players[1];
 
     // Give p2 a settlement touching hex0 and wood
-    const hex0 = Array.from(engine.grid.hexes.values())[0];
+    const hex0 = Array.from(engine.grid.hexes.values()).find(h => h.id !== engine.grid.robberHexId);
     const vert0 = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(hex0.id));
     vert0.building = { type: 'settlement', playerId: 'p2', color: p2.color };
     p2.settlementsBuilt.push(vert0.id);

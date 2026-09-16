@@ -3,7 +3,7 @@
  * Manages multiplayer game rooms, lobby state, bot lifecycle, and turn timers.
  */
 
-import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS, ROBBER_TIMEOUT_MS } from './GameEngine.js';
+import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS, ROBBER_TIMEOUT_MS, CARD_CHOICE_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
@@ -145,6 +145,7 @@ export class RoomManager {
       turnTimerInterval: null,
       discardTimer: null,
       robberTimer: null,
+      cardChoiceTimer: null,
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
@@ -425,7 +426,9 @@ export class RoomManager {
   }
 
   isInterruptClockPhase(engine) {
-    return engine.phase === GAME_PHASES.TURN_DISCARD || engine.phase === GAME_PHASES.TURN_ROBBER;
+    return engine.phase === GAME_PHASES.TURN_DISCARD
+      || engine.phase === GAME_PHASES.TURN_ROBBER
+      || engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE;
   }
 
   startTurnTimer(room) {
@@ -446,7 +449,7 @@ export class RoomManager {
       return;
     }
 
-    // Discard and robber use discardDeadline / robberDeadline only; freeze the shared turn clock.
+    // Discard, robber, and progress card victim choices freeze the shared turn clock.
     if (this.isInterruptClockPhase(room.engine)) {
       this.io.to(room.code).emit('timer_tick', {
         remaining: room.turnTimeRemaining,
@@ -455,6 +458,7 @@ export class RoomManager {
       });
       this.checkDiscardTimer(room);
       this.checkRobberTimer(room);
+      this.checkCardChoiceTimer(room);
       return;
     }
 
@@ -556,6 +560,52 @@ export class RoomManager {
     }
   }
 
+  checkCardChoiceTimer(room) {
+    const engine = room.engine;
+    if (engine.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      if (room.cardChoiceTimer) {
+        clearTimeout(room.cardChoiceTimer);
+        room.cardChoiceTimer = null;
+      }
+      return;
+    }
+    if (room.cardChoiceTimer) return;
+
+    const pending = engine.pendingProgressChoice;
+    const humansPending = pending ? Array.from(pending.pending).filter(id => {
+      const p = engine.players.find(x => x.id === id);
+      return p && !p.isBot;
+    }) : [];
+    if (humansPending.length === 0) return;
+
+    const waitMs = Math.max(0, (pending.deadline || (Date.now() + CARD_CHOICE_TIMEOUT_MS)) - Date.now());
+    room.cardChoiceTimer = setTimeout(() => {
+      room.cardChoiceTimer = null;
+      try {
+        if (room.engine.phase !== GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) return;
+        const still = room.engine.pendingProgressChoice;
+        if (!still) return;
+        for (const id of Array.from(still.pending)) {
+          const p = room.engine.players.find(x => x.id === id);
+          if (p && !p.isBot) {
+            try {
+              room.engine.autoResolveProgressChoice(id);
+            } catch (err) {
+              console.error('Auto progress choice error:', err);
+            }
+          }
+        }
+        this.broadcastState(room);
+        this.checkAndTriggerBotTurn(room);
+      } catch (err) {
+        console.error('Card choice timer error:', err);
+      }
+    }, waitMs);
+    if (typeof room.cardChoiceTimer.unref === 'function') {
+      room.cardChoiceTimer.unref();
+    }
+  }
+
   handleTurnTimeout(room) {
     if (!room || !room.isStarted || room.engine.phase === GAME_PHASES.GAME_OVER) return;
 
@@ -607,7 +657,10 @@ export class RoomManager {
           engine.previousPhase = null;
         }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
-        engine.autoResolveKnightRelocation();
+      } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+        // Shared turn clock is paused; cardChoiceTimer owns this phase.
+        this.checkCardChoiceTimer(room);
+        return;
       } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
         // AFK humans over the progress-card hand limit cannot endTurn; force the
         // same auto-discard bots already do so the table cannot softlock forever.
@@ -754,6 +807,29 @@ export class RoomManager {
             }
           }
         }, 800);
+      }
+      return;
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE) {
+      const pending = engine.pendingProgressChoice;
+      if (pending) {
+        for (const pId of Array.from(pending.pending)) {
+          const p = engine.players.find(x => x.id === pId);
+          if (p && p.isBot) {
+            setTimeout(() => {
+              if (room.isStarted && engine.pendingProgressChoice?.pending.has(pId)) {
+                try {
+                  engine.autoResolveProgressChoice(pId);
+                  this.broadcastState(room);
+                  this.checkAndTriggerBotTurn(room);
+                } catch (err) {
+                  console.error('Bot progress choice error:', err);
+                }
+              }
+            }, 800);
+          }
+        }
       }
       return;
     }
@@ -994,6 +1070,7 @@ export class RoomManager {
       if (room.turnTimerInterval) clearInterval(room.turnTimerInterval);
       if (room.discardTimer) clearTimeout(room.discardTimer);
       if (room.robberTimer) clearTimeout(room.robberTimer);
+      if (room.cardChoiceTimer) clearTimeout(room.cardChoiceTimer);
       if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
     }
     this.rooms.delete(code);

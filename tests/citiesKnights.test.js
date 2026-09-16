@@ -2810,12 +2810,18 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     p2.resources.wood = 2;
     p2.commodities.cloth = 1;
 
-    const res = engine.playProgressCard('p1', card.id);
-    assert.ok(res.gifts.length === 1);
-    assert.equal(res.gifts[0].cards.length, 2);
+    const pendingRes = engine.playProgressCard('p1', card.id);
+    assert.equal(pendingRes.pendingChoice, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.equal(engine.countTotalCards(p1), 0);
+    assert.equal(engine.countTotalCards(p2), 3);
+
+    const res = engine.respondProgressChoice('p2', { cards: ['wood', 'cloth'] });
+    assert.ok(res.gift.cards.length === 2);
     assert.equal(engine.countTotalCards(p1), 2);
     assert.equal(engine.countTotalCards(p2), 1);
     assert.equal(card.played, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
   it('spy allows stealing an unplayed progress card from an opponent', () => {
@@ -2881,7 +2887,7 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     assert.equal(overview.defenseMargin, 0);
   });
 
-  it('Commercial Harbor auto-exchange fallback deducts resources properly', () => {
+  it('Commercial Harbor waits for opponent commodity choice instead of auto-taking', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.wood = 1;
@@ -2892,12 +2898,11 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
       resource: 'wood'
     });
     
-    assert.equal(res.exchanges.length, 1);
-    assert.equal(res.exchanges[0].commodity, 'cloth');
-    assert.equal(engine.players[0].resources.wood, 0);
-    assert.equal(engine.players[1].resources.wood, 1);
-    assert.equal(engine.players[0].commodities.cloth, 1);
-    assert.equal(engine.players[1].commodities.cloth, 0);
+    assert.equal(res.pendingChoice, true);
+    assert.equal(res.exchanges.length, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[1].commodities.cloth, 1);
   });
 
   it('Wedding card triggers correct logging and notifications', () => {
@@ -2917,7 +2922,7 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     p2.resources.wood = 2;
     
     p1.progressCards.push({ id: 'c-wed', type: 'wedding', played: false });
-    engine.playProgressCard('p1', 'c-wed');
+    engine.playProgressCard('p1', 'c-wed', { gifts: { p2: ['wood', 'wood'] } });
     
     const logs = engine.eventLog;
     const weddingLog = logs.find(l => l.type === 'WEDDING_GIFT');
@@ -2930,6 +2935,109 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     engine.resolveBarbarianAttack();
     const result = engine.lastBarbarianResult;
     assert.ok(result.id);
+  });
+
+  it('CK-LOOP-01: wedding without gifts does not auto-drain', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1, p2] = engine.players;
+    p1.citiesBuilt = ['v1'];
+    p2.citiesBuilt = ['v2', 'v3'];
+    engine.grid.vertices.set('v1', { id: 'v1', building: { type: 'city', playerId: p1.id } });
+    engine.grid.vertices.set('v2', { id: 'v2', building: { type: 'city', playerId: p2.id } });
+    engine.grid.vertices.set('v3', { id: 'v3', building: { type: 'city', playerId: p2.id } });
+    p2.resources.wood = 3;
+    p1.progressCards.push({ id: 'c-wed2', type: 'wedding', played: false });
+    const p1Before = engine.countTotalCards(p1);
+    const p2Before = engine.countTotalCards(p2);
+
+    const res = engine.playProgressCard('p1', 'c-wed2');
+    assert.equal(res.pendingChoice, true);
+    assert.equal(engine.countTotalCards(p2), p2Before);
+    assert.equal(engine.countTotalCards(p1), p1Before);
+    assert.equal(engine.pendingProgressChoice.pending.has('p2'), true);
+
+    assert.throws(() => engine.respondProgressChoice('p2', {}), /MUST_CHOOSE_WEDDING_CARDS/);
+    assert.equal(engine.countTotalCards(p2), p2Before);
+
+    engine.autoResolveProgressChoice('p2');
+    assert.equal(engine.countTotalCards(p1), p1Before + Math.min(2, p2Before));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('CK-LOOP-01: harbor without commodities map does not auto-pick', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 1;
+    engine.players[1].commodities.cloth = 1;
+    engine.players[1].commodities.coin = 1;
+    engine.players[0].progressCards.push({ id: 'c-ch2', type: 'commercial_harbor', played: false });
+
+    const res = engine.playProgressCard('p1', 'c-ch2', { resource: 'wood' });
+    assert.equal(res.pendingChoice, true);
+    assert.equal(engine.players[1].commodities.cloth, 1);
+    assert.equal(engine.players[1].commodities.coin, 1);
+    assert.throws(() => engine.respondProgressChoice('p2', {}), /MUST_CHOOSE_HARBOR_COMMODITY/);
+
+    engine.respondProgressChoice('p2', { commodity: 'coin' });
+    assert.equal(engine.players[0].commodities.coin, 1);
+    assert.equal(engine.players[1].commodities.coin, 0);
+    assert.equal(engine.players[1].commodities.cloth, 1);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('CK-LOOP-01: timeout auto-resolve is the only silent fallback', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 1;
+    engine.players[1].commodities.paper = 2;
+    engine.players[0].progressCards.push({ id: 'c-ch3', type: 'commercial_harbor', played: false });
+    engine.playProgressCard('p1', 'c-ch3', { resource: 'ore' });
+    engine.autoResolveProgressChoice('p2');
+    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(engine.players[0].resources.ore, 0);
+  });
+
+  it('CK-LOOP-01: shared turn clock pauses during Wedding/Harbor victim choice', () => {
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const roomManager = new RoomManager(mockIo);
+    const room = roomManager.createRoom(
+      { id: 'h1', name: 'Host', socketId: 's1' },
+      { mode: 'cities_knights', turnDuration: 15 }
+    );
+    roomManager.joinRoom(room.code, { id: 'p2', name: 'Guest', socketId: 's2' });
+    roomManager.setPlayerReady(room.code, 'p2', true);
+    roomManager.startGame(room.code, 'h1');
+
+    const engine = room.engine;
+    // Skip setup into action phase with Wedding pending choice.
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const [p1, p2] = engine.players;
+    p1.citiesBuilt = ['v1'];
+    p2.citiesBuilt = ['v2', 'v3'];
+    engine.grid.vertices.set('v1', { id: 'v1', building: { type: 'city', playerId: p1.id } });
+    engine.grid.vertices.set('v2', { id: 'v2', building: { type: 'city', playerId: p2.id } });
+    engine.grid.vertices.set('v3', { id: 'v3', building: { type: 'city', playerId: p2.id } });
+    p2.resources.wood = 3;
+    p1.progressCards.push({ id: 'c-wed-timer', type: 'wedding', played: false });
+
+    room.turnTimeRemaining = 8;
+    const res = engine.playProgressCard('h1', 'c-wed-timer');
+    assert.equal(res.pendingChoice, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.ok(roomManager.isInterruptClockPhase(engine));
+
+    for (let i = 0; i < 12; i++) roomManager.tickTurnTimer(room);
+    assert.equal(room.turnTimeRemaining, 8, 'shared turn clock must not tick during victim choice');
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE);
+    assert.ok(engine.pendingProgressChoice?.pending.has('p2'));
+
+    roomManager.handleTurnTimeout(room);
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_PROGRESS_RESPONSE, 'stale turn timeout must not steal card choice');
+    assert.ok(engine.pendingProgressChoice?.pending.has('p2'));
+
+    roomManager.destroyRoom(room.code);
   });
 
 });
