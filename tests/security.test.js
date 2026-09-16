@@ -101,3 +101,74 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
     network.currentPlayerId = null;
   });
 });
+
+describe('SEC-15: leave_room drops action authority while stand-in bot controls seat', () => {
+  function startedTwoPlayerRoom() {
+    const roomManager = new RoomManager({ to: () => ({ emit() {} }) });
+    const host = roomManager.createPlayerSession();
+    const guest = roomManager.createPlayerSession();
+    const room = roomManager.createRoom({
+      id: host.id,
+      name: 'Host',
+      socketId: 'host-socket',
+      reconnectTokenHash: host.reconnectTokenHash
+    });
+    roomManager.joinRoom(room.code, {
+      id: guest.id,
+      name: 'Guest',
+      socketId: 'guest-socket',
+      reconnectTokenHash: guest.reconnectTokenHash
+    });
+    roomManager.setPlayerReady(room.code, guest.id, true);
+    roomManager.startGame(room.code, host.id);
+    return { roomManager, room, host, guest };
+  }
+
+  it('revokes action authority for the old socket after stand-in replacement', () => {
+    const { roomManager, room, host, guest } = startedTwoPlayerRoom();
+
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), true);
+    assert.equal(roomManager.hasActionAuthority(room, host.id, 'host-socket'), true);
+
+    const replaced = roomManager.replaceDisconnectedPlayerWithBot(room.code, guest.id);
+    assert.ok(replaced);
+    assert.equal(replaced.isStandInBot, true);
+    assert.equal(replaced.socketId, null);
+
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, null), false);
+    assert.equal(roomManager.hasActionAuthority(room, host.id, 'host-socket'), true);
+
+    roomManager.destroyRoom(room.code);
+  });
+
+  it('restores action authority only after reconnect-token reclaim', () => {
+    const { roomManager, room, guest } = startedTwoPlayerRoom();
+    roomManager.replaceDisconnectedPlayerWithBot(room.code, guest.id);
+
+    const stolen = roomManager.joinRoom(room.code, {
+      socketId: 'attacker-socket',
+      id: guest.id,
+      allowLegacyId: false
+    });
+    assert.equal(stolen.reconnected, false);
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'attacker-socket'), false);
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
+
+    const back = roomManager.joinRoom(room.code, {
+      socketId: 'guest-reclaim',
+      reconnectToken: guest.reconnectToken,
+      allowLegacyId: false
+    });
+    assert.equal(back.reconnected, true);
+    assert.equal(back.playerId, guest.id);
+    const seat = room.players.find(p => p.id === guest.id);
+    assert.equal(seat.isBot, false);
+    assert.equal(seat.isStandInBot, false);
+    assert.equal(seat.socketId, 'guest-reclaim');
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-reclaim'), true);
+    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
+
+    roomManager.destroyRoom(room.code);
+  });
+});

@@ -286,6 +286,16 @@ export class RoomManager {
     if (enginePlayer) enginePlayer.isBot = false;
   }
 
+  // A socket may act as playerId only while it owns the live human seat.
+  // Leave/disconnect replaces the seat with a stand-in bot (socketId cleared);
+  // reconnect-token reclaim restores a matching socketId and human control.
+  hasActionAuthority(room, playerId, socketId) {
+    if (!room || !playerId || !socketId) return false;
+    const player = room.players.find(p => p.id === playerId);
+    if (!player || player.isBot || player.isStandInBot) return false;
+    return player.socketId === socketId;
+  }
+
   setPlayerReady(code, playerId, isReady) {
     const room = this.getRoom(code);
     if (!room || room.isStarted) return false;
