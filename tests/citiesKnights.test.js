@@ -1621,6 +1621,78 @@ describe('CK-12: Progress Card State', () => {
   });
 });
 
+describe('SEC-12: Progress draw fog-of-war', () => {
+  it('lets the owner see their own pending draw cardType', () => {
+    const engine = makeCkEngine();
+    engine.pendingProgressDraws = [
+      { playerId: 'p1', track: 'science', drawn: true, cardType: 'crane' }
+    ];
+    const self = engine.getStateForPlayer('p1');
+    assert.equal(self.pendingProgressDraws.length, 1);
+    assert.equal(self.pendingProgressDraws[0].playerId, 'p1');
+    assert.equal(self.pendingProgressDraws[0].track, 'science');
+    assert.equal(self.pendingProgressDraws[0].drawn, true);
+    assert.equal(self.pendingProgressDraws[0].cardType, 'crane');
+  });
+
+  it('never sends opponents cardType in pendingProgressDraws', () => {
+    const engine = makeCkEngine();
+    engine.pendingProgressDraws = [
+      { playerId: 'p1', track: 'science', drawn: true, cardType: 'crane' },
+      { playerId: 'p2', track: 'science', drawn: true, cardType: 'mining' }
+    ];
+
+    const asP2 = engine.getStateForPlayer('p2');
+    const p1Draw = asP2.pendingProgressDraws.find(d => d.playerId === 'p1');
+    const p2Draw = asP2.pendingProgressDraws.find(d => d.playerId === 'p2');
+    assert.equal('cardType' in p1Draw, false);
+    assert.equal(p1Draw.drawn, true);
+    assert.equal(p1Draw.track, 'science');
+    assert.equal(p2Draw.cardType, 'mining');
+
+    const payload = JSON.stringify(asP2.pendingProgressDraws);
+    assert.equal(payload.includes('crane'), false);
+    assert.equal(payload.includes('mining'), true);
+  });
+
+  it('reveals Constitution and Printer cardType to every client immediately', () => {
+    const engine = makeCkEngine();
+    engine.pendingProgressDraws = [
+      { playerId: 'p1', track: 'politics', drawn: true, cardType: 'constitution' },
+      { playerId: 'p2', track: 'science', drawn: true, cardType: 'printer' }
+    ];
+    const asP2 = engine.getStateForPlayer('p2');
+    assert.equal(asP2.pendingProgressDraws.find(d => d.playerId === 'p1').cardType, 'constitution');
+    const asP1 = engine.getStateForPlayer('p1');
+    assert.equal(asP1.pendingProgressDraws.find(d => d.playerId === 'p2').cardType, 'printer');
+  });
+
+  it('does not leak opponent cardType from a live color-die draw or roll result', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 4;
+    engine.players[1].cityImprovements.science = 2;
+    engine.progressDecks.science = [
+      { id: 's-p2', type: 'irrigation' },
+      { id: 's-p1', type: 'crane' }
+    ];
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const result = forceRoll(engine, 'p1', 2, 3, 5);
+
+    const p1RollDraw = result.progressDraws.find(d => d.playerId === 'p1');
+    const p2RollDraw = result.progressDraws.find(d => d.playerId === 'p2');
+    assert.equal(p1RollDraw.cardType, 'crane');
+    assert.equal('cardType' in p2RollDraw, false);
+
+    const asP2 = engine.getStateForPlayer('p2');
+    assert.equal('cardType' in asP2.pendingProgressDraws.find(d => d.playerId === 'p1'), false);
+    assert.equal(asP2.pendingProgressDraws.find(d => d.playerId === 'p2').cardType, 'irrigation');
+
+    const asP1 = engine.getStateForPlayer('p1');
+    assert.equal(asP1.pendingProgressDraws.find(d => d.playerId === 'p1').cardType, 'crane');
+    assert.equal('cardType' in asP1.pendingProgressDraws.find(d => d.playerId === 'p2'), false);
+  });
+});
+
 describe('CK-13: Bot AI C&K', () => {
   it('bot should place knight during TURN_ACTION in C&K mode', () => {
     const engine = makeCkEngine();
