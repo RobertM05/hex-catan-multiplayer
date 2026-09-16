@@ -456,6 +456,7 @@ export const STRINGS = {
     ERROR_CANNOT_TRADE_SAME_RESOURCE: "Cannot trade for the same resource.",
     ERROR_INVALID_TRADE_RATIO: "Invalid trade ratio.",
     ERROR_NOT_IN_ACTION_PHASE: "Action only allowed during action phase.",
+    ERROR_RATE_LIMITED: "Too many actions. Please wait a moment.",
     PAN_ZOOM_HINT: "Drag board to pan • Scroll wheel or pinch to zoom",
     SETUP_HINT_SETTLEMENT_1: "Setup 1/2: Choose an intersection to place your 1st settlement",
     SETUP_HINT_ROAD_1: "Setup 1/2: Choose an edge connected to your settlement for your 1st road",
