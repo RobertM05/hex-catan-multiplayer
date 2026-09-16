@@ -18,7 +18,8 @@ import {
   PROGRESS_CARD_HAND_LIMIT,
   AQUEDUCT_UNLOCK_LEVEL,
   KNIGHT_RANKS,
-  IMPROVEMENT_PERK_LEVEL
+  IMPROVEMENT_PERK_LEVEL,
+  KNIGHT_SUPPLY
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
@@ -2883,7 +2884,7 @@ describe('CK-11: Knight State in UI', () => {
     const engine = makeCkEngine();
     const self = engine.getStateForPlayer('p1').players.find(p => p.id === 'p1');
     const asOpponent = engine.getStateForPlayer('p2').players.find(p => p.id === 'p1');
-    assert.deepEqual(self.knightsAvailable, { basic: 2, strong: 2, mighty: 1 });
+    assert.deepEqual(self.knightsAvailable, { basic: 2, strong: 2, mighty: 2 });
     assert.equal(asOpponent.knightsAvailable, undefined);
     assert.ok(Array.isArray(self.knightsPlaced));
   });
@@ -3873,5 +3874,178 @@ describe('UX-01: Aqueduct resource chooser', () => {
     engine.endTurn('p1');
     assert.equal(engine.pendingAqueductClaims.has('p1'), false);
     assert.throws(() => engine.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_NOT_ELIGIBLE/);
+  });
+});
+
+describe('CK-37: Knight timing, road movement, displace, supply 2/2/2', () => {
+  function giveCard(player, type) {
+    const card = { id: `ck37-${type}-${player.progressCards.length}`, type, played: false, boughtTurn: 0 };
+    player.progressCards.push(card);
+    return card;
+  }
+
+  function extendRoad(engine, playerId, fromVertexId) {
+    const vertex = engine.grid.vertices.get(fromVertexId);
+    const edgeId = vertex.adjacentEdges.find(eid => !engine.grid.edges.get(eid).road);
+    assert.ok(edgeId, 'expected an unused edge to extend the road');
+    const edge = engine.grid.edges.get(edgeId);
+    edge.road = { playerId, color: '#e63946' };
+    engine.players.find(p => p.id === playerId).roadsBuilt.push(edgeId);
+    return { edge, otherVertexId: edge.v1 === fromVertexId ? edge.v2 : edge.v1 };
+  }
+
+  it('starts each player with 2 basic / 2 strong / 2 mighty', () => {
+    const engine = makeCkEngine();
+    assert.deepEqual(engine.players[0].knightsAvailable, KNIGHT_SUPPLY);
+    assert.deepEqual(engine.players[1].knightsAvailable, { basic: 2, strong: 2, mighty: 2 });
+  });
+
+  it('allows recruit then activate the same turn, but blocks further action', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 1;
+    engine.players[0].resources.wool = 1;
+    engine.players[0].resources.wheat = 1;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    engine.placeKnight('p1', vertex.id);
+    engine.activateKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
+    assert.throws(
+      () => engine.moveKnight('p1', vertex.id, otherVertexId),
+      /KNIGHT_ALREADY_ACTED_THIS_TURN/
+    );
+    const robberHex = engine.grid.robberHexId;
+    const chaseHex = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
+    assert.throws(
+      () => engine.chaseRobber('p1', vertex.id, chaseHex),
+      /KNIGHT_ALREADY_ACTED_THIS_TURN/
+    );
+  });
+
+  it('treats promote as not an action (legal on hire turn and after activate)', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.ore = 3;
+    engine.players[0].resources.wool = 3;
+    engine.players[0].resources.wheat = 1;
+    engine.players[0].cityImprovements.politics = 1;
+    const vertex = emptyVertex(engine);
+    giveRoad(engine, 'p1', vertex.id);
+    engine.placeKnight('p1', vertex.id);
+    engine.promoteKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.rank, 'strong');
+    engine.activateKnight('p1', vertex.id);
+    engine.players[0].cityImprovements.politics = 3;
+    engine.promoteKnight('p1', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.rank, 'mighty');
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
+  });
+
+  it('moves a knight along a continuous road, not only to an adjacent vertex', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const v0 = emptyVertex(engine);
+    const { otherVertexId: v1 } = giveRoad(engine, 'p1', v0.id);
+    const { otherVertexId: v2 } = extendRoad(engine, 'p1', v1);
+    plantKnight(engine, 'p1', v0.id, { active: true });
+    engine.moveKnight('p1', v0.id, v2);
+    assert.equal(engine.grid.vertices.get(v0.id).knight, null);
+    assert.equal(engine.grid.vertices.get(v2).knight.playerId, 'p1');
+    assert.equal(engine.players[0].knightsPlaced[0].active, false);
+  });
+
+  it('keeps displaced knight active/inactive and allows the vacated intersection', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'strong', active: true });
+    const victim = plantKnight(engine, 'p2', otherVertexId, { rank: 'basic', active: true });
+    const result = engine.moveKnight('p1', vertex.id, otherVertexId);
+    assert.equal(result.displaced.pending, true);
+    assert.equal(victim.active, true);
+    assert.ok(result.displaced.options.includes(vertex.id), 'vacated intersection must be legal');
+    engine.relocateDisplacedKnight('p2', vertex.id);
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.playerId, 'p2');
+    assert.equal(engine.grid.vertices.get(vertex.id).knight.active, true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('keeps an inactive displaced knight inactive after relocate', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'strong', active: true });
+    const victim = plantKnight(engine, 'p2', otherVertexId, { rank: 'basic', active: false });
+    engine.moveKnight('p1', vertex.id, otherVertexId);
+    engine.relocateDisplacedKnight('p2', vertex.id);
+    assert.equal(victim.active, false);
+  });
+
+  it('rejects Mighty promotion below Politics 3 and allows two Mighty in supply', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const v1 = emptyVertex(engine);
+    const v2 = emptyVertex(engine, v => v.id !== v1.id);
+    plantKnight(engine, 'p1', v1.id, { rank: 'strong' });
+    plantKnight(engine, 'p1', v2.id, { rank: 'strong' });
+    engine.players[0].resources.wool = 2;
+    engine.players[0].resources.ore = 2;
+    engine.players[0].cityImprovements.politics = 2;
+    assert.throws(() => engine.promoteKnight('p1', v1.id), /POLITICS_LEVEL_TOO_LOW/);
+    engine.players[0].cityImprovements.politics = 3;
+    engine.promoteKnight('p1', v1.id);
+    engine.promoteKnight('p1', v2.id);
+    assert.equal(engine.players[0].knightsPlaced.filter(k => k.rank === 'mighty').length, 2);
+    assert.equal(engine.players[0].knightsAvailable.mighty, 0);
+  });
+
+  it('Warlord activation is the knight action for that turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { active: false });
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'warlord').id, {});
+    assert.equal(engine.players[0].knightsPlaced[0].active, true);
+    assert.throws(
+      () => engine.moveKnight('p1', vertex.id, otherVertexId),
+      /KNIGHT_ALREADY_ACTED_THIS_TURN/
+    );
+  });
+
+  it('Warlord does not block an already-active knight that has not acted', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    const { otherVertexId } = giveRoad(engine, 'p1', vertex.id);
+    const knight = plantKnight(engine, 'p1', vertex.id, { active: true });
+    knight.lastActionTurn = engine.turnNumber - 1;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'warlord').id, {});
+    engine.moveKnight('p1', vertex.id, otherVertexId);
+    assert.equal(engine.grid.vertices.get(otherVertexId).knight.playerId, 'p1');
+  });
+
+  it('BotAI activates a knight recruited this turn and will not move a Warlord-activated knight', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.barbarianPosition = 5;
+    engine.players[0].resources.ore = 1;
+    engine.players[0].resources.wool = 1;
+    engine.players[0].resources.wheat = 1;
+    const vertex = emptyVertex(engine);
+    giveRoad(engine, 'p1', vertex.id);
+    engine.placeKnight('p1', vertex.id);
+    const activate = BotAI.decideCkTurnAction(engine, engine.players[0]);
+    assert.equal(activate?.action, 'activate_knight');
+    assert.equal(activate.vertexId, vertex.id);
+
+    engine.players[0].resources.wheat = 0;
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'warlord').id, {});
+    const afterWarlord = BotAI.decideCkTurnAction(engine, engine.players[0]);
+    assert.notEqual(afterWarlord?.action, 'move_knight');
+    assert.notEqual(afterWarlord?.action, 'chase_robber');
   });
 });

@@ -122,6 +122,9 @@ export const KNIGHT_RANKS = {
   mighty: { strength: 3, next: null, politicsRequired: IMPROVEMENT_PERK_LEVEL }
 };
 
+/** Per-player C&K knight figures: 2 basic / 2 strong / 2 mighty. */
+export const KNIGHT_SUPPLY = { basic: 2, strong: 2, mighty: 2 };
+
 export const COSTS = {
   ROAD: { wood: 1, brick: 1 },
   SETTLEMENT: { wood: 1, brick: 1, wool: 1, wheat: 1 },
@@ -306,7 +309,7 @@ export class GameEngine {
       resources: { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 },
       commodities: { cloth: 0, coin: 0, paper: 0 },
       cityImprovements: { trade: 0, politics: 0, science: 0 },
-      knightsAvailable: { basic: 2, strong: 2, mighty: 1 },
+      knightsAvailable: { ...KNIGHT_SUPPLY },
       knightsPlaced: [],
       cityWalls: CITY_WALL_SUPPLY, // remaining walls in supply (CK-01 / CK-08 count model)
       metropolis: { trade: false, politics: false, science: false },
@@ -1985,21 +1988,103 @@ export class GameEngine {
     if (vertex && vertex.knight === knight) vertex.knight = null;
   }
 
-  listKnightRelocations(playerId, fromVertexId, extraIgnore = []) {
+  knightHasActedThisTurn(knight) {
+    return Boolean(knight && knight.lastActionTurn === this.turnNumber);
+  }
+
+  assertKnightCanPerformAction(knight) {
+    if (this.knightHasActedThisTurn(knight)) {
+      throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
+    }
+  }
+
+  /**
+   * IRL C&K: knights travel any distance along a continuous chain of the owner's
+   * roads. Buildings may be passed; other knights block the path. Destination
+   * must be empty or a weaker opponent knight (displace).
+   */
+  listKnightMoveDestinations(playerId, fromVertexId, strength) {
+    const from = this.grid.vertices.get(fromVertexId);
+    if (!from) return [];
+    const destinations = [];
+    const visited = new Set([fromVertexId]);
+    const queue = [fromVertexId];
+    while (queue.length) {
+      const curId = queue.shift();
+      const cur = this.grid.vertices.get(curId);
+      if (!cur) continue;
+      for (const adjId of cur.adjacentVertices || []) {
+        if (visited.has(adjId)) continue;
+        if (!this.verticesSharePlayerRoad(curId, adjId, playerId)) continue;
+        const dest = this.grid.vertices.get(adjId);
+        if (!dest) continue;
+        visited.add(adjId);
+        if (dest.knight) {
+          if (dest.knight.playerId !== playerId && dest.knight.strength < strength) {
+            destinations.push(adjId);
+          }
+          continue;
+        }
+        if (dest.building) {
+          queue.push(adjId);
+          continue;
+        }
+        destinations.push(adjId);
+        queue.push(adjId);
+      }
+    }
+    return destinations;
+  }
+
+  listKnightRelocations(playerId, fromVertexId, extraAllow = []) {
     const from = this.grid.vertices.get(fromVertexId);
     if (!from) return [];
     const options = [];
-    for (const adjId of from.adjacentVertices) {
-      const dest = this.grid.vertices.get(adjId);
-      if (!dest || dest.building || dest.knight) continue;
-      if (!this.verticesSharePlayerRoad(fromVertexId, adjId, playerId)) continue;
-      options.push(adjId);
+    const seen = new Set();
+
+    const consider = (vid) => {
+      if (!vid || vid === fromVertexId || seen.has(vid)) return;
+      const dest = this.grid.vertices.get(vid);
+      if (!dest || dest.building || dest.knight) return;
+      seen.add(vid);
+      options.push(vid);
+    };
+
+    const visited = new Set([fromVertexId]);
+    const queue = [fromVertexId];
+    while (queue.length) {
+      const curId = queue.shift();
+      const cur = this.grid.vertices.get(curId);
+      if (!cur) continue;
+      for (const adjId of cur.adjacentVertices || []) {
+        if (visited.has(adjId)) continue;
+        if (!this.verticesSharePlayerRoad(curId, adjId, playerId)) continue;
+        visited.add(adjId);
+        const dest = this.grid.vertices.get(adjId);
+        if (!dest) continue;
+        if (dest.knight) continue;
+        if (dest.building) {
+          queue.push(adjId);
+          continue;
+        }
+        consider(adjId);
+        queue.push(adjId);
+      }
+    }
+
+    for (const vid of extraAllow) {
+      if (!vid) continue;
+      const dest = this.grid.vertices.get(vid);
+      if (!dest) continue;
+      const adjacent = (from.adjacentVertices || []).includes(vid);
+      const ownRoad = this.vertexHasPlayerRoad(dest, playerId);
+      if (adjacent || ownRoad) consider(vid);
     }
     return options;
   }
 
-  findKnightRelocation(playerId, fromVertexId, extraIgnore = []) {
-    return this.listKnightRelocations(playerId, fromVertexId, extraIgnore)[0] || null;
+  findKnightRelocation(playerId, fromVertexId, extraAllow = []) {
+    return this.listKnightRelocations(playerId, fromVertexId, extraAllow)[0] || null;
   }
 
   placeKnight(playerId, vertexId) {
@@ -2020,7 +2105,7 @@ export class GameEngine {
       active: false,
       strength: KNIGHT_RANKS.basic.strength,
       hiredTurn: this.turnNumber,
-      lastActionTurn: this.turnNumber
+      lastActionTurn: null
     };
     vertex.knight = knight;
     player.knightsPlaced.push(knight);
@@ -2037,8 +2122,7 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
-    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
-    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
+    this.assertKnightCanPerformAction(knight);
     if (knight.active) throw new Error('KNIGHT_ALREADY_ACTIVE');
     if (!this.hasResources(player, COSTS.ACTIVATE_KNIGHT)) throw new Error('NOT_ENOUGH_RESOURCES');
 
@@ -2058,10 +2142,6 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
-    if (!options.free) {
-      if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
-      if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
-    }
     const current = KNIGHT_RANKS[knight.rank];
     if (!current?.next) throw new Error('KNIGHT_MAX_RANK');
     const nextRank = current.next;
@@ -2077,7 +2157,6 @@ export class GameEngine {
     player.knightsAvailable[nextRank]--;
     knight.rank = nextRank;
     knight.strength = next.strength;
-    knight.lastActionTurn = this.turnNumber;
 
     this.logEvent({
       type: 'KNIGHT_PROMOTED',
@@ -2091,27 +2170,35 @@ export class GameEngine {
     const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     const knight = this.getKnightRecord(player, fromVertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
-    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
-    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
+    this.assertKnightCanPerformAction(knight);
     if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
     if (fromVertexId === toVertexId) throw new Error('INVALID_KNIGHT_MOVE');
-    if (!this.verticesSharePlayerRoad(fromVertexId, toVertexId, playerId)) {
-      throw new Error('MUST_MOVE_ALONG_OWN_ROAD');
-    }
 
     const dest = this.grid.vertices.get(toVertexId);
     if (!dest) throw new Error('INVALID_VERTEX');
     if (dest.building) throw new Error('VERTEX_OCCUPIED');
-
-    let displaced = null;
     if (dest.knight) {
       if (dest.knight.playerId === playerId) throw new Error('VERTEX_OCCUPIED');
       if (dest.knight.strength >= knight.strength) throw new Error('CANNOT_DISPLACE_EQUAL_OR_STRONGER');
-      displaced = this.displaceKnight(dest.knight, toVertexId, fromVertexId);
+    }
+
+    const reachable = this.listKnightMoveDestinations(playerId, fromVertexId, knight.strength);
+    if (!reachable.includes(toVertexId)) {
+      throw new Error(
+        this.verticesSharePlayerRoad(fromVertexId, toVertexId, playerId)
+          ? 'INVALID_KNIGHT_MOVE'
+          : 'MUST_MOVE_ALONG_OWN_ROAD'
+      );
     }
 
     const from = this.grid.vertices.get(fromVertexId);
     if (from) from.knight = null;
+
+    let displaced = null;
+    if (dest.knight) {
+      displaced = this.displaceKnight(dest.knight, toVertexId, fromVertexId);
+    }
+
     knight.vertexId = toVertexId;
     knight.active = false;
     knight.lastActionTurn = this.turnNumber;
@@ -2130,7 +2217,6 @@ export class GameEngine {
     const vacated = this.grid.vertices.get(fromVertexId);
     if (vacated && vacated.knight === victimKnight) vacated.knight = null;
 
-    victimKnight.active = false;
     victimKnight.vertexId = null;
 
     const options = owner
@@ -2167,7 +2253,6 @@ export class GameEngine {
     if (!dest || dest.building || dest.knight) throw new Error('VERTEX_OCCUPIED');
 
     knight.vertexId = vertexId;
-    knight.active = false;
     dest.knight = knight;
 
     this.pendingKnightRelocation = null;
@@ -2202,8 +2287,7 @@ export class GameEngine {
     if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
-    if (knight.hiredTurn === this.turnNumber) throw new Error('KNIGHT_CANNOT_ACT_ON_HIRED_TURN');
-    if (knight.lastActionTurn === this.turnNumber) throw new Error('KNIGHT_ALREADY_ACTED_THIS_TURN');
+    this.assertKnightCanPerformAction(knight);
     if (!knight.active) throw new Error('KNIGHT_NOT_ACTIVE');
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex || !vertex.hexes.includes(this.grid.robberHexId)) {
@@ -2780,7 +2864,7 @@ export class GameEngine {
             active: false,
             strength: KNIGHT_RANKS[placeRank].strength,
             hiredTurn: this.turnNumber,
-            lastActionTurn: this.turnNumber
+            lastActionTurn: null
           };
           dest.knight = knight;
           player.knightsPlaced.push(knight);
@@ -2836,7 +2920,10 @@ export class GameEngine {
       }
       case 'warlord':
         for (const knight of player.knightsPlaced || []) {
-          knight.active = true;
+          if (!knight.active) {
+            knight.active = true;
+            knight.lastActionTurn = this.turnNumber;
+          }
         }
         break;
       case 'saboteur': {
