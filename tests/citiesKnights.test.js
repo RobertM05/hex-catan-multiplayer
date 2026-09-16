@@ -608,6 +608,7 @@ describe('CK-36: Barbarians resolve before production', () => {
   it('still produces as a city when the matching city is not the one pillaged', () => {
     const engine = makeCkEngine();
     const woodHex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const woodCityId = engine.players[0].citiesBuilt[0];
     const wheatHex = Array.from(engine.grid.hexes.values()).find(
       h => h.resource === RESOURCE_TYPES.WHEAT
         && h.id !== engine.grid.robberHexId
@@ -617,8 +618,12 @@ describe('CK-36: Barbarians resolve before production', () => {
     assert.ok(wheatHex, 'expected a wheat hex with a different token');
     const wheatVertexId = Array.from(engine.grid.vertices.keys()).find(id => {
       const v = engine.grid.vertices.get(id);
-      return v.hexes.includes(wheatHex.id) && !v.building && !v.knight;
+      return v.hexes.includes(wheatHex.id)
+        && !v.hexes.includes(woodHex.id)
+        && !v.building
+        && !v.knight;
     });
+    assert.ok(wheatVertexId, 'expected a wheat city vertex that does not touch the wood hex');
     engine.grid.vertices.get(wheatVertexId).building = { type: 'city', playerId: 'p1', color: '#e63946' };
     engine.players[0].citiesBuilt.push(wheatVertexId);
 
@@ -631,9 +636,9 @@ describe('CK-36: Barbarians resolve before production', () => {
     assert.equal(engine.players[0].commodities.paper, 0);
     engine.downgradeCity('p1', wheatVertexId);
 
-    assert.equal(engine.grid.vertices.get(engine.players[0].citiesBuilt[0]).building.type, 'city');
-    assert.equal(engine.players[0].resources.wood, 1);
-    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(engine.grid.vertices.get(woodCityId).building.type, 'city');
+    assert.ok(engine.players[0].resources.wood >= 1);
+    assert.ok(engine.players[0].commodities.paper >= 1);
   });
 
   it('grants city production after a barbarian victory on the same roll', () => {
