@@ -348,6 +348,7 @@ export const STRINGS = {
     ROBBER_STEAL_TITLE: "Choose Player to Rob",
     STEAL_FROM_BTN: "Take from",
     STEAL_1_RES_BTN: "Steal 1 resource",
+    ERROR_STEAL_TARGET_REQUIRED: "Choose an adjacent player who has cards to steal from.",
     STOLE_RESOURCE_FROM: "You stole 1 {resource} from {player}!",
     ROBBER_NO_CARDS_TO_STEAL: "Robber moved. Adjacent opponents have no cards to steal.",
     ROBBER_MOVED_NO_TARGETS: "Robber moved. No adjacent opponents to rob.",
