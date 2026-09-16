@@ -2771,7 +2771,12 @@ export class GameEngine {
       this.clearPendingProgressPeek(card.id);
     }
 
-    if (result.peek) {
+    if (completingPeek) {
+      if (!PROGRESS_VP_CARD_TYPES.has(card.type)) {
+        const idx = player.progressCards.findIndex(c => c.id === card.id);
+        if (idx !== -1) player.progressCards.splice(idx, 1);
+        this.placeProgressCardUnderDeck(card);
+      }
       return result;
     }
 
@@ -2779,7 +2784,7 @@ export class GameEngine {
     if (this.pendingProgressDiscard && this.countUnplayedProgressCards(player) <= PROGRESS_CARD_HAND_LIMIT) {
       this.pendingProgressDiscard.delete(player.id);
     }
-    if (!PROGRESS_VP_CARD_TYPES.has(card.type)) {
+    if (!PROGRESS_VP_CARD_TYPES.has(card.type) && this.pendingProgressPeek?.cardId !== card.id) {
       const idx = player.progressCards.findIndex(c => c.id === card.id);
       if (idx !== -1) player.progressCards.splice(idx, 1);
       this.placeProgressCardUnderDeck(card);
