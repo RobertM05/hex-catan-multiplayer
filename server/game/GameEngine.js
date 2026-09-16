@@ -129,6 +129,55 @@ export const DEV_CARD_TYPES = {
 // How long players have to choose discard cards after a 7 before auto discard kicks in
 export const DISCARD_TIMEOUT_MS = 30000;
 
+/** Event types that name exact hidden resource/commodity gains. */
+export const FOW_TYPED_GAIN_LOG_TYPES = ['RESOURCE_PRODUCED', 'AQUEDUCT_RESOURCE', 'BOOTSTRAP_RESOURCES'];
+
+const HIDDEN_GAIN_MESSAGE_KEYS = {
+  RESOURCE_PRODUCED: 'LOG_RESOURCE_PRODUCED_HIDDEN',
+  AQUEDUCT_RESOURCE: 'LOG_AQUEDUCT_RESOURCE_HIDDEN',
+  BOOTSTRAP_RESOURCES: 'LOG_BOOTSTRAP_RESOURCES_HIDDEN'
+};
+
+function countCardMap(map) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return 0;
+  return Object.values(map).reduce((sum, n) => sum + (Number(n) || 0), 0);
+}
+
+/**
+ * Strip typed resource/commodity details from a log entry unless the viewer owns the gain.
+ * Opponents receive counts (or a generic message), never the card types.
+ */
+export function sanitizeEventLogEntryForPlayer(entry, viewerId) {
+  if (!entry || !FOW_TYPED_GAIN_LOG_TYPES.includes(entry.type)) return entry;
+  const args = entry.args && typeof entry.args === 'object' ? entry.args : {};
+  const isOwner = Boolean(viewerId) && args.playerId === viewerId;
+  if (isOwner) {
+    return { ...entry, args: { ...args } };
+  }
+
+  const publicArgs = {
+    playerName: args.playerName,
+    playerId: args.playerId
+  };
+  if (entry.type === 'RESOURCE_PRODUCED') {
+    publicArgs.amount = args.amount;
+  } else if (entry.type === 'AQUEDUCT_RESOURCE') {
+    publicArgs.amount = 1;
+  } else {
+    publicArgs.count = args.count != null ? args.count : countCardMap(args.resources);
+  }
+  return {
+    ...entry,
+    messageKey: HIDDEN_GAIN_MESSAGE_KEYS[entry.type] || entry.messageKey,
+    args: publicArgs
+  };
+}
+
+export function sanitizeEventLogForPlayer(eventLog, viewerId) {
+  if (!Array.isArray(eventLog)) return [];
+  return eventLog.map(entry => sanitizeEventLogEntryForPlayer(entry, viewerId));
+}
+
 export class GameEngine {
   constructor(options = {}) {
     this.roomId = options.roomId || 'default-room';
@@ -804,7 +853,7 @@ export class GameEngine {
       this.logEvent({
         type: 'BOOTSTRAP_RESOURCES',
         messageKey: 'LOG_BOOTSTRAP_RESOURCES',
-        args: { playerName: player.name, resources: production[player.id] }
+        args: { playerId: player.id, playerName: player.name, resources: production[player.id] }
       });
     }
 
@@ -1017,6 +1066,7 @@ export class GameEngine {
             type: 'RESOURCE_PRODUCED',
             messageKey: 'LOG_RESOURCE_PRODUCED',
             args: {
+              playerId: p.id,
               playerName: p.name,
               amount: pProd[res],
               resource: res
@@ -1053,7 +1103,7 @@ export class GameEngine {
           this.logEvent({
             type: 'AQUEDUCT_RESOURCE',
             messageKey: 'LOG_AQUEDUCT_RESOURCE',
-            args: { playerName: player.name, resource: chosenRes }
+            args: { playerId: player.id, playerName: player.name, resource: chosenRes }
           });
         }
       }
@@ -1071,7 +1121,7 @@ export class GameEngine {
     this.logEvent({
       type: 'AQUEDUCT_RESOURCE',
       messageKey: 'LOG_AQUEDUCT_RESOURCE',
-      args: { playerName: player.name, resource }
+      args: { playerId: player.id, playerName: player.name, resource }
     });
     return { resource };
   }
@@ -3201,7 +3251,7 @@ export class GameEngine {
       longestRoadHolder: this.longestRoadHolder,
       largestArmyHolder: this.largestArmyHolder,
       devCardsRemaining: this.devCardDeck.length,
-      eventLog: this.eventLog.slice(-100),
+      eventLog: sanitizeEventLogForPlayer(this.eventLog.slice(-100), playerId),
       players: this.players.map(p => {
         const isSelf = p.id === playerId;
         return {
