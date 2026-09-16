@@ -534,7 +534,12 @@ export class RoomManager {
         }
       } else if (engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
         engine.autoResolveKnightRelocation();
-      } else if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
+      } else if (engine.phase === GAME_PHASES.TURN_ACTION) {
+        // AFK humans over the progress-card hand limit cannot endTurn; force the
+        // same auto-discard bots already do so the table cannot softlock forever.
+        if (engine.isCitiesKnights()) {
+          engine.autoDiscardProgressCards(curPlayer.id, (p) => BotAI.decideProgressDiscard(p));
+        }
         engine.endTurn(curPlayer.id);
       }
 
