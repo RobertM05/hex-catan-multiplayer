@@ -312,6 +312,7 @@ export class GameEngine {
       metropolis: { trade: false, politics: false, science: false },
       progressCards: [],
       merchantFleetActive: false,
+      merchantFleetResource: null,
       devCards: [], // { type, boughtTurn, played }
       playedKnights: 0,
       settlementsRemaining: 5,
@@ -852,7 +853,7 @@ export class GameEngine {
 
   getBestBankTradeRatio(player, giveRes) {
     let bestRatio = 4;
-    if (player.merchantFleetActive) {
+    if (player.merchantFleetResource && player.merchantFleetResource === giveRes) {
       bestRatio = 2;
     } else if (this.hasTradingHouse(player) && COMMODITY_VALUES.includes(giveRes)) {
       bestRatio = 2;
@@ -875,6 +876,10 @@ export class GameEngine {
       }
     }
     return bestRatio;
+  }
+
+  getBestBankRatio(player, giveRes) {
+    return this.getBestBankTradeRatio(player, giveRes);
   }
 
   getPlayerCardCount(player, type) {
@@ -2621,9 +2626,14 @@ export class GameEngine {
         result.commodity = commodity;
         break;
       }
-      case 'merchant_fleet':
+      case 'merchant_fleet': {
+        const resource = options.resource;
+        if (!resource || !this.isTradableType(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
         player.merchantFleetActive = true;
+        player.merchantFleetResource = resource;
+        result.resource = resource;
         break;
+      }
       case 'merchant': {
         const hexId = options.hexId;
         if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
@@ -3234,6 +3244,7 @@ export class GameEngine {
     this.devCardPlayedThisTurn = false;
     this.clearAqueductRoll();
     player.merchantFleetActive = false;
+    player.merchantFleetResource = null;
     player.craneDiscount = false;
     player.medicineActive = false;
     player.hasProposedTradeThisTurn = false;
@@ -3831,6 +3842,7 @@ export class GameEngine {
           commodities: isSelf ? p.commodities : { total: this.countCommodities(p) },
           cityImprovements: p.cityImprovements,
           merchantFleetActive: isSelf ? p.merchantFleetActive : undefined,
+          merchantFleetResource: isSelf ? p.merchantFleetResource : undefined,
           knightsAvailable: isSelf ? p.knightsAvailable : undefined,
           knightsPlaced: p.knightsPlaced,
           cityWalls: p.cityWalls,

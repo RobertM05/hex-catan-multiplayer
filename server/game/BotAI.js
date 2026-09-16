@@ -452,6 +452,21 @@ export class BotAI {
     return engine.getBestBankTradeRatio(botPlayer, giveRes);
   }
 
+  static chooseMerchantFleetType(engine, me) {
+    const types = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    if (this.isCk(engine)) types.push('cloth', 'coin', 'paper');
+    let best = types[0];
+    let bestCount = -1;
+    for (const type of types) {
+      const n = engine.getPlayerCardCount(me, type);
+      if (n > bestCount) {
+        bestCount = n;
+        best = type;
+      }
+    }
+    return best;
+  }
+
   static isCk(engine) {
     return engine.mode === GAME_MODES.CITIES_KNIGHTS || engine.isCitiesKnights?.();
   }
@@ -644,7 +659,11 @@ export class BotAI {
     }
     const fleet = cards.find(c => c.type === 'merchant_fleet');
     if (fleet && engine.countTotalCards(me) >= 7) {
-      return { action: 'play_progress_card', cardId: fleet.id, options: {} };
+      return {
+        action: 'play_progress_card',
+        cardId: fleet.id,
+        options: { resource: this.chooseMerchantFleetType(engine, me) }
+      };
     }
     const crane = cards.find(c => c.type === 'crane');
     if (crane && this.chooseBestImprovementTrack(engine, me)) {

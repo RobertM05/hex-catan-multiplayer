@@ -2257,7 +2257,7 @@ export class CatanApp {
       if (candidate) me = candidate;
     }
     if (!me) return 4;
-    if (me.merchantFleetActive) return 2;
+    if (me.merchantFleetResource && me.merchantFleetResource === resource) return 2;
     if ((me.cityImprovements?.trade || 0) >= 3 && this.isCommodity(resource)) return 2;
     if (this.gameState.merchantHolder === this.myPlayerId && this.gameState.merchantHexId) {
       const hex = this.gameState.grid.hexes?.[this.gameState.merchantHexId];
@@ -2350,11 +2350,16 @@ export class CatanApp {
 
       let ratioClass = '';
       let ratioTag = `${ratio}:1 Bank`;
-      const tradingHouse = ratio === 2 && !me?.merchantFleetActive
-        && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(res);
-      if (tradingHouse) {
+      if (ratio === 2 && me?.merchantFleetResource === res) {
+        ratioClass = 'harbor-special';
+        ratioTag = i18n.t('BANK_FLEET_RATIO_TAG');
+      } else if (ratio === 2 && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(res)) {
         ratioClass = 'harbor-special';
         ratioTag = i18n.t('BANK_TRADING_HOUSE');
+      } else if (ratio === 2) {
+        ratioClass = 'harbor-special';
+        ratioTag = `2:1 Port`;
+      }
       } else if (ratio === 2) {
         ratioClass = 'harbor-special';
         ratioTag = `2:1 Port`;
@@ -2418,12 +2423,17 @@ export class CatanApp {
 
       if (ratioTextEl) ratioTextEl.textContent = i18n.t('BANK_RATE_VALUE', { ratio });
       if (ratioDescEl) {
-        const tradingHouse = ratio === 2 && !me?.merchantFleetActive
-          && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(this.bankTrade.give);
-        if (tradingHouse) ratioDescEl.textContent = i18n.t('BANK_TRADING_HOUSE_APPLIED');
-        else if (ratio === 2) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
-        else if (ratio === 3) ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_3');
-        else ratioDescEl.textContent = i18n.t('BANK_STANDARD_RATIO');
+        if (ratio === 2 && me?.merchantFleetResource === this.bankTrade.give) {
+          ratioDescEl.textContent = i18n.t('BANK_FLEET_APPLIED_2', { res: giveName });
+        } else if (ratio === 2 && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(this.bankTrade.give)) {
+          ratioDescEl.textContent = i18n.t('BANK_TRADING_HOUSE_APPLIED');
+        } else if (ratio === 2) {
+          ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
+        } else if (ratio === 3) {
+          ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_3');
+        } else {
+          ratioDescEl.textContent = i18n.t('BANK_STANDARD_RATIO');
+        }
       }
 
       if (giveSummaryEl) {
@@ -3022,6 +3032,24 @@ export class CatanApp {
       return;
     }
 
+    if (type === 'merchant_fleet') {
+      const types = this.getHandCardTypes();
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE_OR_COMMODITY')}</div>
+        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;">
+          ${types.map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${this.cardLabel(r)}</button>`).join('')}
+        </div>`;
+      if (playBtn) playBtn.disabled = true;
+      box.querySelectorAll('.res-choice-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.resource = b.dataset.res;
+          box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
     if (type === 'commercial_harbor') {
       const available = ['wood','brick','wool','wheat','ore'].filter(r => (me?.resources?.[r] || 0) > 0);
       const opponentsWithCom = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId && this.countPlayerCommodities(p) > 0);
@@ -3488,6 +3516,10 @@ export class CatanApp {
     if (play.card.type === 'alchemist') {
       options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
       options.d2 = parseInt(document.getElementById('alchemist-d2')?.value, 10);
+    }
+    if (play.card.type === 'merchant_fleet' && !options.resource) {
+      this.showToast(i18n.t('ERROR_SPECIFY_VALID_RESOURCE'), true);
+      return;
     }
     if (play.card.type === 'spy' && !options.stealCardId) {
       options.peek = true;

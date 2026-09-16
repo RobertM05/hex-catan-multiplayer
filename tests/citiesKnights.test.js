@@ -1642,7 +1642,7 @@ describe('CK-05: Trade Progress Cards', () => {
     assert.equal(engine.countUnplayedProgressCards(engine.players[0]), 5);
 
     // Playing merchant_fleet reduces unplayed to 4
-    engine.playProgressCard('p1', 'trade-merchant_fleet-test');
+    engine.playProgressCard('p1', 'trade-merchant_fleet-test', { resource: 'wood' });
     assert.equal(engine.countUnplayedProgressCards(engine.players[0]), 4);
     assert.equal(engine.pendingProgressDiscard.has('p1'), false);
     assert.doesNotThrow(() => {
@@ -1676,16 +1676,93 @@ describe('CK-05: Trade Progress Cards', () => {
     assert.equal(engine.players[0].resources.wool, 0);
   });
 
-  it('should execute Merchant Fleet: enable 2:1 bank trades for rest of turn', () => {
+  it('should execute Merchant Fleet: 2:1 bank trades for the named type only', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     engine.players[0].resources.wood = 2;
+    engine.players[0].resources.wool = 4;
     const card = giveCard(engine.players[0], 'merchant_fleet');
-    engine.playProgressCard('p1', card.id, {});
+    const played = engine.playProgressCard('p1', card.id, { resource: 'wood' });
+    assert.equal(played.resource, 'wood');
+    assert.equal(engine.players[0].merchantFleetActive, true);
+    assert.equal(engine.players[0].merchantFleetResource, 'wood');
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'wood'), 2);
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'wool'), 4);
+
     const trade = engine.tradeWithBank('p1', 'wood', 'brick', 2);
     assert.equal(trade.ratio, 2);
     assert.equal(engine.players[0].resources.wood, 0);
     assert.equal(engine.players[0].resources.brick, 1);
+
+    assert.throws(() => engine.tradeWithBank('p1', 'wool', 'ore', 2), /INVALID_TRADE_RATIO/);
+    engine.tradeWithBank('p1', 'wool', 'ore', 4);
+    assert.equal(engine.players[0].resources.wool, 0);
+    assert.equal(engine.players[0].resources.ore, 1);
+  });
+
+  it('Merchant Fleet requires choosing one tradable type', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    assert.throws(() => engine.playProgressCard('p1', card.id, {}), /SPECIFY_VALID_RESOURCE/);
+    assert.throws(() => engine.playProgressCard('p1', card.id, { resource: 'gold' }), /SPECIFY_VALID_RESOURCE/);
+    assert.equal(card.played, false);
+  });
+
+  it('Merchant Fleet 2:1 can name a commodity; other types keep normal ratios', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].commodities.cloth = 2;
+    engine.players[0].resources.wood = 4;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    engine.playProgressCard('p1', card.id, { resource: 'cloth' });
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'cloth'), 2);
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'wood'), 4);
+    engine.tradeWithBank('p1', 'cloth', 'ore', 2);
+    assert.equal(engine.players[0].commodities.cloth, 0);
+    assert.equal(engine.players[0].resources.ore, 1);
+    assert.throws(() => engine.tradeWithBank('p1', 'wood', 'brick', 2), /INVALID_TRADE_RATIO/);
+  });
+
+  it('Merchant Fleet expires at end of turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].resources.wood = 2;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    engine.playProgressCard('p1', card.id, { resource: 'wood' });
+    assert.equal(engine.players[0].merchantFleetResource, 'wood');
+    engine.endTurn('p1');
+    assert.equal(engine.players[0].merchantFleetActive, false);
+    assert.equal(engine.players[0].merchantFleetResource, null);
+  });
+
+  it('Merchant Fleet leaves harbor ratios intact for unnamed types', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const v1 = Array.from(engine.grid.vertices.keys())[0];
+    engine.grid.vertices.get(v1).harbor = { type: 'generic', ratio: 3 };
+    engine.players[0].settlementsBuilt.push(v1);
+    engine.players[0].resources.wood = 2;
+    engine.players[0].resources.brick = 3;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    engine.playProgressCard('p1', card.id, { resource: 'wood' });
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'wood'), 2);
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'brick'), 3);
+    engine.tradeWithBank('p1', 'brick', 'wool', 3);
+    assert.equal(engine.players[0].resources.brick, 0);
+    assert.equal(engine.players[0].resources.wool, 1);
+  });
+
+  it('self game state includes the named Merchant Fleet type', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const card = giveCard(engine.players[0], 'merchant_fleet');
+    engine.playProgressCard('p1', card.id, { resource: 'ore' });
+    const selfState = engine.getStateForPlayer('p1');
+    assert.equal(selfState.players[0].merchantFleetActive, true);
+    assert.equal(selfState.players[0].merchantFleetResource, 'ore');
+    const oppState = engine.getStateForPlayer('p2');
+    assert.equal(oppState.players[0].merchantFleetResource, undefined);
   });
 
   it('should execute Merchant: place on hex, grant 2:1 and 1 VP', () => {
@@ -2416,6 +2493,21 @@ describe('CK-13: Bot AI C&K', () => {
     BotAI.applyTurnAction(engine, bot, action);
     assert.equal(bot.commodities.coin, 1);
     assert.equal(opp.commodities.coin, 1);
+  });
+
+  it('bot plays Merchant Fleet with a named resource type', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].isBot = true;
+    engine.players[0].resources = { wood: 5, brick: 1, wool: 1, wheat: 0, ore: 0 };
+    engine.players[0].progressCards.push({ id: 'fleet1', type: 'merchant_fleet', played: false, boughtTurn: 0 });
+    const action = BotAI.decideTurnAction(engine, engine.players[0]);
+    assert.equal(action.action, 'play_progress_card');
+    assert.equal(action.options.resource, 'wood');
+    BotAI.applyTurnAction(engine, engine.players[0], action);
+    assert.equal(engine.players[0].merchantFleetResource, 'wood');
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'wood'), 2);
+    assert.equal(engine.getBestBankRatio(engine.players[0], 'brick'), 4);
   });
 
   it('full bot-only C&K game should complete without errors', () => {
