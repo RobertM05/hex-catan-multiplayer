@@ -510,6 +510,8 @@ export const STRINGS = {
     ERROR_AQUEDUCT_NOT_UNLOCKED: "Aqueduct requires Science improvement level 3.",
     ERROR_AQUEDUCT_NOT_ELIGIBLE: "Aqueduct can only be claimed once after a production roll that gave you nothing (not a 7).",
     ERROR_AQUEDUCT_ALREADY_CLAIMED: "You already claimed your Aqueduct resource for this roll.",
+    AQUEDUCT_SELECT_TITLE: "Aqueduct: Choose 1 Resource",
+    AQUEDUCT_SELECT_BODY: "Your production roll yielded nothing. Take any 1 resource from the bank.",
     IMPROVEMENTS_TITLE: "City Improvements",
     TRACK_TRADE: "Trade",
     TRACK_POLITICS: "Politics",
