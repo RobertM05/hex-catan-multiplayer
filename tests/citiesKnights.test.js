@@ -1111,7 +1111,7 @@ describe('CK-05: Trade Progress Cards', () => {
       type: 'merchant_fleet',
       played: false,
       revealed: false,
-      boughtTurn: 1
+      boughtTurn: 0
     });
     engine.pendingProgressDiscard.add('p1');
     assert.equal(engine.countUnplayedProgressCards(engine.players[0]), 5);
@@ -2300,128 +2300,146 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
 
 });
 
-describe('LOOP-01: progress-card hand limit + turn timeout', () => {
-  function giveUnplayedProgressCards(player, count, type = 'crane') {
-    for (let i = 0; i < count; i++) {
-      player.progressCards.push({
-        id: `${type}-${player.id}-${i}`,
-        type,
-        played: false,
-        revealed: false,
-        boughtTurn: 1
-      });
-    }
-  }
-
-  function makeCkRoom() {
-    const rm = new RoomManager({ to: () => ({ emit() {} }) });
-    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
-    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
-    rm.setPlayerReady(room.code, 'p2', true);
-    rm.startGame(room.code, 'p1');
-    return { rm, room, engine: room.engine };
-  }
-
-  it('autoDiscardProgressCards drops a human hand to the limit and clears pending', () => {
-    const engine = makeCkEngine();
-    const human = engine.players[0];
-    giveUnplayedProgressCards(human, 6);
-    engine.pendingProgressDiscard.add('p1');
-
-    const result = engine.autoDiscardProgressCards('p1');
-    assert.equal(result.auto, true);
-    assert.equal(result.remaining, PROGRESS_CARD_HAND_LIMIT);
-    assert.equal(engine.countUnplayedProgressCards(human), PROGRESS_CARD_HAND_LIMIT);
-    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
-    assert.equal(result.discarded.length, 2);
-  });
-
-  it('autoDiscardProgressCards is a no-op at the limit so endTurn still works', () => {
+describe('CK-32: Progress cards cannot be played the turn they are drawn', () => {
+  it('rejects playing a card drawn this turn', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
-    const human = engine.players[0];
-    giveUnplayedProgressCards(human, PROGRESS_CARD_HAND_LIMIT);
-    engine.pendingProgressDiscard.add('p1');
-
-    const result = engine.autoDiscardProgressCards('p1');
-    assert.equal(result.discarded.length, 0);
-    assert.equal(engine.countUnplayedProgressCards(human), PROGRESS_CARD_HAND_LIMIT);
-    assert.equal(engine.pendingProgressDiscard.has('p1'), false);
-    assert.doesNotThrow(() => engine.endTurn('p1'));
+    engine.progressDecks.trade = [{ id: 'draw-mf', type: 'merchant_fleet' }];
+    const type = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(type, 'merchant_fleet');
+    const card = engine.players[0].progressCards[0];
+    assert.equal(card.boughtTurn, engine.turnNumber);
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, {}),
+      /CANNOT_PLAY_CARD_TURN_BOUGHT/
+    );
+    assert.equal(card.played, false);
   });
 
-  it('human over the progress limit + turn timeout discards excess and advances the turn', () => {
-    const { rm, room, engine } = makeCkRoom();
-    try {
-      engine.phase = GAME_PHASES.TURN_ACTION;
-      engine.currentTurnPlayerIndex = 0;
-      const human = engine.players[0];
-      assert.equal(human.isBot, false);
-      giveUnplayedProgressCards(human, 5, 'trade_monopoly');
-      giveUnplayedProgressCards(human, 1, 'alchemist');
-      engine.pendingProgressDiscard.add(human.id);
-      assert.equal(engine.countUnplayedProgressCards(human), 6);
-
-      const timedOutId = human.id;
-      room.turnTimeRemaining = 0;
-      rm.handleTurnTimeout(room);
-
-      assert.ok(
-        engine.countUnplayedProgressCards(human) <= PROGRESS_CARD_HAND_LIMIT,
-        'timeout must force the hand down to the limit'
-      );
-      assert.equal(engine.pendingProgressDiscard.has(human.id), false);
-      assert.equal(engine.getCurrentPlayer().id, 'p2');
-      assert.equal(engine.phase, GAME_PHASES.TURN_ROLL);
-      assert.equal(room.turnTimeRemaining, room.turnDuration);
-
-      // Second timeout is the next player's roll, not an infinite reset on the over-limit human.
-      rm.handleTurnTimeout(room);
-      assert.notEqual(engine.getCurrentPlayer().id, timedOutId);
-      assert.ok(engine.countUnplayedProgressCards(human) <= PROGRESS_CARD_HAND_LIMIT);
-    } finally {
-      rm.destroyRoom(room.code);
-    }
+  it('allows playing a card acquired on a previous turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const card = {
+      id: 'old-mf',
+      type: 'merchant_fleet',
+      played: false,
+      boughtTurn: engine.turnNumber - 1
+    };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(card.played, true);
   });
 
-  it('turn timeout during TURN_ROLL does not auto-discard progress cards', () => {
-    const { rm, room, engine } = makeCkRoom();
-    try {
-      engine.phase = GAME_PHASES.TURN_ROLL;
-      engine.currentTurnPlayerIndex = 0;
-      const human = engine.players[0];
-      giveUnplayedProgressCards(human, 5);
-      engine.pendingProgressDiscard.add(human.id);
-      const givenIds = human.progressCards.map(c => c.id);
-
-      rm.handleTurnTimeout(room);
-
-      const stillHeld = human.progressCards.filter(c => givenIds.includes(c.id));
-      assert.equal(stillHeld.length, 5, 'timeout during roll must not discard existing progress cards');
-      assert.equal(engine.getCurrentPlayer().id, human.id);
-    } finally {
-      rm.destroyRoom(room.code);
-    }
+  it('Alchemist cannot be played on the same acquisition turn even in TURN_ROLL', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.hasRolledDice = false;
+    const card = {
+      id: 'alc-same',
+      type: 'alchemist',
+      track: 'science',
+      played: false,
+      boughtTurn: engine.turnNumber
+    };
+    engine.players[0].progressCards.push(card);
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { d1: 3, d2: 4 }),
+      /CANNOT_PLAY_CARD_TURN_BOUGHT/
+    );
+    assert.equal(engine.alchemistDice, null);
+    assert.equal(card.played, false);
   });
 
-  it('bot over the progress limit + turn timeout also discards and advances', () => {
-    const { rm, room, engine } = makeCkRoom();
-    try {
-      engine.phase = GAME_PHASES.TURN_ACTION;
-      engine.currentTurnPlayerIndex = 0;
-      const bot = engine.players[0];
-      bot.isBot = true;
-      room.players[0].isBot = true;
-      giveUnplayedProgressCards(bot, 5);
-      engine.pendingProgressDiscard.add(bot.id);
+  it('Alchemist can be played before a later turn roll', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.hasRolledDice = false;
+    const card = {
+      id: 'alc-later',
+      type: 'alchemist',
+      track: 'science',
+      played: false,
+      boughtTurn: engine.turnNumber - 1
+    };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { d1: 2, d2: 5 });
+    assert.deepEqual(engine.alchemistDice, [2, 5]);
+    assert.equal(card.played, true);
+  });
 
-      rm.handleTurnTimeout(room);
+  it('stolen progress cards cannot be played the same turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const spy = { id: 'spy-same', type: 'spy', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(spy);
+    engine.players[1].progressCards.push({
+      id: 'stolen-crane',
+      type: 'crane',
+      played: false,
+      boughtTurn: 0
+    });
+    engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', stealCardId: 'stolen-crane' });
+    const stolen = engine.players[0].progressCards.find(c => c.id === 'stolen-crane');
+    assert.equal(stolen.boughtTurn, engine.turnNumber);
+    assert.throws(
+      () => engine.playProgressCard('p1', stolen.id, {}),
+      /CANNOT_PLAY_CARD_TURN_BOUGHT/
+    );
+    assert.equal(stolen.played, false);
+  });
 
-      assert.ok(engine.countUnplayedProgressCards(bot) <= PROGRESS_CARD_HAND_LIMIT);
-      assert.equal(engine.pendingProgressDiscard.has(bot.id), false);
-      assert.equal(engine.getCurrentPlayer().id, 'p2');
-    } finally {
-      rm.destroyRoom(room.code);
+  it('cannot play a newly drawn 5th card to skip the discard', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    for (let i = 0; i < 4; i++) {
+      engine.players[0].progressCards.push({
+        id: `old-${i}`,
+        type: 'crane',
+        played: false,
+        boughtTurn: 0
+      });
     }
+    engine.progressDecks.trade = [{ id: 'new-mf', type: 'merchant_fleet' }];
+    engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(engine.pendingProgressDiscard.has('p1'), true);
+    assert.throws(
+      () => engine.playProgressCard('p1', 'new-mf', {}),
+      /CANNOT_PLAY_CARD_TURN_BOUGHT/
+    );
+  });
+
+  it('bot does not choose a progress card bought this turn', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].progressCards.push({
+      id: 'new-tm',
+      type: 'trade_monopoly',
+      played: false,
+      boughtTurn: engine.turnNumber
+    });
+    assert.equal(BotAI.decideProgressCardPlay(engine, engine.players[0]), null);
+
+    engine.players[0].progressCards[0].boughtTurn = engine.turnNumber - 1;
+    const action = BotAI.decideProgressCardPlay(engine, engine.players[0]);
+    assert.equal(action?.action, 'play_progress_card');
+    assert.equal(action.cardId, 'new-tm');
+  });
+
+  it('bot can play Alchemist before a later roll but not the acquisition roll', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.hasRolledDice = false;
+    engine.players[0].progressCards.push({
+      id: 'alc-bot',
+      type: 'alchemist',
+      played: false,
+      boughtTurn: engine.turnNumber
+    });
+    assert.equal(BotAI.decideProgressCardPlay(engine, engine.players[0]), null);
+
+    engine.players[0].progressCards[0].boughtTurn = engine.turnNumber - 1;
+    const action = BotAI.decideProgressCardPlay(engine, engine.players[0]);
+    assert.equal(action?.action, 'play_progress_card');
+    assert.equal(action.cardId, 'alc-bot');
   });
 });

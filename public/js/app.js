@@ -14,7 +14,9 @@ import {
   getProgressDeck,
   PROGRESS_CARD_ICONS,
   unplayedProgressCards,
-  revealedProgressCards
+  revealedProgressCards,
+  isProgressCardBoughtThisTurn,
+  progressCardHandModifiers
 } from './progressCards.js';
 import { TurnTimerUI } from './turnTimer.js';
 import { confetti } from './confetti.js';
@@ -2583,9 +2585,15 @@ export class CatanApp {
         const deck = getProgressDeck(card.type);
         const name = i18n.t(`CARD_${card.type.toUpperCase()}`);
         const desc = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
-        return `<button type="button" class="progress-card card-${deck} progress-card-reveal" data-card-id="${card.id}" title="${desc}">
+        const mods = progressCardHandModifiers(card, this.gameState?.turnNumber);
+        const title = mods.locked ? i18n.t(mods.titleKey) : desc;
+        const lockMarkup = mods.locked
+          ? `<span class="dev-card-rule-badge progress-card-lock-badge">${i18n.t(mods.badgeKey)}</span>`
+          : '';
+        return `<button type="button" class="progress-card card-${deck} progress-card-reveal${mods.extraClass ? ` ${mods.extraClass}` : ''}" data-card-id="${card.id}" title="${title}">
           <span class="card-icon">${PROGRESS_CARD_ICONS[card.type] || '◆'}</span>
           <span class="card-name">${name}</span>
+          ${lockMarkup}
         </button>`;
       }).join('');
       hand.querySelectorAll('.progress-card').forEach(el => {
@@ -2661,6 +2669,10 @@ export class CatanApp {
     document.getElementById('progress-card-modal-title').textContent = i18n.t(`CARD_${card.type.toUpperCase()}`);
     document.getElementById('progress-card-modal-desc').textContent = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
     this.renderCardTargetSelector(card);
+    const playBtn = document.getElementById('btn-play-progress-card');
+    if (playBtn && isProgressCardBoughtThisTurn(card, this.gameState?.turnNumber)) {
+      playBtn.disabled = true;
+    }
     modal.classList.add('active');
   }
 
@@ -2698,7 +2710,14 @@ export class CatanApp {
     const type = card.type;
     const me = this.getMe();
     const isMyTurn = this.gameState?.currentPlayerId === this.myPlayerId;
-    const isActionPhase = this.gameState?.phase === 'TURN_ACTION' && isMyTurn;
+    const boughtThisTurn = isProgressCardBoughtThisTurn(card, this.gameState?.turnNumber);
+    const isActionPhase = this.gameState?.phase === 'TURN_ACTION' && isMyTurn && !boughtThisTurn;
+
+    if (boughtThisTurn) {
+      box.innerHTML = `<div class="progress-bought-lock"><span class="dev-card-rule-badge">${escapeHtml(i18n.t('CANNOT_PLAY_TURN_BOUGHT'))}</span></div>`;
+      if (playBtn) playBtn.disabled = true;
+      return;
+    }
 
     if (type === 'alchemist') {
       box.innerHTML = `<div class="alchemist-dice-row">
@@ -3178,6 +3197,10 @@ export class CatanApp {
   async confirmProgressCardPlay() {
     const play = this.progressPlay;
     if (!play) return;
+    if (isProgressCardBoughtThisTurn(play.card, this.gameState?.turnNumber)) {
+      this.showToast(i18n.t('ERROR_CANNOT_PLAY_CARD_TURN_BOUGHT'), true);
+      return;
+    }
     const options = { ...play.options };
     if (play.card.type === 'alchemist') {
       options.d1 = parseInt(document.getElementById('alchemist-d1')?.value, 10);
