@@ -256,7 +256,7 @@ export const STRINGS = {
     RULES_TITLES_TITLE: "Special titles:",
     RULES_TITLES_BODY: "Longest Road (at least 5 continuous segments) = +2 VP. Largest Army (at least 3 knights played) = +2 VP.",
     RULES_CK_VP_TITLE: "Victory:",
-    RULES_CK_VP_BODY: "First to 13 VP wins. Classic development cards and Largest Army are not used.",
+    RULES_CK_VP_BODY: "First to 13 VP wins, but no one may win until after the first barbarian attack. Classic development cards and Largest Army are not used.",
     RULES_CK_COMMODITIES_TITLE: "Commodities:",
     RULES_CK_COMMODITIES_BODY: "Cities on wool/ore/wood produce 1 resource + 1 commodity (cloth/coin/paper). Cities on wheat/brick produce 2 resources. Settlements never produce commodities. Commodities count toward the 7-card discard limit and can be traded, but cannot pay for buildings.",
     RULES_CK_COSTS_TITLE: "Building costs:",
