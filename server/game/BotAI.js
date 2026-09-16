@@ -166,7 +166,6 @@ export class BotAI {
         if (impact > maxHexImpact) {
           maxHexImpact = impact;
           bestHexId = hexId;
-          bestTargetPlayerId = opponentBuildings[0];
         }
       }
     }
@@ -179,6 +178,11 @@ export class BotAI {
           break;
         }
       }
+    }
+
+    if (bestHexId) {
+      const victims = engine.getRobberStealVictims(bestHexId, botPlayer.id);
+      bestTargetPlayerId = victims[0]?.id ?? null;
     }
 
     return { action: 'move_robber', hexId: bestHexId, targetPlayerId: bestTargetPlayerId };
