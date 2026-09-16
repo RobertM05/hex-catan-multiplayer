@@ -502,6 +502,8 @@ export const STRINGS = {
     ERROR_KNIGHT_CANNOT_ACT_ON_HIRED_TURN: "Knights cannot act on the turn they are hired.",
     ERROR_KNIGHT_ALREADY_ACTED_THIS_TURN: "This knight has already acted this turn.",
     ERROR_AQUEDUCT_NOT_UNLOCKED: "Aqueduct requires Science improvement level 5.",
+    ERROR_AQUEDUCT_NOT_ELIGIBLE: "Aqueduct can only be claimed once after a production roll that gave you nothing (not a 7).",
+    ERROR_AQUEDUCT_ALREADY_CLAIMED: "You already claimed your Aqueduct resource for this roll.",
     IMPROVEMENTS_TITLE: "City Improvements",
     TRACK_TRADE: "Trade",
     TRACK_POLITICS: "Politics",

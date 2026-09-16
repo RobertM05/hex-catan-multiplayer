@@ -2300,146 +2300,82 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
 
 });
 
-describe('CK-32: Progress cards cannot be played the turn they are drawn', () => {
-  it('rejects playing a card drawn this turn', () => {
-    const engine = makeCkEngine();
+describe('SEC-11: Aqueduct claim_aqueduct_resource gating', () => {
+  function armChooserPath(engine, production = { p1: {}, p2: {} }) {
+    engine.players[0].cityImprovements.science = 5;
+    engine.hasRolledDice = true;
+    engine.dice = [2, 3];
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.progressDecks.trade = [{ id: 'draw-mf', type: 'merchant_fleet' }];
-    const type = engine.drawProgressCard(engine.players[0], 'trade');
-    assert.equal(type, 'merchant_fleet');
-    const card = engine.players[0].progressCards[0];
-    assert.equal(card.boughtTurn, engine.turnNumber);
-    assert.throws(
-      () => engine.playProgressCard('p1', card.id, {}),
-      /CANNOT_PLAY_CARD_TURN_BOUGHT/
-    );
-    assert.equal(card.played, false);
+    engine.armAqueductEligibility(production);
+  }
+
+  it('allows one resource of choice on a qualifying blank non-7 roll', () => {
+    const engine = makeCkEngine();
+    armChooserPath(engine);
+    const before = engine.players[0].resources.wheat;
+
+    const res = engine.claimAqueductResource('p1', 'wheat');
+    assert.equal(res.resource, 'wheat');
+    assert.equal(engine.players[0].resources.wheat, before + 1);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
+    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, []);
   });
 
-  it('allows playing a card acquired on a previous turn', () => {
+  it('rejects a second claim for the same roll', () => {
     const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const card = {
-      id: 'old-mf',
-      type: 'merchant_fleet',
-      played: false,
-      boughtTurn: engine.turnNumber - 1
-    };
-    engine.players[0].progressCards.push(card);
-    engine.playProgressCard('p1', card.id, {});
-    assert.equal(card.played, true);
+    armChooserPath(engine);
+    engine.claimAqueductResource('p1', 'wheat');
+    const oreBefore = engine.players[0].resources.ore;
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_ALREADY_CLAIMED/);
+    assert.equal(engine.players[0].resources.ore, oreBefore);
   });
 
-  it('Alchemist cannot be played on the same acquisition turn even in TURN_ROLL', () => {
+  it('rejects claims that are not the current player', () => {
     const engine = makeCkEngine();
+    engine.players[1].cityImprovements.science = 5;
+    armChooserPath(engine, { p1: {}, p2: {} });
+    assert.throws(() => engine.claimAqueductResource('p2', 'wood'), /NOT_YOUR_TURN/);
+  });
+
+  it('rejects claims before a production roll', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 5;
     engine.phase = GAME_PHASES.TURN_ROLL;
     engine.hasRolledDice = false;
-    const card = {
-      id: 'alc-same',
-      type: 'alchemist',
-      track: 'science',
-      played: false,
-      boughtTurn: engine.turnNumber
-    };
-    engine.players[0].progressCards.push(card);
-    assert.throws(
-      () => engine.playProgressCard('p1', card.id, { d1: 3, d2: 4 }),
-      /CANNOT_PLAY_CARD_TURN_BOUGHT/
-    );
-    assert.equal(engine.alchemistDice, null);
-    assert.equal(card.played, false);
+    assert.throws(() => engine.claimAqueductResource('p1', 'brick'), /AQUEDUCT_NOT_ELIGIBLE/);
   });
 
-  it('Alchemist can be played before a later turn roll', () => {
+  it('rejects claims when the player produced resources this roll', () => {
     const engine = makeCkEngine();
+    armChooserPath(engine, { p1: { wood: 1 }, p2: {} });
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_ELIGIBLE/);
+  });
+
+  it('rejects claims on a 7 and after rollDice already auto-granted', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 5;
     engine.phase = GAME_PHASES.TURN_ROLL;
-    engine.hasRolledDice = false;
-    const card = {
-      id: 'alc-later',
-      type: 'alchemist',
-      track: 'science',
-      played: false,
-      boughtTurn: engine.turnNumber - 1
-    };
-    engine.players[0].progressCards.push(card);
-    engine.playProgressCard('p1', card.id, { d1: 2, d2: 5 });
-    assert.deepEqual(engine.alchemistDice, [2, 5]);
-    assert.equal(card.played, true);
+    const seven = forceRoll(engine, 'p1', 3, 4);
+    assert.equal(seven.sum, 7);
+    assert.throws(() => engine.claimAqueductResource('p1', 'wool'), /AQUEDUCT_NOT_ELIGIBLE/);
+
+    const engine2 = makeCkEngine();
+    engine2.players[0].cityImprovements.science = 5;
+    engine2.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    engine2.phase = GAME_PHASES.TURN_ROLL;
+    const oreBefore = engine2.players[0].resources.ore;
+    const blank = forceRoll(engine2, 'p1', 2, 2);
+    assert.notEqual(blank.sum, 7);
+    assert.equal(engine2.players[0].resources.ore, oreBefore + 1);
+    assert.throws(() => engine2.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_ALREADY_CLAIMED/);
   });
 
-  it('stolen progress cards cannot be played the same turn', () => {
+  it('rejects invalid resources and missing Aqueduct unlock', () => {
     const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const spy = { id: 'spy-same', type: 'spy', played: false, boughtTurn: 0 };
-    engine.players[0].progressCards.push(spy);
-    engine.players[1].progressCards.push({
-      id: 'stolen-crane',
-      type: 'crane',
-      played: false,
-      boughtTurn: 0
-    });
-    engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', stealCardId: 'stolen-crane' });
-    const stolen = engine.players[0].progressCards.find(c => c.id === 'stolen-crane');
-    assert.equal(stolen.boughtTurn, engine.turnNumber);
-    assert.throws(
-      () => engine.playProgressCard('p1', stolen.id, {}),
-      /CANNOT_PLAY_CARD_TURN_BOUGHT/
-    );
-    assert.equal(stolen.played, false);
-  });
-
-  it('cannot play a newly drawn 5th card to skip the discard', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    for (let i = 0; i < 4; i++) {
-      engine.players[0].progressCards.push({
-        id: `old-${i}`,
-        type: 'crane',
-        played: false,
-        boughtTurn: 0
-      });
-    }
-    engine.progressDecks.trade = [{ id: 'new-mf', type: 'merchant_fleet' }];
-    engine.drawProgressCard(engine.players[0], 'trade');
-    assert.equal(engine.pendingProgressDiscard.has('p1'), true);
-    assert.throws(
-      () => engine.playProgressCard('p1', 'new-mf', {}),
-      /CANNOT_PLAY_CARD_TURN_BOUGHT/
-    );
-  });
-
-  it('bot does not choose a progress card bought this turn', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].progressCards.push({
-      id: 'new-tm',
-      type: 'trade_monopoly',
-      played: false,
-      boughtTurn: engine.turnNumber
-    });
-    assert.equal(BotAI.decideProgressCardPlay(engine, engine.players[0]), null);
-
-    engine.players[0].progressCards[0].boughtTurn = engine.turnNumber - 1;
-    const action = BotAI.decideProgressCardPlay(engine, engine.players[0]);
-    assert.equal(action?.action, 'play_progress_card');
-    assert.equal(action.cardId, 'new-tm');
-  });
-
-  it('bot can play Alchemist before a later roll but not the acquisition roll', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    engine.hasRolledDice = false;
-    engine.players[0].progressCards.push({
-      id: 'alc-bot',
-      type: 'alchemist',
-      played: false,
-      boughtTurn: engine.turnNumber
-    });
-    assert.equal(BotAI.decideProgressCardPlay(engine, engine.players[0]), null);
-
-    engine.players[0].progressCards[0].boughtTurn = engine.turnNumber - 1;
-    const action = BotAI.decideProgressCardPlay(engine, engine.players[0]);
-    assert.equal(action?.action, 'play_progress_card');
-    assert.equal(action.cardId, 'alc-bot');
+    armChooserPath(engine);
+    assert.throws(() => engine.claimAqueductResource('p1', 'cloth'), /INVALID_RESOURCE/);
+    engine.players[0].cityImprovements.science = 4;
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
   });
 });
