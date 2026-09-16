@@ -87,4 +87,69 @@ describe('RULE-01 Colonist Special Building Phase', () => {
     engine.endTurn('p1');
     assert.throws(() => engine.endTurn('p3'), /NOT_YOUR_TURN/);
   });
+
+  it('winning settlement during SBP ends the game immediately', () => {
+    const engine = makeEngine(5);
+    engine.vpTarget = 10;
+    const p2 = engine.players[1];
+    p2.resources = { wood: 5, brick: 5, wool: 5, wheat: 5, ore: 5 };
+
+    // 4 cities (8 VP) + 1 settlement (1 VP) = 9 VP before the SBP build
+    p2.citiesBuilt = ['v1', 'v2', 'v3', 'v4'];
+    p2.settlementsBuilt = ['v5'];
+    for (const id of ['v1', 'v2', 'v3', 'v4']) {
+      const v = engine.grid.vertices.get(id);
+      if (v) v.building = { type: 'city', playerId: 'p2', color: p2.color };
+    }
+    const v5 = engine.grid.vertices.get('v5');
+    if (v5) v5.building = { type: 'settlement', playerId: 'p2', color: p2.color };
+
+    engine.recalculateVictoryPoints();
+    assert.equal(p2.victoryPoints, 9);
+
+    // Place a road for the settlement that will push to 10 VP
+    const targetVertexId = Array.from(engine.grid.vertices.keys()).find(id => {
+      const vert = engine.grid.vertices.get(id);
+      return !vert.building && !['v1', 'v2', 'v3', 'v4', 'v5'].includes(id);
+    });
+    const edgeId = engine.grid.vertices.get(targetVertexId).adjacentEdges[0];
+    engine.grid.edges.get(edgeId).road = { playerId: 'p2', color: p2.color };
+
+    engine.endTurn('p1');
+    assert.equal(engine.phase, GAME_PHASES.TURN_SPECIAL_BUILDING);
+    assert.equal(engine.getCurrentPlayer().id, 'p2');
+
+    engine.buildSettlement('p2', targetVertexId);
+
+    assert.equal(p2.victoryPoints, 10);
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.equal(engine.isGameOver, true);
+    assert.equal(engine.winner?.id, 'p2');
+  });
+
+  it('passSpecialBuilding / finishSpecialBuilding awards victory to any player at vpTarget', () => {
+    const engine = makeEngine(5);
+    engine.vpTarget = 10;
+    const p2 = engine.players[1];
+
+    // Simulate a builder who already reached the target while still in SBP
+    p2.citiesBuilt = ['v1', 'v2', 'v3', 'v4', 'v5']; // 10 VP
+    for (const id of p2.citiesBuilt) {
+      const v = engine.grid.vertices.get(id);
+      if (v) v.building = { type: 'city', playerId: 'p2', color: p2.color };
+    }
+    engine.recalculateVictoryPoints();
+    assert.equal(p2.victoryPoints, 10);
+
+    engine.endTurn('p1');
+    assert.equal(engine.phase, GAME_PHASES.TURN_SPECIAL_BUILDING);
+    assert.equal(engine.getCurrentPlayer().id, 'p2');
+
+    // Passing (or finishing) must detect the SBP player's win — not only the next roller
+    const done = engine.endTurn('p2');
+    assert.equal(done.gameOver, true);
+    assert.equal(done.winner?.id, 'p2');
+    assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
+    assert.equal(engine.isGameOver, true);
+  });
 });

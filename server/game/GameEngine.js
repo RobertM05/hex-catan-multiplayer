@@ -2837,6 +2837,13 @@ export class GameEngine {
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('NOT_IN_SPECIAL_BUILDING');
     this.specialBuildingQueue = this.specialBuildingQueue.filter(id => id !== playerId);
+
+    // Safety net: catch a win earned during this SBP window (any player).
+    const sbpWinner = this.checkAnyPlayerVictory();
+    if (sbpWinner) {
+      return { gameOver: true, winner: sbpWinner };
+    }
+
     if (!this.specialBuildingQueue.length) {
       return this.finishSpecialBuilding();
     }
@@ -2860,9 +2867,13 @@ export class GameEngine {
     this.phase = GAME_PHASES.TURN_ROLL;
     this.hasRolledDice = false;
     const nextPlayer = this.getCurrentPlayer();
-    if (this.checkVictory()) {
-      return { gameOver: true, winner: nextPlayer };
+
+    // Evaluate every player — SBP builders can hit vpTarget, not only the next roller.
+    const winner = this.checkAnyPlayerVictory();
+    if (winner) {
+      return { gameOver: true, winner };
     }
+
     this.logEvent({
       type: 'TURN_CHANGED',
       messageKey: 'LOG_TURN_CHANGED',
@@ -3103,20 +3114,52 @@ export class GameEngine {
     }
   }
 
+  get isGameOver() {
+    return this.phase === GAME_PHASES.GAME_OVER;
+  }
+
+  declareVictory(winner) {
+    if (!winner || this.phase === GAME_PHASES.GAME_OVER) return false;
+    this.phase = GAME_PHASES.GAME_OVER;
+    this.winner = winner;
+    this.logEvent({
+      type: 'VICTORY',
+      messageKey: 'LOG_VICTORY',
+      args: { winnerName: winner.name, points: winner.victoryPoints }
+    });
+    return true;
+  }
+
+  /**
+   * Check whether the current player has reached vpTarget.
+   * Always recalculates VP first so client-facing scores stay current
+   * (including during Special Building Phase).
+   */
   checkVictory() {
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) return false;
     this.recalculateVictoryPoints();
+    if (this.phase === GAME_PHASES.GAME_OVER) return true;
     const curPlayer = this.getCurrentPlayer();
     if (curPlayer && curPlayer.victoryPoints >= this.vpTarget) {
-      this.phase = GAME_PHASES.GAME_OVER;
-      this.logEvent({
-        type: 'VICTORY',
-        messageKey: 'LOG_VICTORY',
-        args: { winnerName: curPlayer.name, points: curPlayer.victoryPoints }
-      });
-      return true;
+      return this.declareVictory(curPlayer);
     }
     return false;
+  }
+
+  /**
+   * Scan all players for a vpTarget win. Used when leaving SBP so a builder
+   * who reached the target is not dropped when turn advances to the next roller.
+   */
+  checkAnyPlayerVictory() {
+    this.recalculateVictoryPoints();
+    if (this.phase === GAME_PHASES.GAME_OVER) {
+      return this.winner || this.players.find(p => p.victoryPoints >= this.vpTarget) || null;
+    }
+    const winner = this.players.find(p => p.victoryPoints >= this.vpTarget);
+    if (winner) {
+      this.declareVictory(winner);
+      return winner;
+    }
+    return null;
   }
 
   recalculateVictoryPoints() {
