@@ -5,7 +5,7 @@
 
 import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const DISPLAY_NAME_MAX_LENGTH = 32;
 const ROOM_NAME_MAX_LENGTH = 48;
@@ -89,8 +89,24 @@ export class RoomManager {
   }
 
   matchesReconnectToken(player, reconnectToken) {
-    return Boolean(player.reconnectTokenHash && typeof reconnectToken === 'string'
-      && createHash('sha256').update(reconnectToken).digest('hex') === player.reconnectTokenHash);
+    const storedHex = player?.reconnectTokenHash;
+    if (typeof storedHex !== 'string' || typeof reconnectToken !== 'string') {
+      return false;
+    }
+
+    // SHA-256 hex digest is 64 chars / 32 bytes. Wrong size or non-hex fails closed
+    // before timingSafeEqual, which throws on unequal lengths.
+    if (storedHex.length !== 64 || !/^[0-9a-fA-F]+$/.test(storedHex)) {
+      return false;
+    }
+
+    const expected = Buffer.from(storedHex, 'hex');
+    const actual = createHash('sha256').update(reconnectToken).digest();
+    if (expected.length !== actual.length) {
+      return false;
+    }
+
+    return timingSafeEqual(expected, actual);
   }
 
   generateRoomCode() {
