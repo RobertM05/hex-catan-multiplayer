@@ -1501,6 +1501,90 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
     assert.equal(engine.discardCause, null);
   });
+
+  it('Deserter: turn timeout auto-resolves knight choice (anti-stall)', () => {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
+    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
+    rm.setPlayerReady(room.code, 'p2', true);
+    rm.startGame(room.code, 'p1');
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    assert.equal(engine.phase, GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT);
+    assert.doesNotThrow(() => rm.handleTurnTimeout(room));
+    assert.equal(engine.grid.vertices.get(vertex.id).knight, null);
+    assert.ok(
+      engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT || engine.phase === GAME_PHASES.TURN_ACTION,
+      `expected placement or action after choose timeout, got ${engine.phase}`
+    );
+    if (engine.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+      assert.ok(engine.pendingDeserter);
+      assert.equal(engine.pendingDeserter.playerId, 'p1');
+    }
+    rm.destroyRoom(room.code);
+  });
+
+  it('Deserter: turn timeout auto-resolves placement (anti-stall)', () => {
+    const rm = new RoomManager({ to: () => ({ emit() {} }) });
+    const room = rm.createRoom({ id: 'p1', name: 'Alice', socketId: 's1' }, { mode: 'cities_knights' });
+    rm.joinRoom(room.code, { id: 'p2', name: 'Bob', socketId: 's2' });
+    rm.setPlayerReady(room.code, 'p2', true);
+    rm.startGame(room.code, 'p1');
+    const engine = room.engine;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.currentTurnPlayerIndex = 0;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+    engine.chooseDeserterKnight('p2', vertex.id);
+    assert.equal(engine.phase, GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT);
+    assert.doesNotThrow(() => rm.handleTurnTimeout(room));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.pendingDeserter, null);
+    assert.equal(engine.players[0].knightsPlaced.some(k => k.active === true), true);
+    rm.destroyRoom(room.code);
+  });
+
+  it('Deserter: serialized pendingDeserter omits internal resolve fields', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const vertex = emptyVertex(engine);
+    plantKnight(engine, 'p2', vertex.id, { active: true });
+    const placeAt = emptyVertex(engine, v => v.id !== vertex.id);
+    giveRoad(engine, 'p1', placeAt.id);
+    engine.playProgressCard('p1', giveCard(engine.players[0], 'deserter').id, { targetPlayerId: 'p2' });
+
+    const chooseState = engine.getStateForPlayer('p2');
+    assert.deepEqual(Object.keys(chooseState.pendingDeserter).sort(), [
+      'options',
+      'playerId',
+      'targetPlayerId'
+    ]);
+    assert.deepEqual(chooseState.pendingDeserter.options, [vertex.id]);
+    assert.equal(chooseState.pendingDeserter.removedActive, undefined);
+    assert.equal(chooseState.pendingDeserter.removedStrength, undefined);
+
+    engine.chooseDeserterKnight('p2', vertex.id);
+    const placeState = engine.getStateForPlayer('p1');
+    assert.deepEqual(Object.keys(placeState.pendingDeserter).sort(), [
+      'legalPlaceIds',
+      'playerId',
+      'targetPlayerId'
+    ]);
+    assert.ok(placeState.pendingDeserter.legalPlaceIds.includes(placeAt.id));
+    assert.equal(placeState.pendingDeserter.removedActive, undefined);
+    assert.equal(placeState.pendingDeserter.defaultRank, undefined);
+    assert.equal(placeState.pendingDeserter.removedStrength, undefined);
+    assert.equal(placeState.pendingDeserter.removedFrom, undefined);
+  });
 });
 
 describe('CK-07: Science Progress Cards', () => {

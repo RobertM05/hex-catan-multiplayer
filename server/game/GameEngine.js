@@ -1904,6 +1904,30 @@ export class GameEngine {
     this.placeDeserterKnight(pending.playerId, { placeVertexId: pending.legalPlaceIds?.[0] });
   }
 
+  /** Client-facing pendingDeserter: IDs + legal picks only (no internal resolve fields). */
+  getPendingDeserterForClient() {
+    const pending = this.pendingDeserter;
+    if (!pending) return null;
+    if (this.phase === GAME_PHASES.TURN_CHOOSE_DESERTER_KNIGHT) {
+      return {
+        playerId: pending.playerId,
+        targetPlayerId: pending.targetPlayerId,
+        options: Array.isArray(pending.options) ? [...pending.options] : []
+      };
+    }
+    if (this.phase === GAME_PHASES.TURN_PLACE_DESERTER_KNIGHT) {
+      return {
+        playerId: pending.playerId,
+        targetPlayerId: pending.targetPlayerId,
+        legalPlaceIds: Array.isArray(pending.legalPlaceIds) ? [...pending.legalPlaceIds] : []
+      };
+    }
+    return {
+      playerId: pending.playerId,
+      targetPlayerId: pending.targetPlayerId
+    };
+  }
+
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
@@ -3317,7 +3341,7 @@ export class GameEngine {
       metropolises: this.metropolises,
       pendingMetropolisChoice: this.pendingMetropolisChoice,
       pendingKnightRelocation: this.pendingKnightRelocation,
-      pendingDeserter: this.pendingDeserter,
+      pendingDeserter: this.getPendingDeserterForClient(),
       pendingProgressDraws: this.pendingProgressDraws,
       activeTrade: this.activeTrade ? {
         ...this.activeTrade,
