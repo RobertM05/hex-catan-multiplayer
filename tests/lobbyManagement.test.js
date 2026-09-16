@@ -67,6 +67,9 @@ describe('LOBBY: Socket Bot Spawning, Case-Insensitive Codes & Host Authorizatio
     assert.equal(addBotRes1.success, true);
     assert.ok(addBotRes1.bot);
     assert.equal(addBotRes1.bot.isBot, true);
+    assert.equal(Object.hasOwn(addBotRes1.bot, 'socketId'), false);
+    assert.equal(Object.hasOwn(addBotRes1.bot, 'reconnectTokenHash'), false);
+    assert.equal(Object.hasOwn(addBotRes1.bot, 'reconnectToken'), false);
 
     // 3. Host adds second bot with lowercase room code (case-insensitivity test)
     const addBotRes2 = await new Promise((resolve) => {
