@@ -185,7 +185,7 @@ export class BotAI {
   }
 
   static decideTurnAction(engine, botPlayer) {
-    if (engine.activeTrade && engine.activeTrade.fromPlayerId === botPlayer.id) {
+    if (engine.phase !== GAME_PHASES.TURN_SPECIAL_BUILDING && engine.activeTrade && engine.activeTrade.fromPlayerId === botPlayer.id) {
       if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
         return { action: 'confirm_trade', targetPlayerId: Array.from(engine.activeTrade.acceptedBy)[0] };
       }
@@ -194,13 +194,17 @@ export class BotAI {
 
     if (engine.mode === GAME_MODES.CITIES_KNIGHTS || engine.isCitiesKnights?.()) {
       const ck = this.decideCkTurnAction(engine, botPlayer);
-      if (ck) return ck;
+      if (ck) {
+        const sbpBlocked = engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING
+          && ['play_progress_card', 'move_knight', 'chase_robber', 'bank_trade', 'propose_trade'].includes(ck.action);
+        if (!sbpBlocked) return ck;
+      }
     }
 
     const grid = engine.grid;
 
     // 1. Play unplayed knight card if robber is on one of bot's hexes
-    if (!engine.devCardPlayedThisTurn) {
+    if (engine.phase !== GAME_PHASES.TURN_SPECIAL_BUILDING && !engine.devCardPlayedThisTurn) {
       const knightCard = botPlayer.devCards.find(c => c.type === DEV_CARD_TYPES.KNIGHT && !c.played && c.boughtTurn < engine.turnNumber);
       if (knightCard) {
         // Check if robber blocks bot
@@ -243,6 +247,10 @@ export class BotAI {
     // 5. Try buying a Dev Card
     if (engine.canBuyDevCard(botPlayer.id).ok) {
       return { action: 'buy_dev_card' };
+    }
+
+    if (engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
+      return { action: 'end_turn' };
     }
 
     // 5.5 Propose fair 1:1 trade with other players if missing 1 card for a build goal
@@ -891,8 +899,8 @@ export class BotAI {
       return true;
     }
 
-    if (engine.phase === GAME_PHASES.TURN_ACTION) {
-      if (engine.activeTrade && engine.activeTrade.fromPlayerId === cur.id) {
+    if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
+      if (engine.phase === GAME_PHASES.TURN_ACTION && engine.activeTrade && engine.activeTrade.fromPlayerId === cur.id) {
         if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
           const target = Array.from(engine.activeTrade.acceptedBy)[0];
           engine.confirmTrade(cur.id, target);
@@ -907,7 +915,7 @@ export class BotAI {
       try {
         this.applyTurnAction(engine, cur, action);
       } catch {
-        if (engine.phase === GAME_PHASES.TURN_ACTION) {
+        if (engine.phase === GAME_PHASES.TURN_ACTION || engine.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) {
           try { engine.endTurn(cur.id); } catch { /* ignore */ }
         }
       }

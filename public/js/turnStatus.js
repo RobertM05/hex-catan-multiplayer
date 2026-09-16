@@ -21,6 +21,8 @@ export function mapPhaseToStatusKey(phase, isMyTurn) {
       return isMyTurn ? 'STATUS_YOUR_ROBBER' : 'STATUS_WAIT_ROBBER';
     case 'TURN_ACTION':
       return isMyTurn ? 'STATUS_YOUR_ACTION' : 'STATUS_WAIT_ACTION';
+    case 'TURN_SPECIAL_BUILDING':
+      return isMyTurn ? 'STATUS_YOUR_SBP' : 'STATUS_WAIT_SBP';
     case 'SETUP_ROUND_1':
     case 'SETUP_ROUND_2':
       return isMyTurn ? 'STATUS_YOUR_SETUP' : 'STATUS_WAIT_SETUP';
@@ -45,6 +47,7 @@ export function mapPhaseToOpponentStateKey(phase, isActivePlayer) {
     case 'TURN_ROBBER':
       return 'OPP_STATE_ROBBER';
     case 'TURN_ACTION':
+    case 'TURN_SPECIAL_BUILDING':
     case 'SETUP_ROUND_1':
     case 'SETUP_ROUND_2':
       return 'OPP_STATE_ACTING';
