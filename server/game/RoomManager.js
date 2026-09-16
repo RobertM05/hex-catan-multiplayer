@@ -604,7 +604,7 @@ export class RoomManager {
         setTimeout(() => {
           if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
             try {
-              const city = BotAI.chooseCityForMetropolis(engine, chooserId) || engine.getFirstVulnerableCityId?.(chooser) || chooser.citiesBuilt[0];
+              const city = BotAI.chooseCityForMetropolis(engine, chooserId) || engine.getFirstVulnerableCityId?.(chooser);
               if (city) engine.chooseMetropolis(chooserId, city);
               this.broadcastState(room);
               this.checkAndTriggerBotTurn(room);

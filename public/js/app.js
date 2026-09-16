@@ -3388,7 +3388,10 @@ export class CatanApp {
       const me = s.players.find(p => p.id === this.myPlayerId);
       if (pending && pending.playerId === this.myPlayerId && me) {
         const validIds = new Set(
-          (me.citiesBuilt || []).filter(id => s.grid?.vertices?.[id]?.building?.type === 'city')
+          (me.citiesBuilt || []).filter(id => {
+            const b = s.grid?.vertices?.[id]?.building;
+            return b?.type === 'city' && !b.hasMetropolis;
+          })
         );
         this.selectedAction = { type: 'metropolis', validIds };
         this.boardRenderer.render(s.grid, this.selectedAction);

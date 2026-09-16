@@ -1441,6 +1441,9 @@ export class GameEngine {
     if (newLevel < 4) return;
     const currentHolder = this.metropolises[track];
 
+    const player = this.players.find(p => p.id === playerId);
+    if (!this.getFirstVulnerableCityId(player)) return;
+
     if (!currentHolder) {
       this.beginMetropolisChoice(playerId, track);
       return;
@@ -1477,7 +1480,11 @@ export class GameEngine {
     }
 
     const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex?.building || (vertex.building.type !== 'city' && vertex.building.type !== 'metropolis') || vertex.building.playerId !== playerId) {
+    const building = vertex?.building;
+    if (building?.playerId === playerId && (building.hasMetropolis || building.type === 'metropolis')) {
+      throw new Error('CITY_ALREADY_HAS_METROPOLIS');
+    }
+    if (!building || building.type !== 'city' || building.playerId !== playerId) {
       throw new Error('MUST_CHOOSE_YOUR_CITY: MUST_CHOOSE_OWN_CITY');
     }
 
