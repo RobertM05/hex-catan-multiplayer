@@ -288,6 +288,6 @@ describe('Discard timer on 7 roll', () => {
     engine.autoDiscardCards('p1');
     assert.equal(engine.players[0].commodities.cloth, 2, 'half of 4 cloth discarded');
     assert.equal(engine.pendingDiscards.size, 0);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION, 'C&K 7s skip the robber until the first barbarian attack');
   });
 });
