@@ -15,6 +15,7 @@ import {
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
+import { STRINGS } from '../public/js/i18n.js';
 
 function makeCkEngine() {
   const engine = new GameEngine({ mode: 'cities_knights' });
@@ -178,6 +179,7 @@ describe('CK-01 commodities', () => {
     const hex = attachBuilding(engine, 'p2', RESOURCE_TYPES.WOOL, 'settlement');
     engine.players[1].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
     engine.players[1].commodities = { cloth: 2, coin: 0, paper: 0 };
+    engine.barbariansHaveAttacked = true;
     engine.phase = GAME_PHASES.TURN_ROBBER;
 
     const originalRandom = Math.random;
@@ -551,6 +553,179 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
   });
 });
 
+describe('CK-34: Robber gated on first barbarian attack', () => {
+  it('rolls of 7 before the first attack skip robber move when nobody discards', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const robberHex = engine.grid.robberHexId;
+    const result = forceRoll(engine, 'p1', 3, 4, 3);
+
+    assert.equal(result.robber, true);
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.equal(engine.isRobberInPlay(), false);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.grid.robberHexId, robberHex);
+    assert.equal(engine.pendingDiscards.size, 0);
+    assert.ok(engine.eventLog.some(e => e.messageKey === 'LOG_SEVEN_DISCARD_ONLY'));
+  });
+
+  it('rolls of 7 before the first attack still discard, then skip robber move/steal', () => {
+    const engine = makeCkEngine();
+    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const robberHex = engine.grid.robberHexId;
+    forceRoll(engine, 'p1', 3, 4, 3);
+
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    assert.ok(engine.pendingDiscards.has('p1'));
+
+    engine.discardCards('p1', { wood: 4 });
+    assert.equal(engine.players[0].resources.wood, 4);
+    assert.equal(engine.pendingDiscards.size, 0);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+    assert.equal(engine.grid.robberHexId, robberHex);
+    assert.throws(
+      () => engine.moveRobber('p1', Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex)),
+      /ROBBER_NOT_IN_PLAY|NOT_IN_ROBBER_PHASE/
+    );
+  });
+
+  it('rolls of 7 after the first attack enter the full robber flow', () => {
+    const engine = makeCkEngine();
+    engine.barbariansHaveAttacked = true;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const result = forceRoll(engine, 'p1', 3, 4, 3);
+
+    assert.equal(result.robber, true);
+    assert.equal(engine.isRobberInPlay(), true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.eventLog.some(e => e.messageKey === 'LOG_SEVEN_DISCARD_ONLY'), false);
+  });
+
+  it('rolls of 7 after the first attack discard then move the robber', () => {
+    const engine = makeCkEngine();
+    engine.barbariansHaveAttacked = true;
+    engine.players[1].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    forceRoll(engine, 'p1', 3, 4, 3);
+
+    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
+    engine.discardCards('p2', { wood: 4 });
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+
+    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== engine.grid.robberHexId);
+    engine.moveRobber('p1', dest);
+    assert.equal(engine.grid.robberHexId, dest);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('unlocks the robber when a 7 coincides with the first barbarian attack', () => {
+    const engine = makeCkEngine();
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const result = forceRoll(engine, 'p1', 3, 4, 0);
+
+    assert.ok(result.barbarian);
+    assert.equal(engine.barbariansHaveAttacked, true);
+    assert.equal(engine.isRobberInPlay(), true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+  });
+
+  it('does not unlock the robber merely by advancing the ship', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    forceRoll(engine, 'p1', 3, 4, 0);
+
+    assert.equal(engine.barbarianPosition, 1);
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('blocks knight chase before the first barbarian attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const robberHex = engine.grid.robberHexId;
+    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
+    plantKnight(engine, 'p1', vertex.id, { active: true });
+    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
+
+    assert.throws(() => engine.chaseRobber('p1', vertex.id, dest), /ROBBER_NOT_IN_PLAY/);
+    assert.equal(engine.grid.robberHexId, robberHex);
+    assert.equal(engine.players[0].knightsPlaced[0].active, true);
+  });
+
+  it('blocks Bishop robber move before the first barbarian attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== engine.grid.robberHexId);
+    const card = { id: 'bishop-pre', type: 'bishop', played: false };
+    engine.players[0].progressCards.push(card);
+
+    assert.throws(() => engine.playProgressCard('p1', card.id, { hexId: dest }), /ROBBER_NOT_IN_PLAY/);
+    assert.equal(card.played, false);
+    assert.equal(engine.grid.robberHexId !== dest, true);
+  });
+
+  it('does not let bots chase the robber before the first attack', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const robberHex = engine.grid.robberHexId;
+    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
+    plantKnight(engine, 'p1', vertex.id, { active: true });
+
+    const action = BotAI.decideCkTurnAction(engine, engine.players[0]);
+    assert.notEqual(action?.action, 'chase_robber');
+  });
+
+  it('lets bots chase the robber after the first attack', () => {
+    const engine = makeCkEngine();
+    engine.barbariansHaveAttacked = true;
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const robberHex = engine.grid.robberHexId;
+    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
+    plantKnight(engine, 'p1', vertex.id, { active: true });
+
+    const action = BotAI.decideCkTurnAction(engine, engine.players[0]);
+    assert.equal(action?.action, 'chase_robber');
+    assert.equal(action.vertexId, vertex.id);
+  });
+
+  it('serializes barbariansHaveAttacked in player state', () => {
+    const engine = makeCkEngine();
+    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, false);
+    engine.barbariansHaveAttacked = true;
+    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, true);
+  });
+
+  it('does not gate base-game 7s on barbarians', () => {
+    const engine = new GameEngine({ mode: 'base' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const orig = Math.random;
+    let n = 0;
+    Math.random = () => {
+      n += 1;
+      return n === 1 ? 2 / 6 : 3 / 6;
+    };
+    try {
+      engine.rollDice('p1');
+    } finally {
+      Math.random = orig;
+    }
+    assert.equal(engine.barbariansHaveAttacked, false);
+    assert.equal(engine.isRobberInPlay(), true);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+  });
+
+  it('documents the first-attack robber gate in C&K rules text', () => {
+    assert.match(STRINGS.RULES_CK_ROBBER_BODY, /until barbarians have attacked once/i);
+    assert.match(STRINGS.RULES_CK_ROBBER_BODY, /no robber move/i);
+    assert.match(STRINGS.RULES_CK_KNIGHTS_BODY, /after the first barbarian attack/i);
+  });
+});
+
 describe('CK-04: Knight Units', () => {
   it('should place a basic knight on an empty connected vertex', () => {
     const engine = makeCkEngine();
@@ -782,6 +957,7 @@ describe('CK-04: Knight Units', () => {
 
   it('should allow active knight adjacent to robber to chase it', () => {
     const engine = makeCkEngine();
+    engine.barbariansHaveAttacked = true;
     engine.phase = GAME_PHASES.TURN_ACTION;
     const robberHex = engine.grid.robberHexId;
     const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
@@ -1241,6 +1417,7 @@ describe('CK-06: Politics Progress Cards', () => {
     engine.players[2].settlementsBuilt.push(destVerts[1].id);
     engine.players[1].resources.wool = 1;
     engine.players[2].resources.brick = 1;
+    engine.barbariansHaveAttacked = true;
     engine.phase = GAME_PHASES.TURN_ACTION;
     const fromHex = engine.grid.robberHexId;
     const res = engine.playProgressCard('p1', giveCard(engine.players[0], 'bishop').id, { hexId: dest.id });
