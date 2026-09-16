@@ -151,7 +151,8 @@ describe('SEC-15: leave_room drops action authority while stand-in bot controls 
       id: guest.id,
       allowLegacyId: false
     });
-    assert.equal(stolen.reconnected, false);
+    assert.equal(stolen.error, 'GAME_ALREADY_STARTED');
+    assert.equal(stolen.reconnected, undefined);
     assert.equal(roomManager.hasActionAuthority(room, guest.id, 'attacker-socket'), false);
     assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
 
