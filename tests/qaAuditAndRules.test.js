@@ -959,6 +959,9 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
     assert.equal(claimed.p1, 'ore'); // Ore is lowest (0)
     assert.equal(engine.players[0].resources.ore, 1);
     assert.equal(production.p1.ore, 1);
+    assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
+    engine.applyAqueductBenefit({ p1: {}, p2: { wood: 1 } });
+    assert.equal(engine.players[0].resources.ore, 1);
   });
 
   it('claimAqueductResource validates Science level >= 5', () => {
@@ -967,9 +970,7 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
     assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
 
     engine.players[0].cityImprovements.science = 5;
-    const res = engine.claimAqueductResource('p1', 'wheat');
-    assert.equal(res.resource, 'wheat');
-    assert.equal(engine.players[0].resources.wheat, 1);
+    assert.throws(() => engine.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_NOT_ELIGIBLE/);
   });
 });
 

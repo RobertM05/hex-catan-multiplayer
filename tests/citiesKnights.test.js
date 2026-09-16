@@ -2262,3 +2262,83 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
   });
 
 });
+
+describe('SEC-11: Aqueduct claim_aqueduct_resource gating', () => {
+  function armChooserPath(engine, production = { p1: {}, p2: {} }) {
+    engine.players[0].cityImprovements.science = 5;
+    engine.hasRolledDice = true;
+    engine.dice = [2, 3];
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.armAqueductEligibility(production);
+  }
+
+  it('allows one resource of choice on a qualifying blank non-7 roll', () => {
+    const engine = makeCkEngine();
+    armChooserPath(engine);
+    const before = engine.players[0].resources.wheat;
+
+    const res = engine.claimAqueductResource('p1', 'wheat');
+    assert.equal(res.resource, 'wheat');
+    assert.equal(engine.players[0].resources.wheat, before + 1);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
+    assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
+    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, []);
+  });
+
+  it('rejects a second claim for the same roll', () => {
+    const engine = makeCkEngine();
+    armChooserPath(engine);
+    engine.claimAqueductResource('p1', 'wheat');
+    const oreBefore = engine.players[0].resources.ore;
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_ALREADY_CLAIMED/);
+    assert.equal(engine.players[0].resources.ore, oreBefore);
+  });
+
+  it('rejects claims that are not the current player', () => {
+    const engine = makeCkEngine();
+    engine.players[1].cityImprovements.science = 5;
+    armChooserPath(engine, { p1: {}, p2: {} });
+    assert.throws(() => engine.claimAqueductResource('p2', 'wood'), /NOT_YOUR_TURN/);
+  });
+
+  it('rejects claims before a production roll', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 5;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.hasRolledDice = false;
+    assert.throws(() => engine.claimAqueductResource('p1', 'brick'), /AQUEDUCT_NOT_ELIGIBLE/);
+  });
+
+  it('rejects claims when the player produced resources this roll', () => {
+    const engine = makeCkEngine();
+    armChooserPath(engine, { p1: { wood: 1 }, p2: {} });
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_ELIGIBLE/);
+  });
+
+  it('rejects claims on a 7 and after rollDice already auto-granted', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 5;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const seven = forceRoll(engine, 'p1', 3, 4);
+    assert.equal(seven.sum, 7);
+    assert.throws(() => engine.claimAqueductResource('p1', 'wool'), /AQUEDUCT_NOT_ELIGIBLE/);
+
+    const engine2 = makeCkEngine();
+    engine2.players[0].cityImprovements.science = 5;
+    engine2.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    engine2.phase = GAME_PHASES.TURN_ROLL;
+    const oreBefore = engine2.players[0].resources.ore;
+    const blank = forceRoll(engine2, 'p1', 2, 2);
+    assert.notEqual(blank.sum, 7);
+    assert.equal(engine2.players[0].resources.ore, oreBefore + 1);
+    assert.throws(() => engine2.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_ALREADY_CLAIMED/);
+  });
+
+  it('rejects invalid resources and missing Aqueduct unlock', () => {
+    const engine = makeCkEngine();
+    armChooserPath(engine);
+    assert.throws(() => engine.claimAqueductResource('p1', 'cloth'), /INVALID_RESOURCE/);
+    engine.players[0].cityImprovements.science = 4;
+    assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
+  });
+});
