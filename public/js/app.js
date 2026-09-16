@@ -9,7 +9,7 @@ import { audio } from './audio.js';
 import { network } from './network.js';
 import { BoardRenderer } from './renderer.js';
 import { ico } from './icons.js';
-import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, canBuildWall, BUILD_COSTS } from './turnStatus.js';
+import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, canBuildWall, isCityWallHost, BUILD_COSTS } from './turnStatus.js';
 import {
   getProgressDeck,
   PROGRESS_CARD_ICONS,
@@ -1063,7 +1063,7 @@ export class CatanApp {
     if (wallBtn?.disabled) return;
     const validIds = new Set();
     Object.values(this.gameState.grid.vertices).forEach(v => {
-      if (v.building && v.building.type === 'city' && v.building.playerId === this.myPlayerId && !v.building.hasWall) {
+      if (isCityWallHost(v.building) && v.building.playerId === this.myPlayerId && !v.building.hasWall) {
         validIds.add(v.id);
       }
     });
@@ -2866,7 +2866,7 @@ export class CatanApp {
     if (type === 'engineer') {
       const unwalled = (me?.citiesBuilt || []).filter(vid => {
         const v = this.gameState?.grid?.vertices?.[vid];
-        return v?.building && !v.building.hasWall;
+        return isCityWallHost(v?.building) && !v.building.hasWall;
       });
 
       if (unwalled.length === 0) {
@@ -3056,7 +3056,7 @@ export class CatanApp {
       const ids = new Set();
       (me.citiesBuilt || []).forEach(vid => {
         const v = this.gameState.grid.vertices[vid];
-        if (v?.building && !v.building.hasWall) ids.add(vid);
+        if (isCityWallHost(v?.building) && !v.building.hasWall) ids.add(vid);
       });
       this.selectedAction = { type: 'progress_vertex', validIds: ids };
     } else if (type === 'diplomat') {

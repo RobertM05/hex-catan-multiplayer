@@ -5,6 +5,7 @@ import {
   mapPhaseToOpponentStateKey,
   canPayCost,
   canBuildWall,
+  isCityWallHost,
   BUILD_COSTS
 } from '../public/js/turnStatus.js';
 
@@ -108,5 +109,28 @@ describe('canBuildWall helper', () => {
     const res = canBuildWall(player, true, true, grid);
     assert.equal(res.allowed, true);
     assert.equal(res.reasonKey, null);
+  });
+
+  it('allows wall building on a metropolis city vertex (CK-39)', () => {
+    const player = { id: 'p1', cityWalls: 3, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'metropolis', playerId: 'p1', hasWall: false, hasMetropolis: true } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, true);
+    assert.equal(res.reasonKey, null);
+  });
+
+  it('disallows wall building when the only city is a walled metropolis', () => {
+    const player = { id: 'p1', cityWalls: 2, resources: { brick: 2 }, citiesBuilt: ['v1'] };
+    const grid = { vertices: { v1: { building: { type: 'metropolis', playerId: 'p1', hasWall: true, hasMetropolis: true } } } };
+    const res = canBuildWall(player, true, true, grid);
+    assert.equal(res.allowed, false);
+    assert.equal(res.reasonKey, 'ERROR_CITY_ALREADY_HAS_WALL');
+  });
+
+  it('treats city and metropolis as wall hosts but not settlements', () => {
+    assert.equal(isCityWallHost({ type: 'city' }), true);
+    assert.equal(isCityWallHost({ type: 'metropolis' }), true);
+    assert.equal(isCityWallHost({ type: 'settlement' }), false);
+    assert.equal(isCityWallHost(null), false);
   });
 });

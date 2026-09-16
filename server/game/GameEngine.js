@@ -1486,11 +1486,16 @@ export class GameEngine {
     return this.getBuiltCityWallCount(player);
   }
 
+  /** Metropolis sits on a city, so walls may be built on either type (CK-39). */
+  isCityWallHost(building) {
+    return Boolean(building && (building.type === 'city' || building.type === 'metropolis'));
+  }
+
   buildCityWall(playerId, vertexId) {
     const player = this.assertCkAction(playerId);
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex?.building) throw new Error('NO_BUILDING_ON_VERTEX');
-    if (vertex.building.type !== 'city') throw new Error('WALLS_ONLY_ON_CITIES');
+    if (!this.isCityWallHost(vertex.building)) throw new Error('WALLS_ONLY_ON_CITIES');
     if (vertex.building.playerId !== playerId) throw new Error('NOT_YOUR_CITY');
     if (vertex.building.hasWall) throw new Error('CITY_ALREADY_HAS_WALL');
     if ((player.cityWalls || 0) <= 0) throw new Error('NO_WALLS_REMAINING');
@@ -2076,7 +2081,7 @@ export class GameEngine {
     const player = this.assertCkAction(playerId);
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex?.building) throw new Error('NO_BUILDING_ON_VERTEX');
-    if (vertex.building.type !== 'city') throw new Error('WALLS_ONLY_ON_CITIES');
+    if (!this.isCityWallHost(vertex.building)) throw new Error('WALLS_ONLY_ON_CITIES');
     if (vertex.building.playerId !== playerId) throw new Error('NOT_YOUR_CITY');
     if (vertex.building.hasWall) throw new Error('CITY_ALREADY_HAS_WALL');
     if ((player.cityWalls || 0) <= 0) throw new Error('NO_WALLS_REMAINING');

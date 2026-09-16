@@ -60,6 +60,11 @@ export function canPayCost(resources = {}, cost = {}) {
   return Object.entries(cost).every(([res, amt]) => (Number(resources[res]) || 0) >= amt);
 }
 
+/** Metropolis sits on a city; both may host a wall (CK-39). */
+export function isCityWallHost(building) {
+  return Boolean(building && (building.type === 'city' || building.type === 'metropolis'));
+}
+
 export function canBuildWall(player, isCkMode, inActionPhase, grid) {
   if (!isCkMode) return { allowed: false, reasonKey: 'REASON_WRONG_PHASE' };
   if (!inActionPhase) return { allowed: false, reasonKey: 'REASON_NOT_YOUR_TURN' };
@@ -73,7 +78,7 @@ export function canBuildWall(player, isCkMode, inActionPhase, grid) {
     }
     const hasUnwalledCity = citiesBuilt.some(vId => {
       const v = typeof grid.vertices.get === 'function' ? grid.vertices.get(vId) : grid.vertices[vId];
-      return v && v.building && v.building.type === 'city' && v.building.playerId === player.id && !v.building.hasWall;
+      return v && isCityWallHost(v.building) && v.building.playerId === player.id && !v.building.hasWall;
     });
     if (!hasUnwalledCity) {
       return { allowed: false, reasonKey: 'ERROR_CITY_ALREADY_HAS_WALL' };
