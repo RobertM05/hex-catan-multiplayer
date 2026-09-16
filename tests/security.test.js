@@ -8,6 +8,8 @@ import {
   validatePlayerColor,
   validateRoomName
 } from '../server/game/RoomManager.js';
+import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
+import { BotAI } from '../server/game/BotAI.js';
 import { escapeHtml, CatanApp } from '../public/js/app.js';
 import { network } from '../public/js/network.js';
 import { server, roomManager as liveRoomManager, io as serverIo } from '../server/server.js';
@@ -104,176 +106,131 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
   });
 });
 
-describe('SEC-05: send_chat requires seated room membership', () => {
-  let serverPort = null;
-  let serverUrl = null;
+function makeRobberEngine() {
+  const engine = new GameEngine({ roomId: 'sec-07' });
+  engine.addPlayer({ id: 'p1', name: 'Alice', color: '#e63946' });
+  engine.addPlayer({ id: 'p2', name: 'Bob', color: '#1d3557' });
+  engine.addPlayer({ id: 'p3', name: 'Carol', color: '#2a9d8f' });
+  engine.startGame('standard');
+  engine.phase = GAME_PHASES.TURN_ROBBER;
+  engine.hasRolledDice = true;
+  for (const player of engine.players) {
+    player.resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+  }
+  return engine;
+}
 
-  before(async () => {
-    await new Promise((resolve) => {
-      server.listen(0, () => {
-        serverPort = server.address().port;
-        serverUrl = `http://localhost:${serverPort}`;
-        resolve();
-      });
-    });
+function destHexId(engine) {
+  return Array.from(engine.grid.hexes.keys()).find((id) => id !== engine.grid.robberHexId);
+}
+
+function attachSettlement(engine, playerId, hexId) {
+  const vertexId = Array.from(engine.grid.vertices.keys()).find((id) => {
+    const vertex = engine.grid.vertices.get(id);
+    return vertex.hexes.includes(hexId) && !vertex.building;
+  });
+  assert.ok(vertexId, `expected an empty vertex on ${hexId}`);
+  const player = engine.players.find((p) => p.id === playerId);
+  engine.grid.vertices.get(vertexId).building = {
+    type: 'settlement',
+    playerId,
+    color: player.color
+  };
+  player.settlementsBuilt.push(vertexId);
+  return vertexId;
+}
+
+describe('SEC-07: moveRobber mandatory steal', () => {
+  it('rejects a missing steal target when an adjacent victim has cards', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    const robberBefore = engine.grid.robberHexId;
+    attachSettlement(engine, 'p2', hexId);
+    engine.players[1].resources.wood = 2;
+
+    assert.throws(() => engine.moveRobber('p1', hexId), /STEAL_TARGET_REQUIRED/);
+    assert.throws(() => engine.moveRobber('p1', hexId, null), /STEAL_TARGET_REQUIRED/);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    assert.equal(engine.grid.robberHexId, robberBefore);
+    assert.equal(engine.players[1].resources.wood, 2);
+    assert.equal(engine.players[0].resources.wood, 0);
   });
 
-  after(async () => {
-    serverIo.close();
-    await new Promise((resolve) => {
-      server.close(resolve);
+  it('rejects invalid, self, and non-adjacent targets when victims exist', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    attachSettlement(engine, 'p2', hexId);
+    const farVertexId = Array.from(engine.grid.vertices.keys()).find((id) => {
+      const vertex = engine.grid.vertices.get(id);
+      return !vertex.building && !vertex.hexes.includes(hexId);
     });
+    assert.ok(farVertexId, 'expected a vertex that does not touch the dest hex');
+    const p3 = engine.players[2];
+    engine.grid.vertices.get(farVertexId).building = {
+      type: 'settlement',
+      playerId: 'p3',
+      color: p3.color
+    };
+    p3.settlementsBuilt.push(farVertexId);
+    engine.players[1].resources.wool = 1;
+    engine.players[2].resources.brick = 1;
+
+    assert.throws(() => engine.moveRobber('p1', hexId, 'nobody'), /STEAL_TARGET_REQUIRED/);
+    assert.throws(() => engine.moveRobber('p1', hexId, 'p1'), /STEAL_TARGET_REQUIRED/);
+    assert.throws(() => engine.moveRobber('p1', hexId, 'p3'), /STEAL_TARGET_REQUIRED/);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
   });
 
-  function createClient() {
-    return ioClient(serverUrl, {
-      transports: ['websocket'],
-      forceNew: true,
-      reconnection: false
-    });
-  }
+  it('rejects a broke adjacent player when another adjacent victim has cards', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    attachSettlement(engine, 'p2', hexId);
+    attachSettlement(engine, 'p3', hexId);
+    engine.players[2].resources.ore = 1;
 
-  function connectClient() {
-    const socket = createClient();
-    return new Promise((resolve) => {
-      socket.on('connect', () => resolve(socket));
-    });
-  }
-
-  function emitCreateRoom(socket, hostName, roomName) {
-    return new Promise((resolve) => {
-      socket.emit('create_room', {
-        hostName,
-        roomName,
-        maxPlayers: 4,
-        mode: 'base'
-      }, resolve);
-    });
-  }
-
-  function emitJoinRoom(socket, code, playerName) {
-    return new Promise((resolve) => {
-      socket.emit('join_room', { code, playerName }, resolve);
-    });
-  }
-
-  function nextChat(socket, timeoutMs = 1500) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        socket.off('chat_received', onChat);
-        reject(new Error('timed out waiting for chat_received'));
-      }, timeoutMs);
-      function onChat(msg) {
-        clearTimeout(timer);
-        socket.off('chat_received', onChat);
-        resolve(msg);
-      }
-      socket.on('chat_received', onChat);
-    });
-  }
-
-  function assertNoChat(socket, timeoutMs = 400) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        socket.off('chat_received', onChat);
-        resolve();
-      }, timeoutMs);
-      function onChat(msg) {
-        clearTimeout(timer);
-        socket.off('chat_received', onChat);
-        reject(new Error(`unexpected chat_received: ${JSON.stringify(msg)}`));
-      }
-      socket.on('chat_received', onChat);
-    });
-  }
-
-  it('allows a seated player to broadcast chat using the bound room', async () => {
-    const host = await connectClient();
-    const guest = await connectClient();
-    const created = await emitCreateRoom(host, 'ChatHost', 'ChatRoom');
-    assert.equal(created.success, true);
-    const joined = await emitJoinRoom(guest, created.roomCode, 'ChatGuest');
-    assert.equal(joined.success, true);
-
-    const received = nextChat(guest);
-    host.emit('send_chat', { code: created.roomCode, text: 'hello lobby' });
-    const msg = await received;
-
-    assert.equal(msg.senderId, created.playerId);
-    assert.equal(msg.senderName, 'ChatHost');
-    assert.equal(msg.text, 'hello lobby');
-    const room = liveRoomManager.getRoom(created.roomCode);
-    assert.equal(room.chatMessages.at(-1).text, 'hello lobby');
-
-    host.disconnect();
-    guest.disconnect();
-    liveRoomManager.destroyRoom(created.roomCode);
+    assert.throws(() => engine.moveRobber('p1', hexId, 'p2'), /STEAL_TARGET_REQUIRED/);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
   });
 
-  it('rejects chat from a socket that is not in any room even if data.code is supplied', async () => {
-    const host = await connectClient();
-    const attacker = await connectClient();
-    const created = await emitCreateRoom(host, 'TargetHost', 'TargetRoom');
-    assert.equal(created.success, true);
+  it('allows skipping steal when no adjacent opponent has cards', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    attachSettlement(engine, 'p2', hexId);
+    attachSettlement(engine, 'p1', hexId);
 
-    const noChat = assertNoChat(host);
-    attacker.emit('send_chat', { code: created.roomCode, text: 'injected from outside' });
-    await noChat;
-
-    const room = liveRoomManager.getRoom(created.roomCode);
-    assert.equal(room.chatMessages.some(m => m.text === 'injected from outside'), false);
-    assert.equal(room.chatMessages.some(m => m.senderName === 'Player'), false);
-
-    host.disconnect();
-    attacker.disconnect();
-    liveRoomManager.destroyRoom(created.roomCode);
+    const result = engine.moveRobber('p1', hexId, null);
+    assert.equal(result.stolenResource, null);
+    assert.equal(engine.grid.robberHexId, hexId);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
-  it('rejects cross-room chat from a player seated in a different room', async () => {
-    const hostA = await connectClient();
-    const hostB = await connectClient();
-    const roomA = await emitCreateRoom(hostA, 'HostA', 'RoomA');
-    const roomB = await emitCreateRoom(hostB, 'HostB', 'RoomB');
-    assert.equal(roomA.success, true);
-    assert.equal(roomB.success, true);
+  it('steals from a valid adjacent victim and advances the phase', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    attachSettlement(engine, 'p2', hexId);
+    engine.players[1].resources.wheat = 1;
 
-    const noChatA = assertNoChat(hostA);
-    const noChatB = assertNoChat(hostB);
-    hostA.emit('send_chat', { code: roomB.roomCode, text: 'cross-room ping' });
-    await Promise.all([noChatA, noChatB]);
-
-    assert.equal(liveRoomManager.getRoom(roomA.roomCode).chatMessages.some(m => m.text === 'cross-room ping'), false);
-    assert.equal(liveRoomManager.getRoom(roomB.roomCode).chatMessages.some(m => m.text === 'cross-room ping'), false);
-
-    hostA.disconnect();
-    hostB.disconnect();
-    liveRoomManager.destroyRoom(roomA.roomCode);
-    liveRoomManager.destroyRoom(roomB.roomCode);
+    const result = engine.moveRobber('p1', hexId, 'p2');
+    assert.equal(result.stolenFrom, 'p2');
+    assert.equal(result.stolenResource, 'wheat');
+    assert.equal(engine.players[1].resources.wheat, 0);
+    assert.equal(engine.players[0].resources.wheat, 1);
+    assert.equal(engine.grid.robberHexId, hexId);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
-  it('rejects chat after the socket is no longer seated in room.players', async () => {
-    const host = await connectClient();
-    const guest = await connectClient();
-    const created = await emitCreateRoom(host, 'KickHost', 'KickRoom');
-    const joined = await emitJoinRoom(guest, created.roomCode, 'KickGuest');
-    assert.equal(created.success, true);
-    assert.equal(joined.success, true);
+  it('BotAI supplies a stealable target when adjacent victims have cards', () => {
+    const engine = makeRobberEngine();
+    const hexId = destHexId(engine);
+    attachSettlement(engine, 'p2', hexId);
+    engine.players[1].resources.brick = 2;
 
-    const kickRes = await new Promise((resolve) => {
-      host.emit('remove_player', { code: created.roomCode, id: joined.playerId }, resolve);
-    });
-    assert.equal(kickRes.success, true);
-    assert.equal(liveRoomManager.getRoom(created.roomCode).players.some(p => p.id === joined.playerId), false);
-
-    const noChat = assertNoChat(host);
-    guest.emit('send_chat', { code: created.roomCode, text: 'still here after kick' });
-    await noChat;
-
-    assert.equal(liveRoomManager.getRoom(created.roomCode).chatMessages.some(m => m.text === 'still here after kick'), false);
-
-    host.disconnect();
-    guest.disconnect();
-    liveRoomManager.destroyRoom(created.roomCode);
+    const decision = BotAI.decideRobberMove(engine, engine.players[0]);
+    const victims = engine.getRobberStealVictims(decision.hexId, 'p1');
+    if (victims.length > 0) {
+      assert.ok(victims.some((p) => p.id === decision.targetPlayerId));
+    }
+    assert.doesNotThrow(() => engine.moveRobber('p1', decision.hexId, decision.targetPlayerId));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 });
-

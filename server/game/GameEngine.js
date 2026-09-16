@@ -662,6 +662,12 @@ export class GameEngine {
     return adjacent;
   }
 
+  getRobberStealVictims(hexId, thiefPlayerId) {
+    return this.getPlayersAdjacentToHex(hexId).filter(
+      (p) => p.id !== thiefPlayerId && this.countTotalCards(p) > 0
+    );
+  }
+
   stealRandomResource(target) {
     const pool = [];
     for (const [res, count] of Object.entries(target.resources || {})) {
@@ -1285,18 +1291,17 @@ export class GameEngine {
     if (hexId === this.grid.robberHexId) throw new Error('MUST_MOVE_ROBBER_TO_NEW_HEX');
     if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
 
+    const victims = this.getRobberStealVictims(hexId, playerId);
+    let target = null;
+    if (victims.length > 0) {
+      target = victims.find((p) => p.id === targetPlayerId);
+      if (!target) throw new Error('STEAL_TARGET_REQUIRED');
+    }
+
     this.grid.robberHexId = hexId;
     let stolenResource = null;
-
-    // Steal from target player if adjacent to hex
-    if (targetPlayerId && targetPlayerId !== playerId) {
-      const target = this.players.find(p => p.id === targetPlayerId);
-      if (target) {
-        const isAdjacent = this.playerBuildingTouchesHex(target, hexId);
-        if (isAdjacent && this.countTotalCards(target) > 0) {
-          stolenResource = this.stealRandomCard(player, target);
-        }
-      }
+    if (target) {
+      stolenResource = this.stealRandomCard(player, target);
     }
 
     this.phase = this.hasRolledDice ? GAME_PHASES.TURN_ACTION : GAME_PHASES.TURN_ROLL;
