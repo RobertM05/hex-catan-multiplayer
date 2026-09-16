@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
 import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
 import { GAME_PHASES } from './game/GameEngine.js';
+import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -315,17 +316,19 @@ export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
   return child;
 }
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(requireAdminAuth);
 app.use(express.static(publicDir, {
   setHeaders: (res) => {
     // Prevent stale clients after deploys: always revalidate HTML and JS
     res.setHeader('Cache-Control', 'no-store');
   }
 }));
-app.use(express.json());
 
-// API: Health check and telemetry
-app.get('/api/health', (req, res) => {
-  res.json({
+// Liveness/readiness for orchestrators (`/health`) and existing admin/telemetry (`/api/health`)
+function healthPayload() {
+  return {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: Date.now(),
@@ -334,7 +337,11 @@ app.get('/api/health', (req, res) => {
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
     },
     activeRooms: roomManager.rooms ? roomManager.rooms.size : 0
-  });
+  };
+}
+
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json(healthPayload());
 });
 
 // API: List public rooms
