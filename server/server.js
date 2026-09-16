@@ -14,6 +14,7 @@ import { RoomManager, validateChatMessage, validateDisplayName } from './game/Ro
 import { extractBearerToken } from './auth/jwt.js';
 import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
+import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -317,13 +318,15 @@ export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
   return child;
 }
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(requireAdminAuth);
 app.use(express.static(publicDir, {
   setHeaders: (res) => {
     // Prevent stale clients after deploys: always revalidate HTML and JS
     res.setHeader('Cache-Control', 'no-store');
   }
 }));
-app.use(express.json());
 
 // Optional Socket.IO JWT (guest when unset / no token)
 io.use(async (socket, next) => {
