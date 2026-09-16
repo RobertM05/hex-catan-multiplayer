@@ -654,6 +654,8 @@ describe('CK-16: Official C&K Rules Alignment', () => {
     const res = engine.playProgressCard('p1', 'sab1', {});
     assert.equal(res.victims.length, 1);
     assert.equal(res.victims[0].playerId, 'p2');
+    assert.equal(res.victims[0].count, 3);
+    assert.equal(res.victims[0].discarded, undefined);
     assert.equal(engine.countTotalCards(engine.players[1]), 3);
   });
 

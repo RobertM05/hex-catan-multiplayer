@@ -1620,6 +1620,8 @@ describe('CK-06: Politics Progress Cards', () => {
     assert.equal(engine.countTotalCards(engine.players[1]), 3);
     assert.equal(res.victims.length, 1);
     assert.equal(res.victims[0].playerId, 'p2');
+    assert.equal(res.victims[0].count, 3);
+    assert.equal(res.victims[0].discarded, undefined);
   });
 
   it('Saboteur: unique VP leader cannot play the card', () => {

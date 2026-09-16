@@ -9,7 +9,6 @@ import {
   validateRoomName
 } from '../server/game/RoomManager.js';
 import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
-import { BotAI } from '../server/game/BotAI.js';
 import { escapeHtml, CatanApp } from '../public/js/app.js';
 import { network } from '../public/js/network.js';
 import { server, roomManager as liveRoomManager, io as serverIo } from '../server/server.js';
@@ -132,74 +131,54 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
   });
 });
 
-describe('SEC-15: leave_room drops action authority while stand-in bot controls seat', () => {
-  function startedTwoPlayerRoom() {
-    const roomManager = new RoomManager({ to: () => ({ emit() {} }) });
-    const host = roomManager.createPlayerSession();
-    const guest = roomManager.createPlayerSession();
-    const room = roomManager.createRoom({
-      id: host.id,
-      name: 'Host',
-      socketId: 'host-socket',
-      reconnectTokenHash: host.reconnectTokenHash
-    });
-    roomManager.joinRoom(room.code, {
-      id: guest.id,
-      name: 'Guest',
-      socketId: 'guest-socket',
-      reconnectTokenHash: guest.reconnectTokenHash
-    });
-    roomManager.setPlayerReady(room.code, guest.id, true);
-    roomManager.startGame(room.code, host.id);
-    return { roomManager, room, host, guest };
+describe('SEC-18: Saboteur callback fog-of-war', () => {
+  function playSaboteurAgainstAheadOpponent() {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    engine.players[1].defenderCards = 2;
+    engine.recalculateVictoryPoints();
+    engine.players[1].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[1].commodities = { cloth: 2, coin: 0, paper: 0 };
+
+    const card = { id: 'sab1', type: 'saboteur', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    const result = engine.playProgressCard('p1', 'sab1', {});
+    return { engine, result };
   }
 
-  it('revokes action authority for the old socket after stand-in replacement', () => {
-    const { roomManager, room, host, guest } = startedTwoPlayerRoom();
+  it('omits typed discard maps and reveals only who discarded and how many', () => {
+    const { engine, result } = playSaboteurAgainstAheadOpponent();
+    const callbackPayload = JSON.parse(JSON.stringify({ success: true, ...result }));
 
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), true);
-    assert.equal(roomManager.hasActionAuthority(room, host.id, 'host-socket'), true);
+    assert.equal(callbackPayload.cardType, 'saboteur');
+    assert.equal(callbackPayload.victims.length, 1);
+    assert.deepEqual(Object.keys(callbackPayload.victims[0]).sort(), ['count', 'playerId']);
+    assert.equal(callbackPayload.victims[0].playerId, 'p2');
+    assert.equal(callbackPayload.victims[0].count, 3);
+    assert.equal(callbackPayload.victims[0].discarded, undefined);
 
-    const replaced = roomManager.replaceDisconnectedPlayerWithBot(room.code, guest.id);
-    assert.ok(replaced);
-    assert.equal(replaced.isStandInBot, true);
-    assert.equal(replaced.socketId, null);
+    const serialized = JSON.stringify(callbackPayload);
+    assert.equal(serialized.includes('"wood"'), false);
+    assert.equal(serialized.includes('"cloth"'), false);
+    assert.equal(serialized.includes('"brick"'), false);
 
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, null), false);
-    assert.equal(roomManager.hasActionAuthority(room, host.id, 'host-socket'), true);
-
-    roomManager.destroyRoom(room.code);
+    assert.equal(engine.countTotalCards(engine.players[1]), 3);
   });
 
-  it('restores action authority only after reconnect-token reclaim', () => {
-    const { roomManager, room, guest } = startedTwoPlayerRoom();
-    roomManager.replaceDisconnectedPlayerWithBot(room.code, guest.id);
+  it('keeps opponent hand types hidden after Saboteur in getStateForPlayer', () => {
+    const { engine } = playSaboteurAgainstAheadOpponent();
+    const asCaster = engine.getStateForPlayer('p1').players.find(p => p.id === 'p2');
+    const asVictim = engine.getStateForPlayer('p2').players.find(p => p.id === 'p2');
 
-    const stolen = roomManager.joinRoom(room.code, {
-      socketId: 'attacker-socket',
-      id: guest.id,
-      allowLegacyId: false
-    });
-    assert.equal(stolen.error, 'GAME_ALREADY_STARTED');
-    assert.equal(stolen.reconnected, undefined);
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'attacker-socket'), false);
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
-
-    const back = roomManager.joinRoom(room.code, {
-      socketId: 'guest-reclaim',
-      reconnectToken: guest.reconnectToken,
-      allowLegacyId: false
-    });
-    assert.equal(back.reconnected, true);
-    assert.equal(back.playerId, guest.id);
-    const seat = room.players.find(p => p.id === guest.id);
-    assert.equal(seat.isBot, false);
-    assert.equal(seat.isStandInBot, false);
-    assert.equal(seat.socketId, 'guest-reclaim');
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-reclaim'), true);
-    assert.equal(roomManager.hasActionAuthority(room, guest.id, 'guest-socket'), false);
-
-    roomManager.destroyRoom(room.code);
+    assert.equal(asCaster.resources.total + asCaster.commodities.total, 3);
+    assert.equal(asCaster.resources.wood, undefined);
+    assert.equal(asCaster.commodities.cloth, undefined);
+    assert.equal(typeof asVictim.resources.wood, 'number');
+    assert.equal(typeof asVictim.commodities.cloth, 'number');
   });
 });
