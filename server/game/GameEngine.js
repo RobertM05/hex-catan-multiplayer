@@ -100,10 +100,13 @@ export const EVENT_DIE_FACES = ['barbarian', 'barbarian', 'barbarian', 'trade', 
 export const BARBARIAN_TRACK_MAX = 7;
 export const CITY_WALL_SUPPLY = 3;
 
+/** Official C&K named buildings unlock at improvement level 3. Level 5 has no extra perk. */
+export const IMPROVEMENT_PERK_LEVEL = 3;
+
 export const KNIGHT_RANKS = {
   basic: { strength: 1, next: 'strong', politicsRequired: 0 },
-  strong: { strength: 2, next: 'mighty', politicsRequired: 1 },
-  mighty: { strength: 3, next: null, politicsRequired: 2 }
+  strong: { strength: 2, next: 'mighty', politicsRequired: 0 },
+  mighty: { strength: 3, next: null, politicsRequired: IMPROVEMENT_PERK_LEVEL }
 };
 
 export const COSTS = {
@@ -715,6 +718,45 @@ export class GameEngine {
     return this.isCitiesKnights() && COMMODITY_VALUES.includes(type);
   }
 
+  hasTradingHouse(player) {
+    return (player?.cityImprovements?.trade || 0) >= IMPROVEMENT_PERK_LEVEL;
+  }
+
+  hasAqueduct(player) {
+    return (player?.cityImprovements?.science || 0) >= IMPROVEMENT_PERK_LEVEL;
+  }
+
+  hasFortress(player) {
+    return (player?.cityImprovements?.politics || 0) >= IMPROVEMENT_PERK_LEVEL;
+  }
+
+  getBestBankTradeRatio(player, giveRes) {
+    let bestRatio = 4;
+    if (player.merchantFleetActive) {
+      bestRatio = 2;
+    } else if (this.hasTradingHouse(player) && COMMODITY_VALUES.includes(giveRes)) {
+      bestRatio = 2;
+    } else if (this.merchantHolder === player.id && this.merchantHexId) {
+      const hex = this.grid.hexes.get(this.merchantHexId);
+      if (hex && hex.resource === giveRes) bestRatio = 2;
+    }
+    if (bestRatio > 2) {
+      for (const vKey of (player.settlementsBuilt || []).concat(player.citiesBuilt || [])) {
+        const v = this.grid.vertices.get(vKey);
+        if (v && v.harbor) {
+          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
+            bestRatio = 2;
+            break;
+          }
+          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
+            bestRatio = Math.min(bestRatio, 3);
+          }
+        }
+      }
+    }
+    return bestRatio;
+  }
+
   getPlayerCardCount(player, type) {
     if (COMMODITY_VALUES.includes(type)) return player.commodities?.[type] || 0;
     return player.resources?.[type] || 0;
@@ -1038,7 +1080,7 @@ export class GameEngine {
     const resPriority = ['ore', 'wheat', 'wood', 'brick', 'wool'];
     const results = {};
     for (const player of this.players) {
-      if ((player.cityImprovements?.science || 0) >= 5) {
+      if (this.hasAqueduct(player)) {
         const pProd = production[player.id] || {};
         const producedCount = Object.values(pProd).reduce((sum, n) => sum + n, 0);
         if (producedCount === 0) {
@@ -1066,7 +1108,7 @@ export class GameEngine {
     if (!validResources.includes(resource)) throw new Error('INVALID_RESOURCE');
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
-    if ((player.cityImprovements?.science || 0) < 5) throw new Error('AQUEDUCT_NOT_UNLOCKED');
+    if (!this.hasAqueduct(player)) throw new Error('AQUEDUCT_NOT_UNLOCKED');
     player.resources[resource] = (player.resources[resource] || 0) + 1;
     this.logEvent({
       type: 'AQUEDUCT_RESOURCE',
@@ -2571,30 +2613,7 @@ export class GameEngine {
       throw new Error('CANNOT_TRADE_SAME_RESOURCE');
     }
 
-    // Determine player's best available trade ratio for giveRes
-    let bestRatio = 4;
-    if (player.merchantFleetActive) {
-      bestRatio = 2;
-    } else if ((player.cityImprovements?.trade || 0) >= 5) {
-      bestRatio = 2;
-    } else if (this.merchantHolder === playerId && this.merchantHexId) {
-      const hex = this.grid.hexes.get(this.merchantHexId);
-      if (hex && hex.resource === giveRes) bestRatio = 2;
-    }
-    if (bestRatio > 2) {
-      for (const vKey of player.settlementsBuilt.concat(player.citiesBuilt)) {
-        const v = this.grid.vertices.get(vKey);
-        if (v && v.harbor) {
-          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-            bestRatio = 2;
-            break;
-          }
-          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-            bestRatio = Math.min(bestRatio, 3);
-          }
-        }
-      }
-    }
+    const bestRatio = this.getBestBankTradeRatio(player, giveRes);
 
     if (ratio < bestRatio) throw new Error('INVALID_TRADE_RATIO');
     if (this.getPlayerCardCount(player, giveRes) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');

@@ -11,7 +11,9 @@ import {
   GAME_PHASES,
   GAME_MODES,
   normalizeGameMode,
-  PROGRESS_CARD_DECKS
+  PROGRESS_CARD_DECKS,
+  KNIGHT_RANKS,
+  IMPROVEMENT_PERK_LEVEL
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
@@ -254,35 +256,92 @@ describe('CK-02 city improvements', () => {
     assert.equal(engine.players[0].progressCards.length, before + 2);
   });
 
-  it('does not give 2:1 bank trades at Trade level 1 (only Level 5 grants 2:1)', () => {
+  it('does not grant Trading House 2:1 at Trade levels 1–2', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].cityImprovements.trade = 1;
+    engine.players[0].cityImprovements.trade = 2;
     engine.players[0].resources.wood = 2;
     engine.players[0].commodities.cloth = 4;
     assert.throws(() => engine.tradeWithBank('p1', 'wood', 'brick', 2), /INVALID_TRADE_RATIO/);
+    assert.throws(() => engine.tradeWithBank('p1', 'cloth', 'ore', 2), /INVALID_TRADE_RATIO/);
   });
 
-  it('allows 2:1 commodity bank trades at Trade level 5', () => {
+  it('Trading House at Trade level 3 allows 2:1 commodities only, not resources', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].cityImprovements.trade = IMPROVEMENT_PERK_LEVEL;
+    engine.players[0].resources.wood = 2;
     engine.players[0].commodities.cloth = 2;
+    assert.throws(() => engine.tradeWithBank('p1', 'wood', 'brick', 2), /INVALID_TRADE_RATIO/);
     engine.tradeWithBank('p1', 'cloth', 'ore', 2);
     assert.equal(engine.players[0].commodities.cloth, 0);
     assert.equal(engine.players[0].resources.ore, 1);
   });
 
-  it('unlocks Aqueduct perk when Science reaches level 5 (no extra city pieces)', () => {
+  it('Trade level 5 has no extra perk beyond Trading House commodity 2:1', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.trade = 5;
+    engine.players[0].resources.wood = 2;
+    engine.players[0].commodities.coin = 2;
+    assert.throws(() => engine.tradeWithBank('p1', 'wood', 'brick', 2), /INVALID_TRADE_RATIO/);
+    engine.tradeWithBank('p1', 'coin', 'wheat', 2);
+    assert.equal(engine.players[0].commodities.coin, 0);
+    assert.equal(engine.players[0].resources.wheat, 1);
+  });
+
+  it('unlocks Aqueduct perk when Science reaches level 3 (no extra city pieces)', () => {
     const engine = makeCkEngine();
     engine.players[0].citiesBuilt.push('v1');
     engine.phase = GAME_PHASES.TURN_ACTION;
-    engine.players[0].cityImprovements.science = 4;
+    engine.players[0].cityImprovements.science = 2;
     engine.players[0].commodities.paper = 5;
     const before = engine.players[0].citiesRemaining;
     engine.improveCityTrack('p1', 'science');
-    assert.equal(engine.players[0].cityImprovements.science, 5);
+    assert.equal(engine.players[0].cityImprovements.science, IMPROVEMENT_PERK_LEVEL);
     assert.equal(engine.players[0].citiesRemaining, before);
+    assert.equal(engine.hasAqueduct(engine.players[0]), true);
+
+    const production = { p1: {}, p2: { wood: 1 } };
+    engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
+    const claimed = engine.applyAqueductBenefit(production);
+    assert.equal(claimed.p1, 'ore');
+    assert.equal(engine.players[0].resources.ore, 1);
+  });
+
+  it('does not apply Aqueduct before Science 3', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.science = 2;
+    engine.players[0].resources = { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    const production = { p1: {} };
+    const claimed = engine.applyAqueductBenefit(production);
+    assert.equal(claimed.p1, undefined);
+    assert.equal(engine.players[0].resources.ore, 0);
+  });
+});
+
+describe('CK-31 official L3 city-improvement perks', () => {
+  it('encodes Fortress/Mighty at Politics 3 and no Strong gate', () => {
+    assert.equal(IMPROVEMENT_PERK_LEVEL, 3);
+    assert.equal(KNIGHT_RANKS.strong.politicsRequired, 0);
+    assert.equal(KNIGHT_RANKS.mighty.politicsRequired, 3);
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements = { trade: 3, politics: 3, science: 3 };
+    assert.equal(engine.hasTradingHouse(engine.players[0]), true);
+    assert.equal(engine.hasFortress(engine.players[0]), true);
+    assert.equal(engine.hasAqueduct(engine.players[0]), true);
+    engine.players[0].cityImprovements = { trade: 2, politics: 2, science: 2 };
+    assert.equal(engine.hasTradingHouse(engine.players[0]), false);
+    assert.equal(engine.hasFortress(engine.players[0]), false);
+    assert.equal(engine.hasAqueduct(engine.players[0]), false);
+  });
+
+  it('BotAI bank ratio matches Trading House commodities-only 2:1', () => {
+    const engine = makeCkEngine();
+    engine.players[0].cityImprovements.trade = 3;
+    assert.equal(BotAI.getBestBankTradeRatio(engine, engine.players[0], 'cloth'), 2);
+    assert.equal(BotAI.getBestBankTradeRatio(engine, engine.players[0], 'paper'), 2);
+    assert.equal(BotAI.getBestBankTradeRatio(engine, engine.players[0], 'wood'), 4);
   });
 });
 
@@ -663,12 +722,12 @@ describe('CK-04: Knight Units', () => {
     assert.throws(() => engine.activateKnight('p1', vertex.id), /NOT_ENOUGH_RESOURCES/);
   });
 
-  it('should promote basic to strong with wool + ore and Politics ≥ 1', () => {
+  it('should promote basic to strong with wool + ore and no Politics gate', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id);
-    engine.players[0].cityImprovements.politics = 1;
+    engine.players[0].cityImprovements.politics = 0;
     engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
@@ -679,12 +738,12 @@ describe('CK-04: Knight Units', () => {
     assert.equal(engine.players[0].knightsAvailable.strong, 1);
   });
 
-  it('should promote strong to mighty with Politics ≥ 2', () => {
+  it('should promote strong to mighty with Fortress (Politics ≥ 3)', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
     plantKnight(engine, 'p1', vertex.id, { rank: 'strong' });
-    engine.players[0].cityImprovements.politics = 2;
+    engine.players[0].cityImprovements.politics = IMPROVEMENT_PERK_LEVEL;
     engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
@@ -692,11 +751,12 @@ describe('CK-04: Knight Units', () => {
     assert.equal(engine.players[0].knightsPlaced[0].strength, 3);
   });
 
-  it('should reject promotion without Politics requirement', () => {
+  it('should reject mighty promotion without Fortress even at Politics 2', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const vertex = emptyVertex(engine);
-    plantKnight(engine, 'p1', vertex.id);
+    plantKnight(engine, 'p1', vertex.id, { rank: 'strong' });
+    engine.players[0].cityImprovements.politics = 2;
     engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     assert.throws(() => engine.promoteKnight('p1', vertex.id), /POLITICS_LEVEL_TOO_LOW/);
@@ -727,7 +787,7 @@ describe('CK-04: Knight Units', () => {
     // If already active, stays active across turns
     engine.turnNumber++;
     engine.players[0].knightsPlaced[0].active = true;
-    engine.players[0].cityImprovements.politics = 2;
+    engine.players[0].cityImprovements.politics = IMPROVEMENT_PERK_LEVEL;
     engine.players[0].resources.wool = 1;
     engine.players[0].resources.ore = 1;
     engine.promoteKnight('p1', vertex.id);
@@ -1590,6 +1650,19 @@ describe('CK-07: Science Progress Cards', () => {
     assert.equal(engine.grid.vertices.get(v2.id).knight.rank, 'strong');
     assert.equal(engine.players[0].resources.ore, 0);
     assert.equal(engine.players[0].resources.wheat, 0);
+  });
+
+  it('Smith cannot promote Strong to Mighty without Fortress', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].cityImprovements.politics = 2;
+    const v1 = emptyVertex(engine);
+    plantKnight(engine, 'p1', v1.id, { rank: 'strong' });
+    assert.throws(
+      () => engine.playProgressCard('p1', giveCard(engine.players[0], 'smith').id, { knightVertices: [v1.id] }),
+      /POLITICS_LEVEL_TOO_LOW/
+    );
+    assert.equal(engine.grid.vertices.get(v1.id).knight.rank, 'strong');
   });
 });
 

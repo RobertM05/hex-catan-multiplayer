@@ -361,21 +361,27 @@ describe('QA Audit: Buildings & Knight Units', () => {
     assert.equal(p1.resources.wheat, 0);
   });
 
-  it('Knight promotion requires politics improvement level', () => {
+  it('Knight Basic→Strong has no politics gate; Mighty needs Fortress (Politics 3)', () => {
     const engine = makeCkEngine();
     const p1 = engine.players[0];
     const v1 = Array.from(engine.grid.vertices.values())[0];
     v1.knight = { playerId: 'p1', vertexId: v1.id, rank: 'basic', active: false, strength: 1, hiredTurn: 1, lastActionTurn: 1 };
     p1.knightsPlaced.push(v1.knight);
-    p1.resources = { ore: 1, wool: 1 };
-    p1.cityImprovements.politics = 0; // Requires level >= 1 for Strong
+    p1.resources = { ore: 2, wool: 2 };
+    p1.cityImprovements.politics = 0;
 
-    assert.throws(() => engine.promoteKnight('p1', v1.id), /POLITICS_LEVEL_TOO_LOW/);
-
-    p1.cityImprovements.politics = 1;
     engine.promoteKnight('p1', v1.id);
     assert.equal(v1.knight.rank, 'strong');
     assert.equal(v1.knight.strength, 2);
+
+    engine.turnNumber++;
+    p1.cityImprovements.politics = 2;
+    assert.throws(() => engine.promoteKnight('p1', v1.id), /POLITICS_LEVEL_TOO_LOW/);
+
+    p1.cityImprovements.politics = 3;
+    engine.promoteKnight('p1', v1.id);
+    assert.equal(v1.knight.rank, 'mighty');
+    assert.equal(v1.knight.strength, 3);
   });
 });
 

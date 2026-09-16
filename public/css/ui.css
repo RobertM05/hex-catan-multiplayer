@@ -1934,6 +1934,17 @@ input[type="number"] {
 .track-fill-politics { background: #219ebc; }
 .track-fill-science { background: #52b788; }
 
+.track-perk {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+.improvement-track.track-perk-on .track-perk {
+  color: inherit;
+}
+
 .btn-improve {
   width: 100%;
   font-size: 11px;

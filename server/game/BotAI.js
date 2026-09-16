@@ -251,7 +251,7 @@ export class BotAI {
       return playerTrade;
     }
 
-    // 6. Goal-oriented bank trading (considering 2:1 and 3:1 harbors and Trade Level 5)
+    // 6. Goal-oriented bank trading (harbors + Trading House 2:1 commodities at Trade 3)
     const validTradeResources = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 
     // Prioritized build goals: City -> Settlement -> Road
@@ -437,30 +437,7 @@ export class BotAI {
   }
 
   static getBestBankTradeRatio(engine, botPlayer, giveRes) {
-    let bestRatio = 4;
-    if (botPlayer.merchantFleetActive) {
-      bestRatio = 2;
-    } else if ((botPlayer.cityImprovements?.trade || 0) >= 5) {
-      bestRatio = 2;
-    } else if (engine.merchantHolder === botPlayer.id && engine.merchantHexId) {
-      const hex = engine.grid?.hexes?.get(engine.merchantHexId);
-      if (hex && hex.resource === giveRes) bestRatio = 2;
-    }
-    if (bestRatio > 2) {
-      for (const vKey of (botPlayer.settlementsBuilt || []).concat(botPlayer.citiesBuilt || [])) {
-        const v = engine.grid?.vertices?.get(vKey);
-        if (v && v.harbor) {
-          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-            bestRatio = 2;
-            break;
-          }
-          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-            bestRatio = Math.min(bestRatio, 3);
-          }
-        }
-      }
-    }
-    return bestRatio;
+    return engine.getBestBankTradeRatio(botPlayer, giveRes);
   }
 
   static isCk(engine) {
@@ -709,7 +686,7 @@ export class BotAI {
     const politics = me.cityImprovements?.politics || 0;
     for (const knight of me.knightsPlaced || []) {
       if (knight.hiredTurn === engine.turnNumber || knight.lastActionTurn === engine.turnNumber) continue;
-      const nextReq = knight.rank === 'basic' ? 1 : knight.rank === 'strong' ? 2 : 99;
+      const nextReq = knight.rank === 'basic' ? 0 : knight.rank === 'strong' ? 3 : 99;
       if (politics >= nextReq && knight.rank !== 'mighty'
         && (me.resources.wool || 0) >= 1 && (me.resources.ore || 0) >= 1) {
         const nextRank = knight.rank === 'basic' ? 'strong' : 'mighty';
