@@ -576,7 +576,7 @@ describe('CK-33: Victory gated on first barbarian attack', () => {
     giveCkWinningVp(engine, engine.players[0]);
 
     const result = engine.endTurn('p1');
-    assert.equal(result?.gameOver, undefined);
+    assert.equal(result.gameOver, false);
     assert.notEqual(engine.phase, GAME_PHASES.GAME_OVER);
     assert.equal(engine.getCurrentPlayer().id, 'p2');
   });
