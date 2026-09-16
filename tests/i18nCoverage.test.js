@@ -25,6 +25,13 @@ describe('UX-02 English-only copy', () => {
     assert.match(src, /export const STRINGS/);
   });
 
+  it('teaches Aqueduct as Science level 3 with a resource choice', () => {
+    const src = readFileSync(join(root, 'public/js/i18n.js'), 'utf8');
+    assert.match(src, /Aqueduct requires Science improvement level 3/);
+    assert.match(src, /Aqueduct \(Science 3\) lets you choose 1 resource/);
+    assert.equal(/Aqueduct requires Science improvement level 5/.test(src), false);
+  });
+
   it('has no leftover Romanian copy in client JavaScript', () => {
     const leftovers = [];
     for (const name of readdirSync(join(root, 'public/js'))) {

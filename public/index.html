@@ -1089,6 +1089,23 @@
     </div>
   </div>
 
+  <!-- Aqueduct Resource Selector Modal -->
+  <div id="aqueduct-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box modal-sm">
+      <div class="modal-header-row mid">
+        <h3 class="modal-title" data-i18n="AQUEDUCT_SELECT_TITLE">Aqueduct: Choose 1 Resource</h3>
+      </div>
+      <p class="modal-lede" data-i18n="AQUEDUCT_SELECT_BODY">Your production roll yielded nothing. Take any 1 resource from the bank.</p>
+      <div class="modal-res-buttons-grid">
+        <button type="button" class="btn-glass res-choice-btn" data-res="wood" data-i18n="RES_WOOD">Wood</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="brick" data-i18n="RES_BRICK">Brick</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wool" data-i18n="RES_WOOL">Wool</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="wheat" data-i18n="RES_WHEAT">Wheat</button>
+        <button type="button" class="btn-glass res-choice-btn" data-res="ore" data-i18n="RES_ORE">Ore</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Year of Plenty Resource Selector Modal -->
   <div id="year-of-plenty-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
@@ -1180,7 +1197,7 @@
         </div>
         <div>
           <strong data-i18n="RULES_CK_IMPROVE_TITLE">City improvements:</strong>
-          <span data-i18n="RULES_CK_IMPROVE_BODY">Need a city to invest. Cost equals the level you reach (1–5) in cloth (Trade), coin (Politics), or paper (Science). Draw a progress card at level 3. Unique leader at level 4+ places a metropolis (+2 VP). Level 5 unlocks special perks: 2:1 bank trade (Trade), Mighty Knights (Politics), or Aqueduct resource perk (Science). Walls raise the discard threshold by 2 each (3 walls max).</span>
+          <span data-i18n="RULES_CK_IMPROVE_BODY">Need a city to invest. Cost equals the level you reach (1–5) in cloth (Trade), coin (Politics), or paper (Science). Draw a progress card at level 3. Unique leader at level 4+ places a metropolis (+2 VP). Aqueduct (Science 3) lets you choose 1 resource when a production roll yields nothing. Level 5 unlocks special perks: 2:1 bank trade (Trade) or Mighty Knights (Politics). Walls raise the discard threshold by 2 each (3 walls max).</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_TITLES_TITLE">Special titles:</strong>

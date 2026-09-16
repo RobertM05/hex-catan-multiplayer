@@ -176,7 +176,8 @@ export class CatanAIAgent {
       (state.phase === 'TURN_CHOOSE_METROPOLIS' && state.pendingMetropolisChoice?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_CHOOSE_KNIGHT_RELOCATE' && state.pendingKnightRelocation?.playerId === this.myPlayerId) ||
       (state.phase === 'TURN_BARBARIAN_DOWNGRADE' && state.pendingBarbarianDowngrades?.includes(this.myPlayerId)) ||
-      (state.phase === 'TURN_BARBARIAN_REWARD' && state.pendingBarbarianTieDraws?.includes(this.myPlayerId))
+      (state.phase === 'TURN_BARBARIAN_REWARD' && state.pendingBarbarianTieDraws?.includes(this.myPlayerId)) ||
+      (state.pendingAqueductClaims?.includes(this.myPlayerId))
     );
 
     if (!hasAction) return;
@@ -196,6 +197,11 @@ export class CatanAIAgent {
       const curState = this.gameState || state;
       const curMe = curState.players?.find(p => p.id === this.myPlayerId) || me;
       const curIsMyTurn = curState.players[curState.currentTurnPlayerIndex]?.id === this.myPlayerId;
+
+      if (curState.pendingAqueductClaims?.includes(this.myPlayerId)) {
+        await this.handleAqueduct(curMe);
+        return;
+      }
 
       // 1. Setup Phase
       if (curState.phase === 'SETUP_ROUND_1' || curState.phase === 'SETUP_ROUND_2') {
@@ -265,6 +271,17 @@ export class CatanAIAgent {
   }
 
   /* ------------------- Phase Handlers ------------------- */
+
+  async handleAqueduct(me) {
+    const resources = ['ore', 'wheat', 'wood', 'brick', 'wool'];
+    const chosen = resources.slice().sort((a, b) => this.getCardCount(me, a) - this.getCardCount(me, b))[0];
+    try {
+      this.log(`[AI-Agent] Claiming Aqueduct resource: ${chosen}`);
+      await this.sendAction('claim_aqueduct_resource', { resource: chosen });
+    } catch (err) {
+      this.log(`[AI-Agent] Aqueduct claim failed: ${err.message}`);
+    }
+  }
 
   async handleSetup(state, me) {
     const grid = state.grid;
