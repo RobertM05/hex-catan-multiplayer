@@ -11,6 +11,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
 import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
+import {
+  SlidingWindowLimiter,
+  RATE_LIMITS,
+  RATE_LIMITED,
+  createRoomLimitKey,
+  chatLimitKey,
+  actionLimitKey
+} from './game/rateLimiter.js';
 import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +35,7 @@ const io = new Server(server, {
 });
 
 const spawnedAgents = new Map(); // roomCode -> childProcess[]
+export const socketRateLimiter = new SlidingWindowLimiter();
 
 export function killSpawnedAgentsForRoom(roomCode) {
   const code = String(roomCode || '').toUpperCase();
@@ -683,6 +692,9 @@ io.on('connection', (socket) => {
 
   socket.on('create_room', (data, callback) => {
     try {
+      if (!socketRateLimiter.consume(createRoomLimitKey(ip), RATE_LIMITS.createRoom)) {
+        throw new Error(RATE_LIMITED);
+      }
       if (!data || typeof data !== 'object') throw new Error('INVALID_PAYLOAD');
       const session = roomManager.createPlayerSession();
       const playerId = session.id;
@@ -925,38 +937,47 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send_chat', (data) => {
-    // SEC-05: chat is bound to the seated room only — never fall back to client-supplied data.code.
-    if (!currentRoomCode || !currentPlayerId) return;
-    const requestedCode = typeof data?.code === 'string' ? data.code.toUpperCase() : null;
-    if (requestedCode && requestedCode !== currentRoomCode) return;
+  socket.on('send_chat', (data, callback) => {
+    try {
+      // SEC-05: chat is bound to the seated room only — never fall back to client-supplied data.code.
+      if (!currentRoomCode || !currentPlayerId) return;
+      const requestedCode = typeof data?.code === 'string' ? data.code.toUpperCase() : null;
+      if (requestedCode && requestedCode !== currentRoomCode) return;
 
-    const room = roomManager.getRoom(currentRoomCode);
-    const sender = room?.players.find(p => p.id === currentPlayerId);
-    if (!room || !sender || !data?.text) return;
+      const room = roomManager.getRoom(currentRoomCode);
+      const sender = room?.players.find(p => p.id === currentPlayerId);
+      if (!room || !sender || !data?.text) return;
 
-    const chatMsg = {
-      id: `chat_${Date.now()}`,
-      senderId: currentPlayerId,
-      senderName: sender.name,
-      color: sender.color,
-      text: validateChatMessage(data.text),
-      timestamp: Date.now()
-    };
-    room.chatMessages.push(chatMsg);
-    recordTrafficEvent({
-      type: 'CHAT_MESSAGE',
-      roomCode: currentRoomCode,
-      playerId: currentPlayerId,
-      playerName: sender.name,
-      text: chatMsg.text,
-      ip,
-      country
-    });
+      if (!socketRateLimiter.consume(chatLimitKey(currentPlayerId, socket.id), RATE_LIMITS.sendChat)) {
+        throw new Error(RATE_LIMITED);
+      }
 
-    console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${currentRoomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
+      const chatMsg = {
+        id: `chat_${Date.now()}`,
+        senderId: currentPlayerId,
+        senderName: sender.name,
+        color: sender.color,
+        text: validateChatMessage(data.text),
+        timestamp: Date.now()
+      };
+      room.chatMessages.push(chatMsg);
+      recordTrafficEvent({
+        type: 'CHAT_MESSAGE',
+        roomCode: currentRoomCode,
+        playerId: currentPlayerId,
+        playerName: sender.name,
+        text: chatMsg.text,
+        ip,
+        country
+      });
 
-    io.to(room.code).emit('chat_received', chatMsg);
+      console.log(`[${new Date().toLocaleTimeString()}] [CHAT] [${currentRoomCode}] ${sender.name} (${ip}${countryTag ? ' ' + countryTag : ''}): "${chatMsg.text}"`);
+
+      io.to(room.code).emit('chat_received', chatMsg);
+      if (callback) callback({ success: true });
+    } catch (err) {
+      if (callback) callback({ success: false, error: err.message });
+    }
   });
 
   /* =========================================================
@@ -982,6 +1003,13 @@ io.on('connection', (socket) => {
       actionFn = actionFnOrCallback;
       callback = maybeCallback;
       payload = maybePayload || null;
+    }
+
+    if (!socketRateLimiter.consume(actionLimitKey(socket.id), RATE_LIMITS.gameAction)) {
+      const err = RATE_LIMITED;
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] "${actionName}": ${err}`);
+      if (callback) callback({ success: false, error: err });
+      return;
     }
 
     const roomCode = (code || currentRoomCode)?.toUpperCase();
@@ -1288,6 +1316,7 @@ io.on('connection', (socket) => {
     });
 
     trafficStats.activeSockets.delete(socket.id);
+    socketRateLimiter.clearSocket(socket.id, currentPlayerId);
 
     if (currentRoomCode && currentPlayerId) {
       const room = roomManager.getRoom(currentRoomCode);
@@ -1328,4 +1357,4 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   });
 }
 
-export { app, server, io, roomManager, spawnedAgents };
+export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED };
