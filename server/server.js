@@ -779,6 +779,8 @@ io.on('connection', (socket) => {
       if (!currentPlayerId || (room.hostId !== currentPlayerId && data?.id !== currentPlayerId)) {
         throw new Error('NOT_AUTHORIZED');
       }
+      // Lobby kick only. In-game seats use stand-in / leave / concede, not host delete.
+      if (room.isStarted) throw new Error('GAME_ALREADY_STARTED');
       const target = room.players.find(p => p.id === data?.id);
       const targetSocketId = target?.socketId;
       const kickedSelf = data?.id === currentPlayerId;
