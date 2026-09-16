@@ -6,6 +6,7 @@
 import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { persistFinishedMatch } from '../auth/matchStore.js';
 
 const DISPLAY_NAME_MAX_LENGTH = 32;
 const ROOM_NAME_MAX_LENGTH = 48;
@@ -94,25 +95,34 @@ export class RoomManager {
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
-      agentSpawnTimestamps: []
+      agentSpawnTimestamps: [],
+      authFrozen: false,
+      startedAt: null,
+      matchId: null,
+      ranked: false,
+      matchPersisted: false,
+      matchPersistStarted: false
     };
 
+    const hostName = validateDisplayName(hostData.name, 'Host Player');
     // Add host as first player
     room.players.push({
       id: hostData.id,
-      name: validateDisplayName(hostData.name, 'Host Player'),
+      name: hostName,
       color: '#e63946',
       isReady: true,
       isBot: false,
       socketId: hostData.socketId,
-      reconnectTokenHash: hostData.reconnectTokenHash || null
+      reconnectTokenHash: hostData.reconnectTokenHash || null,
+      userId: hostData.userId || null
     });
 
     engine.addPlayer({
       id: hostData.id,
-      name: validateDisplayName(hostData.name, 'Host Player'),
+      name: hostName,
       color: '#e63946',
-      isBot: false
+      isBot: false,
+      userId: hostData.userId || null
     });
 
     this.rooms.set(code, room);
@@ -150,6 +160,17 @@ export class RoomManager {
       || (playerData.allowLegacyId !== false && (p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId))));
     if (existing) {
       existing.socketId = playerData.socketId;
+      if (!room.isStarted && !room.authFrozen && playerData.userId) {
+        existing.userId = playerData.userId;
+        if (playerData.name) {
+          existing.name = validateDisplayName(playerData.name, existing.name);
+          const enginePlayer = room.engine.players.find(p => p.id === existing.id);
+          if (enginePlayer) {
+            enginePlayer.name = existing.name;
+            enginePlayer.userId = existing.userId;
+          }
+        }
+      }
       if (existing.isStandInBot) {
         this.reclaimStandInBot(room, existing);
       }
@@ -174,7 +195,8 @@ export class RoomManager {
       isReady: false,
       isBot: false,
       socketId: playerData.socketId,
-      reconnectTokenHash: playerData.reconnectTokenHash || null
+      reconnectTokenHash: playerData.reconnectTokenHash || null,
+      userId: playerData.userId || null
     };
 
     room.players.push(playerObj);
@@ -182,7 +204,8 @@ export class RoomManager {
       id: playerObj.id,
       name: playerObj.name,
       color: playerObj.color,
-      isBot: false
+      isBot: false,
+      userId: playerObj.userId
     });
 
     return { room, reconnected: false, playerId: playerObj.id };
@@ -349,6 +372,17 @@ export class RoomManager {
 
     room.engine.startGame(mapSize);
     room.isStarted = true;
+    room.authFrozen = true;
+    room.startedAt = Date.now();
+    for (const p of room.players) {
+      p.frozenUserId = p.userId || null;
+      p.frozenDisplayName = p.name;
+      const enginePlayer = room.engine.players.find(ep => ep.id === p.id);
+      if (enginePlayer) {
+        enginePlayer.userId = p.frozenUserId;
+        enginePlayer.name = p.frozenDisplayName;
+      }
+    }
 
     this.startTurnTimer(room);
     this.checkAndTriggerBotTurn(room);
@@ -825,6 +859,11 @@ export class RoomManager {
   }
 
   broadcastState(room) {
+    if (room.engine?.isGameOver) {
+      persistFinishedMatch(room).catch((err) => {
+        console.error('[auth] persistMatch failed:', err.message);
+      });
+    }
     const seenSockets = new Set();
     for (const player of room.players) {
       if (player.socketId && !seenSockets.has(player.socketId)) {

@@ -217,6 +217,7 @@ export class GameEngine {
       id: player.id,
       name: player.name,
       color: player.color || this.getAvailableColor(),
+      userId: player.userId || null,
       isBot: Boolean(player.isBot),
       botDifficulty: player.botDifficulty || 'medium',
       resources: { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 },

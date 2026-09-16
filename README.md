@@ -206,6 +206,25 @@ Proiectul folosește un sistem modular de CI/CD automatizat prin GitHub Actions,
 
 ---
 
-## 📜 Licență
+## Optional accounts (Supabase)
+
+Guest Host / Join / Public rooms stay the default. Sign-in is **optional** and only appears when env vars are set. No keys are required to run the game locally.
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `SUPABASE_URL` | Express + browser config | Project URL |
+| `SUPABASE_ANON_KEY` | Browser via `GET /api/auth/config` | Public anon key |
+| `SUPABASE_SERVICE_ROLE` | Server only | Profile reads + `matches` / `match_players` writes |
+| `SUPABASE_JWT_SECRET` | Server only | Verify Socket.IO / API access tokens (HS256). Invalid tokens are rejected. |
+
+1. Create a Supabase project (Google + magic-link providers).
+2. Apply `supabase/migrations/20260916100000_auth_profiles_matches.sql`.
+3. Add redirect URLs: `http://localhost:3000` and the production origin.
+4. Copy `.env.example` to `.env` and fill values. Never commit secrets.
+5. Optional smoke: `supabase/smoke.sql` (unique `display_name`, unused `ratings`).
+
+Seat ids remain `p_*`. At `start_game` the server freezes `userId` + display name. `GAME_OVER` inserts match rows when the service role is configured (`ranked=false`, no Elo). Ranked queue is not in this phase.
+
+---
 
 Acest proiect este distribuit sub licența **MIT**.

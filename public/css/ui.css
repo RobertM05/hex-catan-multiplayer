@@ -83,6 +83,53 @@
   box-shadow: var(--shadow-md);
 }
 
+.lobby-auth-card {
+  margin: 0 auto 18px;
+  padding: 16px 18px;
+  background: oklch(0.185 0.014 264 / 0.72);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+}
+
+.lobby-auth-hint,
+.lobby-auth-status {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.lobby-auth-actions,
+.magic-link-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.magic-link-form .form-input {
+  flex: 1 1 180px;
+}
+
+body.match-active .auth-lobby-only {
+  display: none !important;
+}
+
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 14px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

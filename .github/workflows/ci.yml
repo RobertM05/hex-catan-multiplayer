@@ -37,7 +37,7 @@ jobs:
       - run: npm ci
       - name: Validate server imports
         run: |
-          for f in server/game/*.js; do
+          for f in server/game/*.js server/auth/*.js; do
             echo "Importing $f"
             node --input-type=module -e "import('./$f').catch(err => { console.error('Import error in $f:', err); process.exit(1); })" || exit 1
           done
@@ -106,4 +106,5 @@ jobs:
           test -f public/js/network.js
           test -f public/js/audio.js
           test -f public/js/i18n.js
+          test -f public/js/auth.js
           echo "All client assets verified successfully."

@@ -29,6 +29,8 @@
     </button>
 
     <div class="header-actions">
+      <button id="btn-my-stats" class="btn-glass is-hidden auth-lobby-only" type="button" data-i18n="MY_STATS">My stats</button>
+      <button id="btn-sign-out" class="btn-glass is-hidden auth-lobby-only" type="button" data-i18n="SIGN_OUT">Sign out</button>
       <!-- Sound Toggle -->
       <button id="btn-sound-toggle" class="btn-glass" data-i18n-title="SOUND_TOGGLE" title="Sound" aria-label="Sound">
         <span class="btn-icon ico" data-icon="speakerHigh"></span>
@@ -51,6 +53,23 @@
       <div class="lobby-hero">
         <h1 data-i18n="APP_TITLE">HexSettlers Online</h1>
         <p data-i18n="TAGLINE">Hexagonal Strategy & Trading Board Game</p>
+      </div>
+
+      <div id="lobby-auth-card" class="lobby-auth-card is-hidden auth-lobby-only">
+        <p class="lobby-auth-hint" data-i18n="SIGN_IN_HINT">Optional. Guests can host and join without an account.</p>
+        <p id="lobby-auth-status" class="lobby-auth-status is-hidden"></p>
+        <div id="lobby-auth-signed-out" class="lobby-auth-actions">
+          <button type="button" id="btn-sign-in-google" class="btn-glass" data-i18n="SIGN_IN_GOOGLE">Continue with Google</button>
+          <form id="form-magic-link" class="magic-link-form">
+            <input type="email" id="magic-link-email" class="form-input" data-i18n-placeholder="SIGN_IN_EMAIL_PLACEHOLDER" placeholder="you@example.com" required>
+            <button type="submit" class="btn-glass" data-i18n="SIGN_IN_MAGIC">Email magic link</button>
+          </form>
+        </div>
+        <form id="form-display-name" class="magic-link-form is-hidden">
+          <label for="profile-display-name" data-i18n="DISPLAY_NAME_LABEL">Profile name</label>
+          <input type="text" id="profile-display-name" class="form-input" maxlength="32">
+          <button type="submit" class="btn-glass" data-i18n="SAVE_DISPLAY_NAME">Save name</button>
+        </form>
       </div>
 
       <div class="lobby-tabs">
@@ -142,6 +161,24 @@
       </div>
     </div>
   </main>
+
+  <section id="view-stats" class="view-screen">
+    <div class="lobby-container">
+      <div class="lobby-hero">
+        <h1 data-i18n="STATS_TITLE">Match history</h1>
+      </div>
+      <div id="stats-guest" class="lobby-panel is-hidden">
+        <p data-i18n="STATS_GUEST">Sign in from the lobby to see your stats.</p>
+      </div>
+      <div id="stats-body" class="lobby-panel">
+        <div class="stats-summary" id="stats-summary"></div>
+        <div id="stats-recent" class="stats-recent"></div>
+      </div>
+      <div class="waiting-actions">
+        <button type="button" id="btn-stats-back" class="btn-glass" data-i18n="STATS_BACK">Back to lobby</button>
+      </div>
+    </div>
+  </section>
 
   <!-- =========================================================
    * VIEW 2: WAITING ROOM

@@ -11,6 +11,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
 import { RoomManager, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
+import { extractBearerToken } from './auth/jwt.js';
+import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity } from './auth/identity.js';
+import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -322,6 +325,26 @@ app.use(express.static(publicDir, {
 }));
 app.use(express.json());
 
+// Socket.IO event handler
+io.use(async (socket, next) => {
+  try {
+    const token = extractBearerToken(socket);
+    if (!token) {
+      socket.data.auth = { userId: null, displayName: null };
+      return next();
+    }
+    const runtime = getAuthRuntime();
+    if (!runtime.jwtSecret) {
+      socket.data.auth = { userId: null, displayName: null };
+      return next();
+    }
+    socket.data.auth = await resolveAccessToken(token, runtime);
+    next();
+  } catch (err) {
+    next(new Error(err.message || 'INVALID_AUTH_TOKEN'));
+  }
+});
+
 // API: Health check and telemetry
 app.get('/api/health', (req, res) => {
   res.json({
@@ -332,8 +355,48 @@ app.get('/api/health', (req, res) => {
       rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
       heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
     },
-    activeRooms: roomManager.rooms ? roomManager.rooms.size : 0
+    activeRooms: roomManager.rooms ? roomManager.rooms.size : 0,
+    authEnabled: publicAuthConfig().enabled
   });
+});
+
+app.get('/api/auth/config', (req, res) => {
+  res.json(publicAuthConfig());
+});
+
+app.get('/api/me/stats', async (req, res) => {
+  const token = extractBearerToken(req);
+  if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  try {
+    const identity = await resolveAccessToken(token);
+    if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+    const admin = getAuthRuntime().admin;
+    if (!admin?.listOwnMatchPlayers) {
+      return res.json({ matches: 0, wins: 0, averageRank: null, averageVp: null, recent: [] });
+    }
+    const rows = await admin.listOwnMatchPlayers(identity.userId);
+    res.json(summarizeStats(rows));
+  } catch (err) {
+    res.status(401).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
+  }
+});
+
+app.patch('/api/me/profile', express.json(), async (req, res) => {
+  const token = extractBearerToken(req);
+  if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  try {
+    const identity = await resolveAccessToken(token);
+    if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+    const name = validateDisplayName(req.body?.displayName, '');
+    if (!name) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+    const admin = getAuthRuntime().admin;
+    if (!admin?.updateDisplayName) return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    const profile = await admin.updateDisplayName(identity.userId, name);
+    res.json({ success: true, profile });
+  } catch (err) {
+    const status = err.message === 'INVALID_PLAYER_NAME' ? 400 : 401;
+    res.status(status).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
+  }
 });
 
 // API: List public rooms
@@ -615,13 +678,22 @@ io.on('connection', (socket) => {
     console.log(`[${nowTime}] [SOCKET PACKET] ${ip} ${countryTag} [${socket.id.slice(0, 6)}]${playerTag} -> "${eventName}" ${payloadSummary}`);
   });
 
-  socket.on('create_room', (data, callback) => {
+  socket.on('create_room', async (data, callback) => {
     try {
       if (!data || typeof data !== 'object') throw new Error('INVALID_PAYLOAD');
+      const identity = await resolveSocketIdentity(socket, data.accessToken);
+      socket.data.auth = identity;
       const session = roomManager.createPlayerSession();
       const playerId = session.id;
+      const hostName = identity.userId ? identity.displayName : (data.hostName || 'Host');
       const room = roomManager.createRoom(
-        { id: playerId, name: data.hostName || 'Host', socketId: socket.id, reconnectTokenHash: session.reconnectTokenHash },
+        {
+          id: playerId,
+          name: hostName,
+          socketId: socket.id,
+          reconnectTokenHash: session.reconnectTokenHash,
+          userId: identity.userId
+        },
         {
           name: data.roomName,
           mode: data.mode,
@@ -639,15 +711,15 @@ io.on('connection', (socket) => {
       const active = trafficStats.activeSockets.get(socket.id);
       if (active) {
         active.roomCode = room.code;
-        active.playerName = data.hostName || 'Host';
+        active.playerName = hostName;
       }
 
-      console.log(`[${new Date().toLocaleTimeString()}] [ROOM CREATE] [${room.code}] Host: "${data.hostName || 'Host'}" (${ip} ${countryTag}) | Mode: ${room.mode} | Max: ${room.maxPlayers} | Turn: ${room.turnDuration}s | VP: ${room.engine?.vpTarget || 10}`);
+      console.log(`[${new Date().toLocaleTimeString()}] [ROOM CREATE] [${room.code}] Host: "${hostName}" (${ip} ${countryTag}) | Mode: ${room.mode} | Max: ${room.maxPlayers} | Turn: ${room.turnDuration}s | VP: ${room.engine?.vpTarget || 10}`);
 
       recordTrafficEvent({
         type: 'ROOM_CREATE',
         roomCode: room.code,
-        hostName: data.hostName || 'Host',
+        hostName,
         mode: room.mode,
         ip,
         country
@@ -661,18 +733,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('join_room', (data, callback) => {
+  socket.on('join_room', async (data, callback) => {
     try {
       if (!data || typeof data !== 'object') throw new Error('INVALID_PAYLOAD');
+      const identity = await resolveSocketIdentity(socket, data.accessToken);
+      socket.data.auth = identity;
       const roomCode = data.code || data.roomCode;
       const session = roomManager.createPlayerSession();
+      const playerName = identity.userId ? identity.displayName : data.playerName;
       const result = roomManager.joinRoom(roomCode, {
         id: session.id,
-        name: data.playerName,
+        name: playerName,
         socketId: socket.id,
         reconnectToken: data.reconnectToken,
         reconnectTokenHash: session.reconnectTokenHash,
-        allowLegacyId: false
+        allowLegacyId: false,
+        userId: identity.userId
       });
 
       if (result.error) {
@@ -698,17 +774,17 @@ io.on('connection', (socket) => {
       const active = trafficStats.activeSockets.get(socket.id);
       if (active) {
         active.roomCode = room.code;
-        active.playerName = data.playerName;
+        active.playerName = playerName;
       }
 
-      console.log(`[${new Date().toLocaleTimeString()}] [ROOM JOIN] [${room.code}] Player: "${data.playerName}" ${result.reconnected ? '(RECONNECTED)' : '(NEW)'} (${ip} ${countryTag}) | Players: ${room.players.length}/${room.maxPlayers}`);
+      console.log(`[${new Date().toLocaleTimeString()}] [ROOM JOIN] [${room.code}] Player: "${playerName}" ${result.reconnected ? '(RECONNECTED)' : '(NEW)'} (${ip} ${countryTag}) | Players: ${room.players.length}/${room.maxPlayers}`);
 
       recordTrafficEvent({
         type: 'ROOM_JOIN',
         roomCode: room.code,
-        playerName: data.playerName,
+        playerName,
         reconnected: Boolean(result.reconnected),
-        playerCount: room.players.length,
+        playerId: result.playerId,
         ip,
         country
       });

@@ -9,6 +9,7 @@ export class NetworkClient {
     this.currentRoomCode = null;
     this.currentPlayerId = null;
     this.reconnectToken = typeof localStorage !== 'undefined' ? localStorage.getItem('catan_reconnect_token') : null;
+    this.accessToken = null;
     this.onStateUpdate = null;
     this.onLobbyUpdate = null;
     this.onGameStarted = null;
@@ -21,7 +22,9 @@ export class NetworkClient {
   connect() {
     return new Promise((resolve) => {
       // Connect to same origin
-      this.socket = io();
+      this.socket = io({
+        auth: this.accessToken ? { token: this.accessToken } : {}
+      });
 
       this.socket.on('connect', () => {
         console.log('Connected to game server, socket id:', this.socket.id);
@@ -82,6 +85,21 @@ export class NetworkClient {
           reject(new Error(res ? res.error : 'Failed to join room'));
         }
       });
+    });
+  }
+
+  setAccessToken(token) {
+    this.accessToken = token || null;
+  }
+
+  reconnectWithAuth(token) {
+    this.setAccessToken(token);
+    if (!this.socket) return this.connect();
+    this.socket.auth = this.accessToken ? { token: this.accessToken } : {};
+    return new Promise((resolve) => {
+      this.socket.once('connect', () => resolve(this.socket));
+      this.socket.disconnect();
+      this.socket.connect();
     });
   }
 
