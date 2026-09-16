@@ -25,6 +25,47 @@ export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 }
 
+const FOW_TYPED_GAIN_LOG_TYPES = new Set(['RESOURCE_PRODUCED', 'AQUEDUCT_RESOURCE', 'BOOTSTRAP_RESOURCES']);
+const HIDDEN_GAIN_MESSAGE_KEYS = {
+  RESOURCE_PRODUCED: 'LOG_RESOURCE_PRODUCED_HIDDEN',
+  AQUEDUCT_RESOURCE: 'LOG_AQUEDUCT_RESOURCE_HIDDEN',
+  BOOTSTRAP_RESOURCES: 'LOG_BOOTSTRAP_RESOURCES_HIDDEN'
+};
+
+function countCardMap(map) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return 0;
+  return Object.values(map).reduce((sum, n) => sum + (Number(n) || 0), 0);
+}
+
+/**
+ * Client-side fog-of-war for production / aqueduct / setup gains.
+ * Server already strips types; this keeps the log/toasts safe if a leaky payload arrives.
+ */
+export function redactEventLogEntryForViewer(entry, viewer) {
+  if (!entry || !FOW_TYPED_GAIN_LOG_TYPES.has(entry.type)) return entry;
+  const args = entry.args && typeof entry.args === 'object' ? entry.args : {};
+  const viewerId = viewer?.id || viewer?.playerId;
+  const isOwner = Boolean(viewerId) && args.playerId === viewerId;
+  if (isOwner) return entry;
+
+  const publicArgs = {
+    playerName: args.playerName,
+    playerId: args.playerId
+  };
+  if (entry.type === 'RESOURCE_PRODUCED') {
+    publicArgs.amount = args.amount;
+  } else if (entry.type === 'AQUEDUCT_RESOURCE') {
+    publicArgs.amount = 1;
+  } else {
+    publicArgs.count = args.count != null ? args.count : countCardMap(args.resources);
+  }
+  return {
+    ...entry,
+    messageKey: HIDDEN_GAIN_MESSAGE_KEYS[entry.type] || entry.messageKey,
+    args: publicArgs
+  };
+}
+
 export function renderVictoryStatsHtml(winner, s) {
   const turns = s?.turnNumber || 1;
   const vp = winner?.victoryPoints || s?.vpTarget || 10;
@@ -3992,10 +4033,11 @@ export class CatanApp {
     // Check for newly added events since last render
     if (logs.length > (this.lastProcessedLogCount || 0)) {
       const newEntries = logs.slice(this.lastProcessedLogCount || 0);
-      newEntries.forEach(entry => {
+      newEntries.forEach(rawEntry => {
+        const entry = redactEventLogEntryForViewer(rawEntry, me);
         if (entry.type === 'ROBBER_STOLE' && me && entry.args && entry.args.victimName === me.name && entry.args.robberName !== me.name) {
           this.showToast(i18n.t('ROBBER_STOLE_FROM_YOU', { robber: entry.args.robberName }), true);
-        } else if (entry.type === 'RESOURCE_PRODUCED' && me && entry.args && entry.args.playerName === me.name) {
+        } else if (entry.type === 'RESOURCE_PRODUCED' && me && entry.args && entry.args.playerId === me.id && entry.args.resource) {
           const resLocalized = i18n.t(`RES_${entry.args.resource.toUpperCase()}`);
           const message = i18n.t('YOU_RECEIVED_RESOURCE', { amount: entry.args.amount, resource: resLocalized });
           if (this.diceAnim) this.deferredProductionToasts.push(message);
@@ -4013,7 +4055,8 @@ export class CatanApp {
       this.lastProcessedLogCount = logs.length;
     }
 
-    logs.slice().reverse().forEach(entry => {
+    logs.slice().reverse().forEach(rawEntry => {
+      const entry = redactEventLogEntryForViewer(rawEntry, me);
       const el = document.createElement('div');
       el.className = 'log-entry';
       const argsCopy = entry.args ? { ...entry.args } : {};
