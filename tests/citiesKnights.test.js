@@ -3308,3 +3308,117 @@ describe('SEC-11: Aqueduct claim_aqueduct_resource gating', () => {
     assert.equal(engine.pendingAqueductClaims.has('p2'), true);
   });
 });
+
+describe('CK-40: Progress deck draw order and recycle', () => {
+  function makeThreePlayerCkEngine() {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    engine.startGame('standard');
+    return engine;
+  }
+
+  it('draws clockwise starting from the roller, not seat 0', () => {
+    const engine = makeThreePlayerCkEngine();
+    for (const player of engine.players) player.cityImprovements.science = 3;
+    engine.currentTurnPlayerIndex = 1;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    engine.progressDecks.science = [
+      { id: 'sci-p1', type: 'crane' },
+      { id: 'sci-p3', type: 'inventor' },
+      { id: 'sci-p2', type: 'alchemist' }
+    ];
+
+    const result = forceRoll(engine, 'p2', 1, 3, 5);
+    assert.equal(result.eventDie, 'science');
+    assert.deepEqual(result.progressDraws.map(d => d.playerId), ['p2', 'p3', 'p1']);
+    assert.deepEqual(result.progressDraws.map(d => d.cardType), ['alchemist', 'inventor', 'crane']);
+    assert.equal(engine.players[1].progressCards[0].id, 'sci-p2');
+    assert.equal(engine.players[2].progressCards[0].id, 'sci-p3');
+    assert.equal(engine.players[0].progressCards[0].id, 'sci-p1');
+  });
+
+  it('lists eligible players clockwise from the current roller', () => {
+    const engine = makeThreePlayerCkEngine();
+    engine.players[0].cityImprovements.trade = 3;
+    engine.players[1].cityImprovements.trade = 1;
+    engine.players[2].cityImprovements.trade = 4;
+    engine.currentTurnPlayerIndex = 2;
+
+    assert.deepEqual(
+      engine.getProgressCardEligiblePlayers('trade', 2).map(p => p.id),
+      ['p3', 'p1']
+    );
+  });
+
+  it('places a played progress card under its deck so it is drawn last', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.trade = [
+      { id: 'trade-bottom', type: 'merchant' },
+      { id: 'trade-top', type: 'resource_monopoly' }
+    ];
+    const card = {
+      id: 'played-fleet',
+      type: 'merchant_fleet',
+      track: 'trade',
+      played: false,
+      boughtTurn: 0
+    };
+    engine.players[0].progressCards.push(card);
+    engine.players[0].resources.wood = 2;
+
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'played-fleet'), false);
+    assert.equal(engine.progressDecks.trade[0].id, 'played-fleet');
+    assert.equal(engine.progressDecks.trade[0].type, 'merchant_fleet');
+    assert.equal(engine.progressDecks.trade.length, 3);
+
+    const firstRedraw = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(firstRedraw, 'resource_monopoly');
+    assert.equal(engine.players[0].progressCards.at(-1).id, 'trade-top');
+    const secondRedraw = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(secondRedraw, 'merchant');
+    const recycled = engine.drawProgressCard(engine.players[0], 'trade');
+    assert.equal(recycled, 'merchant_fleet');
+    assert.equal(engine.players[0].progressCards.at(-1).id, 'played-fleet');
+    assert.equal(engine.players[0].progressCards.at(-1).played, false);
+  });
+
+  it('keeps constitution and printer in front of the player instead of recycling', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.politics = [{ id: 'pol-remain', type: 'bishop' }];
+    const card = { id: 'vp-const', type: 'constitution', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    engine.playProgressCard('p1', card.id, {});
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'vp-const'), true);
+    assert.equal(engine.progressDecks.politics.some(c => c.id === 'vp-const'), false);
+    assert.equal(engine.progressDecks.politics[0].id, 'pol-remain');
+  });
+
+  it('places a discarded progress card under its deck', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.progressDecks.science = [{ id: 'sci-remain', type: 'crane' }];
+    for (let i = 0; i < 5; i++) {
+      engine.players[0].progressCards.push({
+        id: `sci-hand-${i}`,
+        type: 'inventor',
+        track: 'science',
+        played: false,
+        boughtTurn: 0
+      });
+    }
+    engine.pendingProgressDiscard.add('p1');
+
+    engine.discardProgressCard('p1', 'sci-hand-0');
+    assert.equal(engine.players[0].progressCards.some(c => c.id === 'sci-hand-0'), false);
+    assert.equal(engine.progressDecks.science[0].id, 'sci-hand-0');
+    assert.equal(engine.progressDecks.science[0].type, 'inventor');
+    assert.equal(engine.drawProgressCard(engine.players[1], 'science'), 'crane');
+    assert.equal(engine.drawProgressCard(engine.players[1], 'science'), 'inventor');
+  });
+});
