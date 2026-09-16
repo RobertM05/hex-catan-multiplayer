@@ -2496,6 +2496,9 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
   });
 
   it('trade monopoly UI and copy name a commodity, while resource monopoly stays on resources', () => {
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const appJs = readFileSync(join(thisDir, '..', 'public', 'js', 'app.js'), 'utf8');
+    const i18nJs = readFileSync(join(thisDir, '..', 'public', 'js', 'i18n.js'), 'utf8');
     const selectorBlock = (type) => {
       const needle = `if (type === '${type}')`;
       const start = appJs.indexOf(needle);
