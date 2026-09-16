@@ -2118,20 +2118,20 @@ export class GameEngine {
         break;
       }
       case 'trade_monopoly': {
-        const resource = options.resource;
-        if (!resource || !RESOURCE_VALUES.includes(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
+        const commodity = options.commodity;
+        if (!commodity || !COMMODITY_VALUES.includes(commodity)) throw new Error('SPECIFY_VALID_COMMODITY');
         let stolen = 0;
         for (const other of this.players) {
           if (other.id === playerId) continue;
-          const take = Math.min(1, other.resources[resource] || 0);
+          const take = Math.min(1, this.getPlayerCardCount(other, commodity));
           if (take > 0) {
-            other.resources[resource] -= take;
+            this.adjustPlayerCard(other, commodity, -take);
             stolen += take;
           }
         }
-        player.resources[resource] = (player.resources[resource] || 0) + stolen;
+        this.adjustPlayerCard(player, commodity, stolen);
         result.stolen = stolen;
-        result.resource = resource;
+        result.commodity = commodity;
         break;
       }
       case 'merchant_fleet':

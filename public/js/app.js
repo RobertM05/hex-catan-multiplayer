@@ -2700,7 +2700,7 @@ export class CatanApp {
       return;
     }
 
-    if (type === 'resource_monopoly' || type === 'trade_monopoly') {
+    if (type === 'resource_monopoly') {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE')}</div>
         <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px;">
           ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${this.cardLabel(r)}</button>`).join('')}
@@ -2709,6 +2709,23 @@ export class CatanApp {
       box.querySelectorAll('.res-choice-btn').forEach(b => {
         b.addEventListener('click', () => {
           this.progressPlay.options.resource = b.dataset.res;
+          box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
+          b.classList.add('btn-primary');
+          if (playBtn) playBtn.disabled = !isActionPhase;
+        });
+      });
+      return;
+    }
+
+    if (type === 'trade_monopoly') {
+      box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_COMMODITY')}</div>
+        <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
+          ${['cloth','coin','paper'].map(c => `<button type="button" class="btn-glass res-choice-btn" data-com="${c}">${this.cardLabel(c)}</button>`).join('')}
+        </div>`;
+      if (playBtn) playBtn.disabled = true;
+      box.querySelectorAll('.res-choice-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          this.progressPlay.options.commodity = b.dataset.com;
           box.querySelectorAll('.res-choice-btn').forEach(x => x.classList.remove('btn-primary'));
           b.classList.add('btn-primary');
           if (playBtn) playBtn.disabled = !isActionPhase;

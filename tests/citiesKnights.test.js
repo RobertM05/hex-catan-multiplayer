@@ -5,6 +5,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RESOURCE_TYPES } from '../server/game/HexGrid.js';
 import {
   GameEngine,
@@ -15,6 +18,10 @@ import {
 } from '../server/game/GameEngine.js';
 import { RoomManager } from '../server/game/RoomManager.js';
 import { BotAI } from '../server/game/BotAI.js';
+
+const clientRoot = join(dirname(fileURLToPath(import.meta.url)), '../public/js');
+const appJs = readFileSync(join(clientRoot, 'app.js'), 'utf8');
+const i18nJs = readFileSync(join(clientRoot, 'i18n.js'), 'utf8');
 
 function makeCkEngine() {
   const engine = new GameEngine({ mode: 'cities_knights' });
@@ -1128,6 +1135,21 @@ describe('CK-05: Trade Progress Cards', () => {
     assert.equal(engine.players[0].resources.wool, 2);
   });
 
+  it('should execute Trade Monopoly: steal 1 named commodity from each opponent who has it', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[1].commodities.cloth = 3;
+    engine.players[1].resources.wool = 4;
+    const card = giveCard(engine.players[0], 'trade_monopoly');
+    const res = engine.playProgressCard('p1', card.id, { commodity: 'cloth' });
+    assert.equal(res.stolen, 1);
+    assert.equal(res.commodity, 'cloth');
+    assert.equal(engine.players[1].commodities.cloth, 2);
+    assert.equal(engine.players[0].commodities.cloth, 1);
+    assert.equal(engine.players[1].resources.wool, 4);
+    assert.equal(engine.players[0].resources.wool, 0);
+  });
+
   it('should execute Merchant Fleet: enable 2:1 bank trades for rest of turn', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
@@ -1707,6 +1729,24 @@ describe('CK-13: Bot AI C&K', () => {
     assert.equal(engine.players[0].progressCards[0].played, true);
   });
 
+  it('bot Trade Monopoly names a commodity opponents hold', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [bot, opp] = engine.players;
+    bot.isBot = true;
+    bot.progressCards.push({ id: 'tm1', type: 'trade_monopoly', played: false, boughtTurn: 0 });
+    opp.commodities.coin = 2;
+    opp.commodities.cloth = 0;
+    opp.commodities.paper = 0;
+    const action = BotAI.decideProgressCardPlay(engine, bot);
+    assert.equal(action.action, 'play_progress_card');
+    assert.equal(action.options.commodity, 'coin');
+    assert.equal(action.options.resource, undefined);
+    BotAI.applyTurnAction(engine, bot, action);
+    assert.equal(bot.commodities.coin, 1);
+    assert.equal(opp.commodities.coin, 1);
+  });
+
   it('full bot-only C&K game should complete without errors', () => {
     let completed = 0;
     for (let g = 0; g < 3; g++) {
@@ -2099,26 +2139,100 @@ describe('CK-20: Full 54-Card Progress Decks and Missing Card Effects', () => {
     assert.equal(engine.progressDecks.science.length, 18);
   });
 
-  it('trade_monopoly steals 1 specified resource from each opponent who has it', () => {
+  it('trade_monopoly steals 1 specified commodity from each opponent who has it', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const [p1, p2] = engine.players;
     engine.addPlayer({ id: 'p3', name: 'Charlie' });
     const p3 = engine.players[2];
 
-    p1.resources.wood = 0;
-    p2.resources.wood = 3;
-    p3.resources.wood = 0;
+    p1.commodities.cloth = 0;
+    p2.commodities.cloth = 3;
+    p3.commodities.cloth = 0;
+    p2.commodities.coin = 2;
+    p2.resources.wool = 5;
 
     const card = { id: 'c-tm', type: 'trade_monopoly', played: false };
     p1.progressCards.push(card);
 
-    const res = engine.playProgressCard('p1', card.id, { resource: 'wood' });
+    const res = engine.playProgressCard('p1', card.id, { commodity: 'cloth' });
     assert.equal(res.stolen, 1);
-    assert.equal(p1.resources.wood, 1);
-    assert.equal(p2.resources.wood, 2);
-    assert.equal(p3.resources.wood, 0);
+    assert.equal(res.commodity, 'cloth');
+    assert.equal(p1.commodities.cloth, 1);
+    assert.equal(p2.commodities.cloth, 2);
+    assert.equal(p3.commodities.cloth, 0);
+    assert.equal(p2.commodities.coin, 2);
+    assert.equal(p2.resources.wool, 5);
     assert.equal(card.played, true);
+  });
+
+  it('trade_monopoly takes one commodity from every opponent who holds it', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.addPlayer({ id: 'p3', name: 'Charlie' });
+    const [p1, p2, p3] = engine.players;
+    p2.commodities.paper = 1;
+    p3.commodities.paper = 4;
+
+    const card = { id: 'c-tm-all', type: 'trade_monopoly', played: false };
+    p1.progressCards.push(card);
+
+    const res = engine.playProgressCard('p1', card.id, { commodity: 'paper' });
+    assert.equal(res.stolen, 2);
+    assert.equal(p1.commodities.paper, 2);
+    assert.equal(p2.commodities.paper, 0);
+    assert.equal(p3.commodities.paper, 3);
+  });
+
+  it('trade_monopoly rejects resources and invalid commodities', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const [p1, p2] = engine.players;
+    p2.resources.wood = 3;
+    p2.commodities.cloth = 2;
+
+    const card = { id: 'c-tm-bad', type: 'trade_monopoly', played: false };
+    p1.progressCards.push(card);
+
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { resource: 'wood' }),
+      /SPECIFY_VALID_COMMODITY/
+    );
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { commodity: 'wood' }),
+      /SPECIFY_VALID_COMMODITY/
+    );
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { commodity: 'gold' }),
+      /SPECIFY_VALID_COMMODITY/
+    );
+    assert.equal(p2.resources.wood, 3);
+    assert.equal(p2.commodities.cloth, 2);
+    assert.equal(card.played, false);
+  });
+
+  it('trade monopoly UI and copy name a commodity, while resource monopoly stays on resources', () => {
+    const selectorBlock = (type) => {
+      const needle = `if (type === '${type}')`;
+      const start = appJs.indexOf(needle);
+      assert.ok(start >= 0, `expected selector for ${type}`);
+      const end = appJs.indexOf('\n    if (type ===', start + needle.length);
+      return appJs.slice(start, end > start ? end : start + 800);
+    };
+    const resourceBlock = selectorBlock('resource_monopoly');
+    const tradeBlock = selectorBlock('trade_monopoly');
+
+    assert.match(resourceBlock, /\['wood','brick','wool','wheat','ore'\]/);
+    assert.match(resourceBlock, /options\.resource/);
+    assert.doesNotMatch(resourceBlock, /cloth','coin','paper/);
+
+    assert.match(tradeBlock, /\['cloth','coin','paper'\]/);
+    assert.match(tradeBlock, /options\.commodity/);
+    assert.doesNotMatch(tradeBlock, /wood','brick','wool/);
+
+    assert.match(i18nJs, /CARD_TRADE_MONOPOLY_DESC: "Name a commodity/);
+    assert.match(i18nJs, /PROGRESS_SELECT_COMMODITY: "Choose a commodity"/);
+    assert.match(i18nJs, /ERROR_SPECIFY_VALID_COMMODITY:/);
   });
 
   it('wedding requires opponents with strictly more victory points and transfers up to 2 cards', () => {
