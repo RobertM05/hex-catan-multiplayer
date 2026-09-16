@@ -748,10 +748,19 @@ export class BotAI {
         const v = engine.grid.vertices.get(knight.vertexId);
         if (v?.hexes?.includes(robberHex)) {
           const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
-          if (dest) return { action: 'chase_robber', vertexId: knight.vertexId, hexId: dest };
+          if (dest) {
+            const victims = engine.getRobberStealVictims(dest, me.id);
+            return {
+              action: 'chase_robber',
+              vertexId: knight.vertexId,
+              hexId: dest,
+              targetPlayerId: victims[0]?.id ?? null
+            };
+          }
         }
       }
     }
+
 
     if ((me.knightsPlaced || []).length === 0 && (me.resources.ore || 0) >= 1 && (me.resources.wool || 0) >= 1) {
       const valid = this.findValidKnightVertices(engine, me);
