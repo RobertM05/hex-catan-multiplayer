@@ -228,6 +228,7 @@ export class GameEngine {
       metropolis: { trade: false, politics: false, science: false },
       progressCards: [],
       merchantFleetActive: false,
+      merchantFleetResource: null,
       devCards: [], // { type, boughtTurn, played }
       playedKnights: 0,
       settlementsRemaining: 5,
@@ -2134,9 +2135,14 @@ export class GameEngine {
         result.resource = resource;
         break;
       }
-      case 'merchant_fleet':
+      case 'merchant_fleet': {
+        const resource = options.resource;
+        if (!resource || !this.isTradableType(resource)) throw new Error('SPECIFY_VALID_RESOURCE');
         player.merchantFleetActive = true;
+        player.merchantFleetResource = resource;
+        result.resource = resource;
         break;
+      }
       case 'merchant': {
         const hexId = options.hexId;
         if (!this.grid.hexes.has(hexId)) throw new Error('INVALID_HEX');
@@ -2559,25 +2565,14 @@ export class GameEngine {
    * TRADING
    * ========================================================= */
 
-  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-
-    if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
-      throw new Error('INVALID_RESOURCE');
-    }
-    if (giveRes === receiveRes) {
-      throw new Error('CANNOT_TRADE_SAME_RESOURCE');
-    }
-
-    // Determine player's best available trade ratio for giveRes
+  getBestBankRatio(player, giveRes) {
     let bestRatio = 4;
-    if (player.merchantFleetActive) {
+    // Merchant Fleet: 2:1 on the one named type only (IRL C&K).
+    if (player.merchantFleetResource && player.merchantFleetResource === giveRes) {
       bestRatio = 2;
     } else if ((player.cityImprovements?.trade || 0) >= 5) {
       bestRatio = 2;
-    } else if (this.merchantHolder === playerId && this.merchantHexId) {
+    } else if (this.merchantHolder === player.id && this.merchantHexId) {
       const hex = this.grid.hexes.get(this.merchantHexId);
       if (hex && hex.resource === giveRes) bestRatio = 2;
     }
@@ -2595,6 +2590,23 @@ export class GameEngine {
         }
       }
     }
+    return bestRatio;
+  }
+
+  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
+    const player = this.getCurrentPlayer();
+    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
+    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
+
+    if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
+      throw new Error('INVALID_RESOURCE');
+    }
+    if (giveRes === receiveRes) {
+      throw new Error('CANNOT_TRADE_SAME_RESOURCE');
+    }
+
+    // Determine player's best available trade ratio for giveRes
+    const bestRatio = this.getBestBankRatio(player, giveRes);
 
     if (ratio < bestRatio) throw new Error('INVALID_TRADE_RATIO');
     if (this.getPlayerCardCount(player, giveRes) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');
@@ -2767,6 +2779,7 @@ export class GameEngine {
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
     player.merchantFleetActive = false;
+    player.merchantFleetResource = null;
     player.craneDiscount = false;
     player.medicineActive = false;
     player.hasProposedTradeThisTurn = false;
@@ -3216,6 +3229,7 @@ export class GameEngine {
           commodities: isSelf ? p.commodities : { total: this.countCommodities(p) },
           cityImprovements: p.cityImprovements,
           merchantFleetActive: isSelf ? p.merchantFleetActive : undefined,
+          merchantFleetResource: isSelf ? p.merchantFleetResource : undefined,
           knightsAvailable: isSelf ? p.knightsAvailable : undefined,
           knightsPlaced: p.knightsPlaced,
           cityWalls: p.cityWalls,

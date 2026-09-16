@@ -176,7 +176,7 @@ export const STRINGS = {
     CARD_COMMERCIAL_HARBOR_DESC: "Force each opponent to exchange 1 commodity for 1 resource of yours.",
     CARD_MASTER_MERCHANT_DESC: "Look at a richer opponent's hand and take 2 cards.",
     CARD_MERCHANT_DESC: "Place the merchant on a hex next to your city or settlement: 2:1 trade and +1 VP.",
-    CARD_MERCHANT_FLEET_DESC: "This turn, trade any one resource or commodity 2:1 with the bank.",
+    CARD_MERCHANT_FLEET_DESC: "Name one resource or commodity. Until the end of your turn, trade that type 2:1 with the bank.",
     CARD_RESOURCE_MONOPOLY_DESC: "Name a resource. Each opponent gives you up to 2 of that resource.",
     CARD_TRADE_MONOPOLY_DESC: "Name a resource. Each opponent gives you 1 of that resource if they have any.",
     CARD_BISHOP_DESC: "Move the robber. Steal 1 card from every player adjacent to the new hex.",
@@ -205,6 +205,7 @@ export const STRINGS = {
     PROGRESS_DISCARD_HINT: "You have more than 4 unplayed progress cards. Discard one to continue.",
     PROGRESS_SELECT_OPPONENT: "Choose an opponent",
     PROGRESS_SELECT_RESOURCE: "Choose a resource",
+    PROGRESS_SELECT_RESOURCE_OR_COMMODITY: "Choose a resource or commodity",
     PROGRESS_SELECT_HEX: "Click a hex on the board",
     PROGRESS_SELECT_HEX_2: "Click a second hex",
     PROGRESS_SELECT_KNIGHTS: "Click two of your knights",
@@ -335,6 +336,8 @@ export const STRINGS = {
     BANK_CARDS_NEED_MORE: "need {need} more",
     BANK_PORT_APPLIED_2: "Specialized {res} port (2:1) applied!",
     BANK_PORT_APPLIED_3: "Generic port (3:1) applied!",
+    BANK_FLEET_APPLIED_2: "Merchant Fleet 2:1 on {res} this turn.",
+    BANK_FLEET_RATIO_TAG: "2:1 Fleet",
     BANK_STANDARD_RATIO: "Standard bank exchange (4:1)",
 
     // Discard & Robber

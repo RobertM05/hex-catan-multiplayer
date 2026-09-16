@@ -437,30 +437,22 @@ export class BotAI {
   }
 
   static getBestBankTradeRatio(engine, botPlayer, giveRes) {
-    let bestRatio = 4;
-    if (botPlayer.merchantFleetActive) {
-      bestRatio = 2;
-    } else if ((botPlayer.cityImprovements?.trade || 0) >= 5) {
-      bestRatio = 2;
-    } else if (engine.merchantHolder === botPlayer.id && engine.merchantHexId) {
-      const hex = engine.grid?.hexes?.get(engine.merchantHexId);
-      if (hex && hex.resource === giveRes) bestRatio = 2;
-    }
-    if (bestRatio > 2) {
-      for (const vKey of (botPlayer.settlementsBuilt || []).concat(botPlayer.citiesBuilt || [])) {
-        const v = engine.grid?.vertices?.get(vKey);
-        if (v && v.harbor) {
-          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-            bestRatio = 2;
-            break;
-          }
-          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-            bestRatio = Math.min(bestRatio, 3);
-          }
-        }
+    return engine.getBestBankRatio(botPlayer, giveRes);
+  }
+
+  static chooseMerchantFleetType(engine, me) {
+    const types = ['wood', 'brick', 'wool', 'wheat', 'ore'];
+    if (this.isCk(engine)) types.push('cloth', 'coin', 'paper');
+    let best = types[0];
+    let bestCount = -1;
+    for (const type of types) {
+      const n = engine.getPlayerCardCount(me, type);
+      if (n > bestCount) {
+        bestCount = n;
+        best = type;
       }
     }
-    return bestRatio;
+    return best;
   }
 
   static isCk(engine) {
@@ -626,7 +618,11 @@ export class BotAI {
     }
     const fleet = cards.find(c => c.type === 'merchant_fleet');
     if (fleet && engine.countTotalCards(me) >= 7) {
-      return { action: 'play_progress_card', cardId: fleet.id, options: {} };
+      return {
+        action: 'play_progress_card',
+        cardId: fleet.id,
+        options: { resource: this.chooseMerchantFleetType(engine, me) }
+      };
     }
     const crane = cards.find(c => c.type === 'crane');
     if (crane && this.chooseBestImprovementTrack(engine, me)) {
