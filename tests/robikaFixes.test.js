@@ -158,14 +158,16 @@ describe('Robika fixes', () => {
     engine.players[0].progressCards.push(card);
     const peek = engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true });
     assert.equal(peek.peek, true);
-    assert.equal(card.played, false);
+    assert.equal(card.played, true);
+    assert.equal(card.peeked, true);
     assert.equal(peek.revealedHand.resources.wool, 1);
     engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', steal: ['wool', 'cloth'] });
     assert.equal(card.played, true);
     assert.equal(engine.players[0].resources.wool, 1);
+    assert.equal(engine.pendingProgressPeek, null);
   });
 
-  it('lets Spy peek opponent progress cards without consuming the Spy', () => {
+  it('lets Spy peek opponent progress cards, then steal on the same spent card', () => {
     const engine = makeCkEngine();
     engine.phase = GAME_PHASES.TURN_ACTION;
     const spy = { id: 'c-spy', type: 'spy', played: false };
@@ -173,11 +175,69 @@ describe('Robika fixes', () => {
     engine.players[1].progressCards.push({ id: 'c-crane', type: 'crane', played: false });
     const peek = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', peek: true });
     assert.equal(peek.peek, true);
-    assert.equal(spy.played, false);
+    assert.equal(spy.played, true);
+    assert.equal(spy.peeked, true);
     assert.equal(peek.targetProgressCards[0].id, 'c-crane');
     const steal = engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', stealCardId: 'c-crane' });
     assert.equal(steal.stolenCard.type, 'crane');
     assert.equal(spy.played, true);
+    assert.equal(engine.pendingProgressPeek, null);
+  });
+
+  it('rejects a second Spy peek on the same card instance', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    const spy = { id: 'c-spy', type: 'spy', played: false };
+    engine.players[0].progressCards.push(spy);
+    engine.players[1].progressCards.push({ id: 'c-crane', type: 'crane', played: false });
+    engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', peek: true });
+    assert.throws(
+      () => engine.playProgressCard('p1', spy.id, { targetPlayerId: 'p2', peek: true }),
+      /CARD_ALREADY_PEEKED/
+    );
+    assert.equal(spy.played, true);
+  });
+
+  it('rejects a second Master Merchant peek on the same card instance', () => {
+    const engine = makeCkEngine();
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].victoryPoints = 1;
+    engine.players[1].victoryPoints = 4;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    const card = { id: 'mm1', type: 'master_merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true });
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true }),
+      /CARD_ALREADY_PEEKED/
+    );
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2' }),
+      /CARD_ALREADY_PEEKED/
+    );
+    assert.equal(card.played, true);
+  });
+
+  it('rejects Master Merchant steal from a different opponent than the peek', () => {
+    const engine = makeCkEngine();
+    engine.addPlayer({ id: 'p3', name: 'Cara' });
+    engine.phase = GAME_PHASES.TURN_ACTION;
+    engine.players[0].victoryPoints = 1;
+    engine.players[1].victoryPoints = 4;
+    engine.players[2].victoryPoints = 5;
+    engine.players[1].resources.wool = 1;
+    engine.players[1].commodities.cloth = 1;
+    engine.players[2].resources.ore = 1;
+    engine.players[2].commodities.coin = 1;
+    const card = { id: 'mm1', type: 'master_merchant', played: false };
+    engine.players[0].progressCards.push(card);
+    engine.playProgressCard('p1', card.id, { targetPlayerId: 'p2', peek: true });
+    assert.throws(
+      () => engine.playProgressCard('p1', card.id, { targetPlayerId: 'p3', steal: ['ore', 'coin'] }),
+      /PEEK_TARGET_MISMATCH/
+    );
+    assert.equal(engine.players[2].resources.ore, 1);
   });
 
   it('keeps merchantHexId on player state for the map token', () => {
@@ -208,5 +268,11 @@ describe('Robika fixes', () => {
     );
     assert.equal(hexes[0].token, token);
     assert.equal(card.played, false);
+  });
+
+  it('locks Spy and Master Merchant opponent selection after a peek', () => {
+    const app = readFileSync(join(root, 'public/js/app.js'), 'utf8');
+    assert.match(app, /play\.peekLocked = true/);
+    assert.match(app, /if \(this\.progressPlay\.peekLocked\) return;/);
   });
 });
