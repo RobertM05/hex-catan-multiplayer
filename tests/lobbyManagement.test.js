@@ -144,4 +144,81 @@ describe('LOBBY: Socket Bot Spawning, Case-Insensitive Codes & Host Authorizatio
     hostSocket.disconnect();
     roomManager.destroyRoom(createRes.roomCode);
   });
+
+  it('SEC-16: allows host lobby kick but rejects remove_player after the game has started', async () => {
+    const hostSocket = createClient();
+    const guestSocket = createClient();
+
+    await Promise.all([
+      new Promise(res => hostSocket.on('connect', res)),
+      new Promise(res => guestSocket.on('connect', res))
+    ]);
+
+    const createRes = await new Promise((resolve) => {
+      hostSocket.emit('create_room', {
+        hostName: 'KickHost',
+        roomName: 'KickLobby',
+        maxPlayers: 4,
+        mode: 'base'
+      }, resolve);
+    });
+    assert.equal(createRes.success, true);
+    const roomCode = createRes.roomCode;
+
+    const guestJoinRes = await new Promise((resolve) => {
+      guestSocket.emit('join_room', { code: roomCode, playerName: 'KickGuest' }, resolve);
+    });
+    assert.equal(guestJoinRes.success, true);
+    const guestId = guestJoinRes.playerId;
+
+    const addBotRes = await new Promise((resolve) => {
+      hostSocket.emit('add_bot', { code: roomCode, difficulty: 'easy' }, resolve);
+    });
+    assert.equal(addBotRes.success, true);
+    const botId = addBotRes.bot.id;
+
+    const lobbyKickRes = await new Promise((resolve) => {
+      hostSocket.emit('remove_player', { code: roomCode, id: botId }, resolve);
+    });
+    assert.equal(lobbyKickRes.success, true);
+    assert.equal(roomManager.getRoom(roomCode).players.some(p => p.id === botId), false);
+
+    await new Promise((resolve) => {
+      guestSocket.emit('set_ready', { code: roomCode, isReady: true }, resolve);
+    });
+
+    const startRes = await new Promise((resolve) => {
+      hostSocket.emit('start_game', { code: roomCode }, resolve);
+    });
+    assert.equal(startRes.success, true);
+
+    const roomBeforeKick = roomManager.getRoom(roomCode);
+    assert.equal(roomBeforeKick.isStarted, true);
+    const playerCount = roomBeforeKick.players.length;
+    const phaseBeforeKick = roomBeforeKick.engine.phase;
+
+    const midGameKickRes = await new Promise((resolve) => {
+      hostSocket.emit('remove_player', { code: roomCode, id: guestId }, resolve);
+    });
+    assert.equal(midGameKickRes.success, false);
+    assert.equal(midGameKickRes.error, 'GAME_ALREADY_STARTED');
+
+    const roomAfterHostKick = roomManager.getRoom(roomCode);
+    assert.ok(roomAfterHostKick);
+    assert.equal(roomAfterHostKick.isStarted, true);
+    assert.equal(roomAfterHostKick.engine.phase, phaseBeforeKick);
+    assert.equal(roomAfterHostKick.players.length, playerCount);
+    assert.ok(roomAfterHostKick.players.some(p => p.id === guestId));
+
+    const selfKickRes = await new Promise((resolve) => {
+      guestSocket.emit('remove_player', { code: roomCode, id: guestId }, resolve);
+    });
+    assert.equal(selfKickRes.success, false);
+    assert.equal(selfKickRes.error, 'GAME_ALREADY_STARTED');
+    assert.ok(roomManager.getRoom(roomCode).players.some(p => p.id === guestId));
+
+    hostSocket.disconnect();
+    guestSocket.disconnect();
+    roomManager.destroyRoom(roomCode);
+  });
 });
