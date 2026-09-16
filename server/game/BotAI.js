@@ -592,6 +592,52 @@ export class BotAI {
     return cards[0].id;
   }
 
+  /**
+   * Split a dice sum 2–12 into two faces in 1..6.
+   */
+  static splitAlchemistDice(sum) {
+    const target = Math.min(12, Math.max(2, Number(sum) || 7));
+    const d1 = Math.min(6, Math.max(1, Math.floor(target / 2)));
+    const d2 = target - d1;
+    return { d1, d2 };
+  }
+
+  static alchemistYieldForSum(engine, me, sum) {
+    let totalYield = 0;
+    const robberId = engine.grid?.robberHexId;
+    const citySet = new Set(me.citiesBuilt || []);
+    for (const vid of [...(me.settlementsBuilt || []), ...(me.citiesBuilt || [])]) {
+      const v = engine.grid.vertices.get(vid);
+      const multiplier = citySet.has(vid) || v?.building?.type === 'city' ? 2 : 1;
+      for (const hid of v?.hexes || []) {
+        if (hid === robberId) continue;
+        const hex = engine.grid.hexes.get(hid);
+        if (!hex || hex.token !== sum || hex.resource === RESOURCE_TYPES.DESERT) continue;
+        totalYield += multiplier;
+      }
+    }
+    return totalYield;
+  }
+
+  static chooseAlchemistDice(engine, me) {
+    const tieRank = (sum) => (sum === 6 || sum === 8 ? 2 : (sum === 5 || sum === 9 ? 1 : 0));
+    let bestSum = 6;
+    let bestYield = -1;
+    let bestRank = -1;
+    for (let sum = 2; sum <= 12; sum++) {
+      if (sum === 7) continue;
+      const y = this.alchemistYieldForSum(engine, me, sum);
+      const rank = tieRank(sum);
+      if (y > bestYield || (y === bestYield && rank > bestRank)) {
+        bestYield = y;
+        bestRank = rank;
+        bestSum = sum;
+      }
+    }
+    if (bestYield <= 0) bestSum = 7;
+    return this.splitAlchemistDice(bestSum);
+  }
+
   static decideProgressCardPlay(engine, me) {
     const cards = (me.progressCards || []).filter(c => !c.played && !c.revealed);
     const vp = cards.find(c => c.type === 'constitution' || c.type === 'printer');
@@ -601,17 +647,8 @@ export class BotAI {
     if (engine.phase === GAME_PHASES.TURN_ROLL) {
       const alchemist = cards.find(c => c.type === 'alchemist');
       if (alchemist) {
-        const tokens = [];
-        for (const vid of [...(me.settlementsBuilt || []), ...(me.citiesBuilt || [])]) {
-          const v = engine.grid.vertices.get(vid);
-          for (const hid of v?.hexes || []) {
-            const token = engine.grid.hexes.get(hid)?.token;
-            if (token) tokens.push(token);
-          }
-        }
-        const target = tokens.sort((a, b) => b - a)[0] || 7;
-        const d1 = Math.min(6, Math.max(1, Math.floor(target / 2)));
-        return { action: 'play_progress_card', cardId: alchemist.id, options: { d1, d2: target - d1 } };
+        const { d1, d2 } = this.chooseAlchemistDice(engine, me);
+        return { action: 'play_progress_card', cardId: alchemist.id, options: { d1, d2 } };
       }
       return null;
     }
