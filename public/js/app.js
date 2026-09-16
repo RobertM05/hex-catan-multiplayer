@@ -2914,6 +2914,7 @@ export class CatanApp {
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
+          if (this.progressPlay.peekLocked) return;
           this.progressPlay.options.targetPlayerId = b.dataset.id;
           delete this.progressPlay.options.stealCardId;
           box.querySelectorAll('.progress-target-btn').forEach(x => x.classList.remove('btn-primary'));
@@ -2934,6 +2935,7 @@ export class CatanApp {
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
         b.addEventListener('click', () => {
+          if (this.progressPlay.peekLocked) return;
           this.progressPlay.options.targetPlayerId = b.dataset.id;
           this.progressPlay.handPeeked = false;
           delete this.progressPlay.options.steal;
@@ -3200,12 +3202,14 @@ export class CatanApp {
       const res = await network.sendAction('play_progress_card', { cardId: play.card.id, options });
       if (res?.peek && play.card.type === 'spy') {
         el?.classList.remove('playing');
+        play.peekLocked = true;
         this.renderSpyStealChoices(res.targetProgressCards || []);
         return;
       }
       if (res?.peek && play.card.type === 'master_merchant') {
         el?.classList.remove('playing');
         play.handPeeked = true;
+        play.peekLocked = true;
         this.renderMasterMerchantHand(res.revealedHand);
         return;
       }

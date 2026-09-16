@@ -161,6 +161,7 @@ export class GameEngine {
     this.merchantHolder = null;
     this.merchantHexId = null;
     this.pendingProgressDiscard = new Set();
+    this.pendingProgressPeek = null;
     this.alchemistDice = null;
     this.metropolises = { trade: null, politics: null, science: null };
     this.pendingMetropolisChoice = null;
@@ -2114,12 +2115,45 @@ export class GameEngine {
     return { cardType: card.type };
   }
 
+  isPendingProgressPeek(playerId, cardId) {
+    const pending = this.pendingProgressPeek;
+    return Boolean(pending && pending.playerId === playerId && pending.cardId === cardId);
+  }
+
+  beginProgressPeek(card, playerId, targetPlayerId) {
+    if (card.peeked || card.played || this.isPendingProgressPeek(playerId, card.id)) {
+      throw new Error('CARD_ALREADY_PEEKED');
+    }
+    card.peeked = true;
+    this.pendingProgressPeek = {
+      playerId,
+      cardId: card.id,
+      cardType: card.type,
+      targetPlayerId
+    };
+  }
+
+  assertPendingPeekTarget(card, targetPlayerId) {
+    const pending = this.pendingProgressPeek;
+    if (!pending || pending.cardId !== card.id) return;
+    if (pending.targetPlayerId !== targetPlayerId) {
+      throw new Error('PEEK_TARGET_MISMATCH');
+    }
+  }
+
+  clearPendingProgressPeek(cardId) {
+    if (this.pendingProgressPeek?.cardId === cardId) {
+      this.pendingProgressPeek = null;
+    }
+  }
+
   playProgressCard(playerId, cardId, options = {}) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
 
-    const card = player.progressCards.find(c => c.id === cardId && !c.played);
+    const completingPeek = this.isPendingProgressPeek(playerId, cardId);
+    const card = player.progressCards.find(c => c.id === cardId && (completingPeek || !c.played));
     if (!card) throw new Error('CARD_NOT_FOUND');
     if (card.type === 'alchemist') {
       if (this.phase !== GAME_PHASES.TURN_ROLL || this.hasRolledDice) {
@@ -2187,6 +2221,7 @@ export class GameEngine {
         const steal = Array.isArray(options.steal) ? options.steal.slice(0, 2) : [];
         if (options.peek || steal.length !== 2) {
           if (!options.peek && steal.length) throw new Error('STEAL_TWO_CARDS');
+          this.beginProgressPeek(card, playerId, target.id);
           result.peek = true;
           result.targetPlayerId = target.id;
           result.revealedHand = {
@@ -2195,6 +2230,7 @@ export class GameEngine {
           };
           break;
         }
+        this.assertPendingPeekTarget(card, target.id);
         const taken = [];
         for (const type of steal) {
           if (this.getPlayerCardCount(target, type) < 1) throw new Error('TARGET_MISSING_CARDS');
@@ -2452,11 +2488,13 @@ export class GameEngine {
           throw new Error('TARGET_HAS_NO_PROGRESS_CARDS');
         }
         if (options.peek) {
+          this.beginProgressPeek(card, playerId, target.id);
           result.peek = true;
           result.targetPlayerId = target.id;
           result.targetProgressCards = unplayedTargetCards.map(c => ({ id: c.id, type: c.type }));
           break;
         }
+        this.assertPendingPeekTarget(card, target.id);
         let stolenCard;
         if (options.stealCardId) {
           stolenCard = unplayedTargetCards.find(c => c.id === options.stealCardId);
@@ -2566,7 +2604,11 @@ export class GameEngine {
         throw new Error('UNKNOWN_PROGRESS_CARD');
     }
 
-    if (result.peek) {
+    if (!result.peek) {
+      this.clearPendingProgressPeek(card.id);
+    }
+
+    if (completingPeek) {
       return result;
     }
 
@@ -2800,6 +2842,7 @@ export class GameEngine {
     }
 
     this.activeTrade = null;
+    this.pendingProgressPeek = null;
     this.freeRoadsRemaining = 0;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
