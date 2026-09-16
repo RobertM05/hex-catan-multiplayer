@@ -7,6 +7,7 @@ import {
   validatePlayerColor,
   validateRoomName
 } from '../server/game/RoomManager.js';
+import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
 import { escapeHtml, CatanApp } from '../public/js/app.js';
 import { network } from '../public/js/network.js';
 
@@ -99,5 +100,57 @@ describe('SEC-04: lobby bot spawning & host authorization', () => {
 
     app.myPlayerId = null;
     network.currentPlayerId = null;
+  });
+});
+
+describe('SEC-18: Saboteur callback fog-of-war', () => {
+  function playSaboteurAgainstAheadOpponent() {
+    const engine = new GameEngine({ mode: 'cities_knights' });
+    engine.addPlayer({ id: 'p1', name: 'Alice' });
+    engine.addPlayer({ id: 'p2', name: 'Bob' });
+    engine.startGame('standard');
+    engine.phase = GAME_PHASES.TURN_ACTION;
+
+    engine.players[1].defenderCards = 2;
+    engine.recalculateVictoryPoints();
+    engine.players[1].resources = { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 0 };
+    engine.players[1].commodities = { cloth: 2, coin: 0, paper: 0 };
+
+    const card = { id: 'sab1', type: 'saboteur', played: false, boughtTurn: 0 };
+    engine.players[0].progressCards.push(card);
+
+    const result = engine.playProgressCard('p1', 'sab1', {});
+    return { engine, result };
+  }
+
+  it('omits typed discard maps and reveals only who discarded and how many', () => {
+    const { engine, result } = playSaboteurAgainstAheadOpponent();
+    const callbackPayload = JSON.parse(JSON.stringify({ success: true, ...result }));
+
+    assert.equal(callbackPayload.cardType, 'saboteur');
+    assert.equal(callbackPayload.victims.length, 1);
+    assert.deepEqual(Object.keys(callbackPayload.victims[0]).sort(), ['count', 'playerId']);
+    assert.equal(callbackPayload.victims[0].playerId, 'p2');
+    assert.equal(callbackPayload.victims[0].count, 3);
+    assert.equal(callbackPayload.victims[0].discarded, undefined);
+
+    const serialized = JSON.stringify(callbackPayload);
+    assert.equal(serialized.includes('"wood"'), false);
+    assert.equal(serialized.includes('"cloth"'), false);
+    assert.equal(serialized.includes('"brick"'), false);
+
+    assert.equal(engine.countTotalCards(engine.players[1]), 3);
+  });
+
+  it('keeps opponent hand types hidden after Saboteur in getStateForPlayer', () => {
+    const { engine } = playSaboteurAgainstAheadOpponent();
+    const asCaster = engine.getStateForPlayer('p1').players.find(p => p.id === 'p2');
+    const asVictim = engine.getStateForPlayer('p2').players.find(p => p.id === 'p2');
+
+    assert.equal(asCaster.resources.total + asCaster.commodities.total, 3);
+    assert.equal(asCaster.resources.wood, undefined);
+    assert.equal(asCaster.commodities.cloth, undefined);
+    assert.equal(typeof asVictim.resources.wood, 'number');
+    assert.equal(typeof asVictim.commodities.cloth, 'number');
   });
 });

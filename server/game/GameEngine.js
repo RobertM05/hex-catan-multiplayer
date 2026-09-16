@@ -2355,7 +2355,9 @@ export class GameEngine {
           if (other.id === playerId) continue;
           if ((other.victoryPoints || 0) < myVp) continue;
           const discarded = this.forceDiscardHalfFromLargestStacks(other);
-          victims.push({ playerId: other.id, discarded });
+          // Fog-of-war: clients learn who discarded and how many, never the types.
+          const count = Object.values(discarded).reduce((sum, n) => sum + n, 0);
+          victims.push({ playerId: other.id, count });
         }
         result.victims = victims;
         break;
