@@ -2,6 +2,17 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { server, io, extractClientIp, extractClientCountry, recordTrafficEvent, recordPlayerIp, trafficBuffer, trafficStats, formatEventStory, capitalizeWord, clearTrafficLogs, TRAFFIC_LIMITS } from '../server/server.js';
 
+const TEST_ADMIN_SECRET = 'test-admin-secret-ci-only-not-for-prod';
+if (!process.env.ADMIN_SECRET) process.env.ADMIN_SECRET = TEST_ADMIN_SECRET;
+
+function adminFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Authorization') && !headers.has('X-Admin-Secret')) {
+    headers.set('Authorization', `Bearer ${process.env.ADMIN_SECRET}`);
+  }
+  return fetch(url, { ...options, headers });
+}
+
 describe('API: Real-time Traffic & IP Telemetry', () => {
   let serverPort = null;
   let serverUrl = null;
@@ -21,6 +32,65 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     await new Promise((resolve) => {
       server.close(resolve);
     });
+  });
+
+  it('rejects unauthenticated admin UI and APIs with 401 and does not leak IPs or hands', async () => {
+    const routes = [
+      '/admin',
+      '/admin/traffic',
+      '/admin.html',
+      '/api/admin/traffic',
+      '/api/admin/room/ROOM1'
+    ];
+    for (const route of routes) {
+      const res = await fetch(`${serverUrl}${route}`, { headers: { Accept: 'application/json' } });
+      assert.equal(res.status, 401, route);
+      const text = await res.text();
+      assert.equal(text.includes('recentEvents'), false, route);
+      assert.equal(text.includes('uniqueIps'), false, route);
+      assert.equal(text.includes('"resources"'), false, route);
+      assert.equal(text.includes('"commodities"'), false, route);
+      const data = JSON.parse(text);
+      assert.equal(data.error, 'ADMIN_UNAUTHORIZED', route);
+    }
+
+    recordTrafficEvent({ type: 'SECRET_EVENT', ip: '203.0.113.9' });
+    const clearRes = await fetch(`${serverUrl}/api/admin/traffic/clear`, { method: 'POST' });
+    assert.equal(clearRes.status, 401);
+    assert.ok(trafficBuffer.some(e => e.type === 'SECRET_EVENT'));
+  });
+
+  it('does not return room hands when Authorization is wrong', async () => {
+    const { roomManager } = await import('../server/server.js');
+    const session = roomManager.createPlayerSession();
+    const room = roomManager.createRoom(
+      { id: session.id, name: 'HiddenHand', socketId: 'auth_sock' },
+      { name: 'Secret Room', mode: 'cities_knights' }
+    );
+    const player = room.players[0];
+    if (player.resources) player.resources.ore = 7;
+
+    const res = await fetch(`${serverUrl}/api/admin/room/${room.code}`, {
+      headers: { Authorization: 'Bearer definitely-not-the-secret', Accept: 'application/json' }
+    });
+    assert.equal(res.status, 401);
+    const text = await res.text();
+    assert.equal(text.includes('HiddenHand'), false);
+    assert.equal(text.includes('"ore"'), false);
+    assert.equal(text.includes('"resources"'), false);
+    const data = JSON.parse(text);
+    assert.equal(data.error, 'ADMIN_UNAUTHORIZED');
+
+    roomManager.rooms.delete(room.code);
+  });
+
+  it('GET /admin with HTML Accept serves a login page, not the dashboard, when unauthenticated', async () => {
+    const res = await fetch(`${serverUrl}/admin`, { headers: { Accept: 'text/html' } });
+    assert.equal(res.status, 401);
+    const html = await res.text();
+    assert.ok(html.includes('Admin access required') || html.includes('ADMIN_SECRET'));
+    assert.equal(html.includes('dashboard-container'), false);
+    assert.equal(html.includes('Catan Admin Telemetry & Traffic Dashboard'), false);
   });
 
   it('extractClientIp should correctly prioritize cf-connecting-ip, x-real-ip, x-forwarded-for, and req.ip', () => {
@@ -67,7 +137,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
   });
 
   it('GET /api/admin/traffic should return telemetry data and respect query limits', async () => {
-    const res = await fetch(`${serverUrl}/api/admin/traffic?limit=5`);
+    const res = await adminFetch(`${serverUrl}/api/admin/traffic?limit=5`);
     assert.equal(res.status, 200);
     const data = await res.json();
 
@@ -83,7 +153,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
   });
 
   it('GET /api/admin/traffic should filter by event type when requested', async () => {
-    const res = await fetch(`${serverUrl}/api/admin/traffic?type=HTTP&limit=10`);
+    const res = await adminFetch(`${serverUrl}/api/admin/traffic?type=HTTP&limit=10`);
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.ok(Array.isArray(data.recentEvents));
@@ -94,7 +164,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
 
   it('GET /api/admin/room/:code should return 404 for non-existent room and 200 with debug state for active room', async () => {
     // 404 case
-    const res404 = await fetch(`${serverUrl}/api/admin/room/NONEXISTENT`);
+    const res404 = await adminFetch(`${serverUrl}/api/admin/room/NONEXISTENT`);
     assert.equal(res404.status, 404);
     const data404 = await res404.json();
     assert.equal(data404.error, 'ROOM_NOT_FOUND');
@@ -107,7 +177,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
       { name: 'Debug Room', mode: 'cities_knights' }
     );
 
-    const res200 = await fetch(`${serverUrl}/api/admin/room/${testRoom.code}`);
+    const res200 = await adminFetch(`${serverUrl}/api/admin/room/${testRoom.code}`);
     assert.equal(res200.status, 200);
     const data200 = await res200.json();
     assert.equal(data200.status, 'ok');
@@ -121,7 +191,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
   });
 
   it('GET /admin should serve HTML dashboard with status 200', async () => {
-    const res = await fetch(`${serverUrl}/admin`);
+    const res = await adminFetch(`${serverUrl}/admin`);
     assert.equal(res.status, 200);
     const text = await res.text();
     assert.ok(text.includes('Catan Admin Telemetry & Traffic Dashboard'));
@@ -129,7 +199,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
   });
 
   it('GET /api/admin/traffic should return dashboard url and valid JSON with indentation', async () => {
-    const res = await fetch(`${serverUrl}/api/admin/traffic?limit=1`);
+    const res = await adminFetch(`${serverUrl}/api/admin/traffic?limit=1`);
     assert.equal(res.status, 200);
     const rawText = await res.text();
     // Verify JSON indentation (contains indented lines)
@@ -140,13 +210,13 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
 
   it('GET /api/admin/traffic should support auto-refresh headers and log sorting', async () => {
     // Test refresh header
-    const resRefresh = await fetch(`${serverUrl}/api/admin/traffic?refresh=4`);
+    const resRefresh = await adminFetch(`${serverUrl}/api/admin/traffic?refresh=4`);
     assert.equal(resRefresh.headers.get('refresh'), '4');
     const dataRefresh = await resRefresh.json();
     assert.equal(dataRefresh.refreshSeconds, 4);
 
     // Test sort by time_asc
-    const resAsc = await fetch(`${serverUrl}/api/admin/traffic?sort=time_asc&limit=10`);
+    const resAsc = await adminFetch(`${serverUrl}/api/admin/traffic?sort=time_asc&limit=10`);
     assert.equal(resAsc.status, 200);
     const dataAsc = await resAsc.json();
     assert.equal(dataAsc.sort, 'time_asc');
@@ -157,7 +227,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     }
 
     // Test sort by ip
-    const resIp = await fetch(`${serverUrl}/api/admin/traffic?sort=ip&limit=10`);
+    const resIp = await adminFetch(`${serverUrl}/api/admin/traffic?sort=ip&limit=10`);
     assert.equal(resIp.status, 200);
     const dataIp = await resIp.json();
     assert.equal(dataIp.sort, 'ip');
@@ -309,7 +379,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     });
 
     // Simple Mode: raw technical packet format
-    const resSimple = await fetch(`${serverUrl}/api/admin/traffic?mode=simple&limit=10`);
+    const resSimple = await adminFetch(`${serverUrl}/api/admin/traffic?mode=simple&limit=10`);
     assert.equal(resSimple.status, 200);
     const dataSimple = await resSimple.json();
     assert.equal(dataSimple.mode, 'simple');
@@ -322,7 +392,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.equal(simpleAction.story, undefined); // Story is omitted in simple mode
 
     // Advanced Mode: player action story narrative
-    const resAdvanced = await fetch(`${serverUrl}/api/admin/traffic?mode=advanced&limit=10`);
+    const resAdvanced = await adminFetch(`${serverUrl}/api/admin/traffic?mode=advanced&limit=10`);
     assert.equal(resAdvanced.status, 200);
     const dataAdvanced = await resAdvanced.json();
     assert.equal(dataAdvanced.mode, 'advanced');
@@ -336,7 +406,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
   });
 
   it('GET /admin should contain mode toggle buttons and dynamic table structure', async () => {
-    const res = await fetch(`${serverUrl}/admin`);
+    const res = await adminFetch(`${serverUrl}/admin`);
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(html.includes('id="btn-mode-advanced"'));
@@ -344,6 +414,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.ok(html.includes('id="traffic-thead"'));
     assert.ok(html.includes('id="btn-raw-json"'));
     assert.ok(html.includes('id="chat-window-stream"'));
+    assert.ok(html.includes('id="btn-admin-logout"'));
     assert.ok(html.includes('id="btn-clear-logs"'));
     assert.ok(html.includes('id="btn-clear-stream"'));
     assert.ok(html.includes('id="feed-filter-all"'));
@@ -360,7 +431,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.ok(trafficBuffer.length >= 2);
 
     // Call clear endpoint via POST
-    const resClear = await fetch(`${serverUrl}/api/admin/traffic/clear`, { method: 'POST' });
+    const resClear = await adminFetch(`${serverUrl}/api/admin/traffic/clear`, { method: 'POST' });
     assert.equal(resClear.status, 200);
     const dataClear = await resClear.json();
     assert.equal(dataClear.status, 'ok');
@@ -369,7 +440,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     // Add another event and verify DELETE /api/admin/traffic works too
     recordTrafficEvent({ type: 'TEST_3', ip: '192.168.1.3' });
     assert.equal(trafficBuffer.length, 1);
-    const resDelete = await fetch(`${serverUrl}/api/admin/traffic`, { method: 'DELETE' });
+    const resDelete = await adminFetch(`${serverUrl}/api/admin/traffic`, { method: 'DELETE' });
     assert.equal(resDelete.status, 200);
     assert.equal(trafficBuffer.length, 0);
   });
@@ -421,7 +492,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.equal(alice.roomCode, 'RM101');
 
     // Fetch via GET /api/admin/traffic
-    const res = await fetch(`${serverUrl}/api/admin/traffic?limit=50`);
+    const res = await adminFetch(`${serverUrl}/api/admin/traffic?limit=50`);
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.ok(Array.isArray(data.playerIps));
@@ -432,7 +503,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     assert.equal(aliceApi.country, 'US');
 
     // Test filter by player query parameter: ?player=Alice
-    const resFilterPlayer = await fetch(`${serverUrl}/api/admin/traffic?player=alice`);
+    const resFilterPlayer = await adminFetch(`${serverUrl}/api/admin/traffic?player=alice`);
     assert.equal(resFilterPlayer.status, 200);
     const dataFilter = await resFilterPlayer.json();
     for (const ev of dataFilter.recentEvents) {
@@ -440,7 +511,7 @@ describe('API: Real-time Traffic & IP Telemetry', () => {
     }
 
     // Verify admin.html contains Player & IP directory UI elements
-    const resHtml = await fetch(`${serverUrl}/admin`);
+    const resHtml = await adminFetch(`${serverUrl}/admin`);
     const html = await resHtml.text();
     assert.ok(html.includes('id="player-directory-tbody"'));
     assert.ok(html.includes('id="stat-identified-players"'));
