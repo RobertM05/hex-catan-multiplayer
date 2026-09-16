@@ -316,6 +316,12 @@ function forceRoll(engine, playerId, d1, d2, eventIndex = 3) {
   }
 }
 
+function diceForToken(token) {
+  const d1 = Math.min(6, Math.max(1, Math.floor(token / 2)));
+  const d2 = token - d1;
+  return [d1, d2];
+}
+
 function giveRoad(engine, playerId, vertexId) {
   const vertex = engine.grid.vertices.get(vertexId);
   const edgeId = vertex.adjacentEdges[0];
@@ -568,176 +574,123 @@ describe('CK-03: Event Die & Barbarian Invasion', () => {
   });
 });
 
-describe('CK-34: Robber gated on first barbarian attack', () => {
-  it('rolls of 7 before the first attack skip robber move when nobody discards', () => {
+describe('CK-36: Barbarians resolve before production', () => {
+  it('does not grant city production until a pillaged city is downgraded', () => {
     const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    const robberHex = engine.grid.robberHexId;
-    const result = forceRoll(engine, 'p1', 3, 4, 3);
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    const p1 = engine.players[0];
+    const woodBefore = p1.resources.wood;
+    const paperBefore = p1.commodities.paper;
 
-    assert.equal(result.robber, true);
-    assert.equal(engine.barbariansHaveAttacked, false);
-    assert.equal(engine.isRobberInPlay(), false);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
-    assert.equal(engine.grid.robberHexId, robberHex);
-    assert.equal(engine.pendingDiscards.size, 0);
-    assert.ok(engine.eventLog.some(e => e.messageKey === 'LOG_SEVEN_DISCARD_ONLY'));
-  });
-
-  it('rolls of 7 before the first attack still discard, then skip robber move/steal', () => {
-    const engine = makeCkEngine();
-    engine.players[0].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    const robberHex = engine.grid.robberHexId;
-    forceRoll(engine, 'p1', 3, 4, 3);
-
-    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
-    assert.ok(engine.pendingDiscards.has('p1'));
-
-    engine.discardCards('p1', { wood: 4 });
-    assert.equal(engine.players[0].resources.wood, 4);
-    assert.equal(engine.pendingDiscards.size, 0);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
-    assert.equal(engine.grid.robberHexId, robberHex);
-    assert.throws(
-      () => engine.moveRobber('p1', Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex)),
-      /ROBBER_NOT_IN_PLAY|NOT_IN_ROBBER_PHASE/
-    );
-  });
-
-  it('rolls of 7 after the first attack enter the full robber flow', () => {
-    const engine = makeCkEngine();
-    engine.barbariansHaveAttacked = true;
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    const result = forceRoll(engine, 'p1', 3, 4, 3);
-
-    assert.equal(result.robber, true);
-    assert.equal(engine.isRobberInPlay(), true);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
-    assert.equal(engine.eventLog.some(e => e.messageKey === 'LOG_SEVEN_DISCARD_ONLY'), false);
-  });
-
-  it('rolls of 7 after the first attack discard then move the robber', () => {
-    const engine = makeCkEngine();
-    engine.barbariansHaveAttacked = true;
-    engine.players[1].resources = { wood: 8, brick: 0, wool: 0, wheat: 0, ore: 0 };
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    forceRoll(engine, 'p1', 3, 4, 3);
-
-    assert.equal(engine.phase, GAME_PHASES.TURN_DISCARD);
-    engine.discardCards('p2', { wood: 4 });
-    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
-
-    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== engine.grid.robberHexId);
-    engine.moveRobber('p1', dest);
-    assert.equal(engine.grid.robberHexId, dest);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
-  });
-
-  it('unlocks the robber when a 7 coincides with the first barbarian attack', () => {
-    const engine = makeCkEngine();
     engine.barbarianPosition = 6;
     engine.phase = GAME_PHASES.TURN_ROLL;
-    const result = forceRoll(engine, 'p1', 3, 4, 0);
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
 
-    assert.ok(result.barbarian);
-    assert.equal(engine.barbariansHaveAttacked, true);
-    assert.equal(engine.isRobberInPlay(), true);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
-  });
+    assert.equal(result.barbarian.outcome, 'defeat');
+    assert.equal(engine.phase, GAME_PHASES.TURN_BARBARIAN_DOWNGRADE);
+    assert.equal(p1.resources.wood, woodBefore);
+    assert.equal(p1.commodities.paper, paperBefore);
+    assert.deepEqual(result.produces.p1 || {}, {});
 
-  it('does not unlock the robber merely by advancing the ship', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ROLL;
-    forceRoll(engine, 'p1', 3, 4, 0);
-
-    assert.equal(engine.barbarianPosition, 1);
-    assert.equal(engine.barbariansHaveAttacked, false);
+    engine.downgradeCity('p1', cityId);
+    assert.equal(engine.grid.vertices.get(cityId).building.type, 'settlement');
+    assert.equal(p1.resources.wood, woodBefore + 1);
+    assert.equal(p1.commodities.paper, paperBefore);
     assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 
-  it('blocks knight chase before the first barbarian attack', () => {
+  it('pillaged city produces as a settlement, not a city, on the attack roll', () => {
     const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const robberHex = engine.grid.robberHexId;
-    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
-    plantKnight(engine, 'p1', vertex.id, { active: true });
-    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
-
-    assert.throws(() => engine.chaseRobber('p1', vertex.id, dest), /ROBBER_NOT_IN_PLAY/);
-    assert.equal(engine.grid.robberHexId, robberHex);
-    assert.equal(engine.players[0].knightsPlaced[0].active, true);
-  });
-
-  it('blocks Bishop robber move before the first barbarian attack', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const dest = Array.from(engine.grid.hexes.keys()).find(id => id !== engine.grid.robberHexId);
-    const card = { id: 'bishop-pre', type: 'bishop', played: false };
-    engine.players[0].progressCards.push(card);
-
-    assert.throws(() => engine.playProgressCard('p1', card.id, { hexId: dest }), /ROBBER_NOT_IN_PLAY/);
-    assert.equal(card.played, false);
-    assert.equal(engine.grid.robberHexId !== dest, true);
-  });
-
-  it('does not let bots chase the robber before the first attack', () => {
-    const engine = makeCkEngine();
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const robberHex = engine.grid.robberHexId;
-    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
-    plantKnight(engine, 'p1', vertex.id, { active: true });
-
-    const action = BotAI.decideCkTurnAction(engine, engine.players[0]);
-    assert.notEqual(action?.action, 'chase_robber');
-  });
-
-  it('lets bots chase the robber after the first attack', () => {
-    const engine = makeCkEngine();
-    engine.barbariansHaveAttacked = true;
-    engine.phase = GAME_PHASES.TURN_ACTION;
-    const robberHex = engine.grid.robberHexId;
-    const vertex = emptyVertex(engine, v => v.hexes.includes(robberHex));
-    plantKnight(engine, 'p1', vertex.id, { active: true });
-
-    const action = BotAI.decideCkTurnAction(engine, engine.players[0]);
-    assert.equal(action?.action, 'chase_robber');
-    assert.equal(action.vertexId, vertex.id);
-  });
-
-  it('serializes barbariansHaveAttacked in player state', () => {
-    const engine = makeCkEngine();
-    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, false);
-    engine.barbariansHaveAttacked = true;
-    assert.equal(engine.getStateForPlayer('p1').barbariansHaveAttacked, true);
-  });
-
-  it('does not gate base-game 7s on barbarians', () => {
-    const engine = new GameEngine({ mode: 'base' });
-    engine.addPlayer({ id: 'p1', name: 'Alice' });
-    engine.addPlayer({ id: 'p2', name: 'Bob' });
-    engine.startGame('standard');
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOL, 'city');
+    const cityId = engine.players[0].citiesBuilt[0];
+    engine.barbarianPosition = 6;
     engine.phase = GAME_PHASES.TURN_ROLL;
-    const orig = Math.random;
-    let n = 0;
-    Math.random = () => {
-      n += 1;
-      return n === 1 ? 2 / 6 : 3 / 6;
-    };
-    try {
-      engine.rollDice('p1');
-    } finally {
-      Math.random = orig;
-    }
-    assert.equal(engine.barbariansHaveAttacked, false);
-    assert.equal(engine.isRobberInPlay(), true);
-    assert.equal(engine.phase, GAME_PHASES.TURN_ROBBER);
+    const [d1, d2] = diceForToken(hex.token);
+    forceRoll(engine, 'p1', d1, d2, 0);
+    engine.downgradeCity('p1', cityId);
+
+    assert.equal(engine.players[0].resources.wool, 1);
+    assert.equal(engine.players[0].commodities.cloth, 0);
+    const types = engine.eventLog.map(e => e.type);
+    const defeatIdx = types.lastIndexOf('BARBARIAN_DEFEAT');
+    const downIdx = types.lastIndexOf('CITY_DOWNGRADED');
+    const prodIdx = types.lastIndexOf('RESOURCE_PRODUCED');
+    assert.ok(defeatIdx >= 0 && downIdx >= 0 && prodIdx >= 0);
+    assert.ok(defeatIdx < downIdx);
+    assert.ok(downIdx < prodIdx);
   });
 
-  it('documents the first-attack robber gate in C&K rules text', () => {
-    assert.match(STRINGS.RULES_CK_ROBBER_BODY, /until barbarians have attacked once/i);
-    assert.match(STRINGS.RULES_CK_ROBBER_BODY, /no robber move/i);
-    assert.match(STRINGS.RULES_CK_KNIGHTS_BODY, /after the first barbarian attack/i);
+  it('still produces as a city when the matching city is not the one pillaged', () => {
+    const engine = makeCkEngine();
+    const woodHex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const woodCityId = engine.players[0].citiesBuilt[0];
+    const wheatHex = Array.from(engine.grid.hexes.values()).find(
+      h => h.resource === RESOURCE_TYPES.WHEAT
+        && h.id !== engine.grid.robberHexId
+        && h.token
+        && h.token !== woodHex.token
+    );
+    assert.ok(wheatHex, 'expected a wheat hex with a different token');
+    const wheatVertexId = Array.from(engine.grid.vertices.keys()).find(id => {
+      const v = engine.grid.vertices.get(id);
+      return v.hexes.includes(wheatHex.id)
+        && !v.hexes.includes(woodHex.id)
+        && !v.building
+        && !v.knight;
+    });
+    assert.ok(wheatVertexId, 'expected a wheat city vertex that does not touch the wood hex');
+    engine.grid.vertices.get(wheatVertexId).building = { type: 'city', playerId: 'p1', color: '#e63946' };
+    engine.players[0].citiesBuilt.push(wheatVertexId);
+
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(woodHex.token);
+    forceRoll(engine, 'p1', d1, d2, 0);
+
+    assert.equal(engine.players[0].resources.wood, 0);
+    assert.equal(engine.players[0].commodities.paper, 0);
+    engine.downgradeCity('p1', wheatVertexId);
+
+    assert.equal(engine.grid.vertices.get(woodCityId).building.type, 'city');
+    assert.ok(engine.players[0].resources.wood >= 1);
+    assert.ok(engine.players[0].commodities.paper >= 1);
+  });
+
+  it('grants city production after a barbarian victory on the same roll', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    const v = emptyVertex(engine);
+    plantKnight(engine, 'p1', v.id, { active: true });
+    engine.barbarianPosition = 6;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
+
+    assert.equal(result.barbarian.outcome, 'victory');
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(result.produces.p1.wood, 1);
+    assert.equal(result.produces.p1.paper, 1);
+    const types = engine.eventLog.map(e => e.type);
+    assert.ok(types.lastIndexOf('BARBARIAN_VICTORY') < types.lastIndexOf('RESOURCE_PRODUCED'));
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
+  });
+
+  it('still produces immediately when barbarians advance but do not attack', () => {
+    const engine = makeCkEngine();
+    const hex = attachBuilding(engine, 'p1', RESOURCE_TYPES.WOOD, 'city');
+    engine.barbarianPosition = 4;
+    engine.phase = GAME_PHASES.TURN_ROLL;
+    const [d1, d2] = diceForToken(hex.token);
+    const result = forceRoll(engine, 'p1', d1, d2, 0);
+    assert.equal(engine.eventDie, 'barbarian');
+    assert.equal(engine.barbarianPosition, 5);
+    assert.equal(result.barbarian, null);
+    assert.equal(engine.players[0].resources.wood, 1);
+    assert.equal(engine.players[0].commodities.paper, 1);
+    assert.equal(engine.phase, GAME_PHASES.TURN_ACTION);
   });
 });
 

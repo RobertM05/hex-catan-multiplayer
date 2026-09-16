@@ -158,6 +158,7 @@ export class GameEngine {
     this.pendingProgressDraws = [];
     this.lastBarbarianResult = null;
     this.postBarbarianPhase = null;
+    this.pendingProductionRoll = null;
     this.progressDecks = { trade: [], politics: [], science: [] };
     this.merchantHolder = null;
     this.merchantHexId = null;
@@ -923,6 +924,7 @@ export class GameEngine {
     this.pendingProgressDraws = [];
     this.lastBarbarianResult = null;
     this.postBarbarianPhase = null;
+    this.pendingProductionRoll = null;
 
     if (this.isCitiesKnights()) {
       this.eventDie = EVENT_DIE_FACES[Math.floor(Math.random() * EVENT_DIE_FACES.length)];
@@ -946,26 +948,35 @@ export class GameEngine {
 
     let production = {};
     const robber = rollSum === 7;
+    const barbariansAttack = this.isCitiesKnights() && this.barbarianPosition >= BARBARIAN_TRACK_MAX;
+    let attack = null;
 
     if (robber) {
       this.queueDiscardsForSeven();
-    } else {
-      production = this.produceForRoll(rollSum);
-      if (this.isCitiesKnights()) {
-        this.applyAqueductBenefit(production);
+    }
+
+    // IRL C&K: resolve barbarian attack before production so a city pillaged
+    // this roll produces as a settlement, not as a city.
+    if (barbariansAttack) {
+      this.postBarbarianPhase = robber
+        ? (this.pendingDiscards.size > 0 ? GAME_PHASES.TURN_DISCARD : GAME_PHASES.TURN_ROBBER)
+        : GAME_PHASES.TURN_ACTION;
+      attack = this.resolveBarbarianAttack();
+    }
+
+    if (!robber) {
+      if (barbariansAttack && this.phase === GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) {
+        this.pendingProductionRoll = rollSum;
+      } else {
+        production = this.resolveDiceProduction(rollSum);
       }
-      this.logProductionEvents(production, rollSum);
     }
 
     if (this.pendingProgressCardColor) {
       this.distributeProgressCardDraws(this.pendingProgressCardColor, d1);
     }
 
-    if (this.isCitiesKnights() && this.barbarianPosition >= BARBARIAN_TRACK_MAX) {
-      this.postBarbarianPhase = robber
-        ? (this.pendingDiscards.size > 0 ? GAME_PHASES.TURN_DISCARD : GAME_PHASES.TURN_ROBBER)
-        : GAME_PHASES.TURN_ACTION;
-      const attack = this.resolveBarbarianAttack();
+    if (barbariansAttack) {
       return {
         dice: this.dice,
         eventDie: this.eventDie,
@@ -1029,6 +1040,15 @@ export class GameEngine {
       messageKey: 'LOG_SEVEN_DISCARD_ONLY',
       args: {}
     });
+  }
+
+  resolveDiceProduction(rollSum) {
+    const production = this.produceForRoll(rollSum);
+    if (this.isCitiesKnights()) {
+      this.applyAqueductBenefit(production);
+    }
+    this.logProductionEvents(production, rollSum);
+    return production;
   }
 
   produceForRoll(rollSum) {
@@ -1985,6 +2005,10 @@ export class GameEngine {
   }
 
   continueAfterBarbarian() {
+    if (this.pendingProductionRoll != null) {
+      this.resolveDiceProduction(this.pendingProductionRoll);
+      this.pendingProductionRoll = null;
+    }
     const next = this.postBarbarianPhase || GAME_PHASES.TURN_ACTION;
     this.postBarbarianPhase = null;
     if (next === GAME_PHASES.TURN_DISCARD || next === GAME_PHASES.TURN_ROBBER) {
