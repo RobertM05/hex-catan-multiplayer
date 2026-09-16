@@ -825,6 +825,8 @@ export class BotAI {
   static playCurrentBotStep(engine) {
     if (engine.phase === GAME_PHASES.GAME_OVER) return false;
 
+    this.resolvePendingAqueductClaims(engine);
+
     if (engine.pendingProgressDiscard?.size) {
       for (const pId of Array.from(engine.pendingProgressDiscard)) {
         const p = engine.players.find(x => x.id === pId);
@@ -892,6 +894,7 @@ export class BotAI {
       const alchemist = this.decideProgressCardPlay(engine, cur);
       if (alchemist) engine.playProgressCard(cur.id, alchemist.cardId, alchemist.options);
       engine.rollDice(cur.id);
+      this.resolvePendingAqueductClaims(engine);
       return true;
     }
 
@@ -925,5 +928,28 @@ export class BotAI {
     }
 
     return false;
+  }
+
+  static chooseAqueductResource(player) {
+    const resources = ['ore', 'wheat', 'wood', 'brick', 'wool'];
+    return resources.slice().sort((a, b) => (player.resources?.[a] || 0) - (player.resources?.[b] || 0))[0];
+  }
+
+  /** Auto-pick for bots (and AFK humans when includeHumans). Humans normally use the chooser. */
+  static resolvePendingAqueductClaims(engine, { includeHumans = false } = {}) {
+    if (!engine?.pendingAqueductClaims?.size) return 0;
+    let claimed = 0;
+    for (const pId of Array.from(engine.pendingAqueductClaims)) {
+      const p = engine.players.find(x => x.id === pId);
+      if (!p) continue;
+      if (!includeHumans && !p.isBot) continue;
+      try {
+        engine.claimAqueductResource(pId, this.chooseAqueductResource(p));
+        claimed++;
+      } catch {
+        /* ignore ineligible or already-claimed */
+      }
+    }
+    return claimed;
   }
 }

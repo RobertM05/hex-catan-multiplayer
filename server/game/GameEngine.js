@@ -37,6 +37,9 @@ export const IMPROVEMENT_TRACKS = {
   science: COMMODITY_TYPES.PAPER
 };
 
+/** Official C&K Aqueduct (Science named building) unlocks at level 3. */
+export const AQUEDUCT_UNLOCK_LEVEL = 3;
+
 export const PROGRESS_CARD_DECKS = {
   trade: [
     { type: 'commercial_harbor', count: 2 },
@@ -1039,11 +1042,19 @@ export class GameEngine {
     }
   }
 
+  hasAqueduct(player) {
+    return this.isCitiesKnights() && (player?.cityImprovements?.science || 0) >= AQUEDUCT_UNLOCK_LEVEL;
+  }
+
   clearAqueductRoll() {
     this.pendingAqueductClaims = this.pendingAqueductClaims || new Set();
     this.claimedAqueductThisRoll = this.claimedAqueductThisRoll || new Set();
     this.pendingAqueductClaims.clear();
     this.claimedAqueductThisRoll.clear();
+  }
+
+  countProductionCards(pProd = {}) {
+    return Object.values(pProd).reduce((sum, n) => sum + (Number(n) || 0), 0);
   }
 
   armAqueductEligibility(production = {}) {
@@ -1052,64 +1063,62 @@ export class GameEngine {
     this.pendingAqueductClaims.clear();
     if (!this.isCitiesKnights()) return;
     for (const player of this.players) {
-      if ((player.cityImprovements?.science || 0) < 5) continue;
+      if (!this.hasAqueduct(player)) continue;
       if (this.claimedAqueductThisRoll.has(player.id)) continue;
-      const pProd = production[player.id] || {};
-      const producedCount = Object.values(pProd).reduce((sum, n) => sum + (Number(n) || 0), 0);
+      const producedCount = this.countProductionCards(production[player.id]);
       if (producedCount === 0) this.pendingAqueductClaims.add(player.id);
     }
   }
 
+  grantAqueductResource(playerId, resource, production = null) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) throw new Error('PLAYER_NOT_FOUND');
+    player.resources[resource] = (player.resources[resource] || 0) + 1;
+    if (production) {
+      if (!production[player.id]) production[player.id] = {};
+      production[player.id][resource] = (production[player.id][resource] || 0) + 1;
+    }
+    this.pendingAqueductClaims.delete(player.id);
+    this.claimedAqueductThisRoll.add(player.id);
+    this.logEvent({
+      type: 'AQUEDUCT_RESOURCE',
+      messageKey: 'LOG_AQUEDUCT_RESOURCE',
+      args: { playerName: player.name, resource }
+    });
+    return resource;
+  }
+
+  /**
+   * Arms pending Aqueduct claims for blank non-7 production.
+   * Does NOT auto-grant: humans use claimAqueductResource / the chooser;
+   * bots and timeouts resolve via BotAI.resolvePendingAqueductClaims.
+   * Optional `choices` map still grants immediately (tests / explicit callers).
+   */
   applyAqueductBenefit(production, choices = {}) {
-    const resPriority = ['ore', 'wheat', 'wood', 'brick', 'wool'];
     this.armAqueductEligibility(production);
     const results = {};
     for (const playerId of Array.from(this.pendingAqueductClaims)) {
-      const player = this.players.find(p => p.id === playerId);
-      if (!player) continue;
-      let chosenRes = choices[player.id];
-      if (!chosenRes || !resPriority.includes(chosenRes)) {
-        chosenRes = resPriority.slice().sort((a, b) => (player.resources[a] || 0) - (player.resources[b] || 0))[0];
-      }
-      player.resources[chosenRes] = (player.resources[chosenRes] || 0) + 1;
-      if (!production[player.id]) production[player.id] = {};
-      production[player.id][chosenRes] = (production[player.id][chosenRes] || 0) + 1;
-      results[player.id] = chosenRes;
-      this.pendingAqueductClaims.delete(player.id);
-      this.claimedAqueductThisRoll.add(player.id);
-      this.logEvent({
-        type: 'AQUEDUCT_RESOURCE',
-        messageKey: 'LOG_AQUEDUCT_RESOURCE',
-        args: { playerName: player.name, resource: chosenRes }
-      });
+      const chosenRes = choices[playerId];
+      if (!chosenRes || !RESOURCE_VALUES.includes(chosenRes)) continue;
+      results[playerId] = this.grantAqueductResource(playerId, chosenRes, production);
     }
     return results;
   }
 
   claimAqueductResource(playerId, resource) {
-    const validResources = ['ore', 'wheat', 'wood', 'brick', 'wool'];
-    if (!validResources.includes(resource)) throw new Error('INVALID_RESOURCE');
+    if (!RESOURCE_VALUES.includes(resource)) throw new Error('INVALID_RESOURCE');
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
-    const current = this.getCurrentPlayer();
-    if (!current || current.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if ((player.cityImprovements?.science || 0) < 5) throw new Error('AQUEDUCT_NOT_UNLOCKED');
+    if (!this.hasAqueduct(player)) throw new Error('AQUEDUCT_NOT_UNLOCKED');
     if (this.claimedAqueductThisRoll?.has(playerId)) throw new Error('AQUEDUCT_ALREADY_CLAIMED');
     const rollSum = (this.dice?.[0] || 0) + (this.dice?.[1] || 0);
     const qualifyingRoll = this.hasRolledDice && rollSum !== 7;
     if (!qualifyingRoll || !this.pendingAqueductClaims?.has(playerId)) {
       throw new Error('AQUEDUCT_NOT_ELIGIBLE');
     }
-    player.resources[resource] = (player.resources[resource] || 0) + 1;
-    this.pendingAqueductClaims.delete(playerId);
-    this.claimedAqueductThisRoll.add(playerId);
-    this.logEvent({
-      type: 'AQUEDUCT_RESOURCE',
-      messageKey: 'LOG_AQUEDUCT_RESOURCE',
-      args: { playerName: player.name, resource }
-    });
-    return { resource };
+    const granted = this.grantAqueductResource(playerId, resource);
+    return { resource: granted };
   }
 
   distributeProgressCardDraws(track, redDie) {

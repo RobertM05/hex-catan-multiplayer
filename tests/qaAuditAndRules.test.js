@@ -948,29 +948,36 @@ describe('CK-17: Aqueduct & Knight Action Limits', () => {
     assert.equal(engine.grid.vertices.get(otherVertexId).knight.lastActionTurn, engine.turnNumber);
   });
 
-  it('Aqueduct perk grants 1 resource when dice roll yields zero production', () => {
+  it('Aqueduct perk arms a chooser instead of auto-picking the lowest resource', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = 5;
+    engine.players[0].cityImprovements.science = 3;
     engine.players[0].resources = { wood: 2, brick: 2, wool: 2, wheat: 2, ore: 0 };
 
     const production = { p1: {}, p2: { wood: 1 } };
     const claimed = engine.applyAqueductBenefit(production);
 
-    assert.equal(claimed.p1, 'ore'); // Ore is lowest (0)
-    assert.equal(engine.players[0].resources.ore, 1);
-    assert.equal(production.p1.ore, 1);
-    assert.equal(engine.claimedAqueductThisRoll.has('p1'), true);
-    engine.applyAqueductBenefit({ p1: {}, p2: { wood: 1 } });
-    assert.equal(engine.players[0].resources.ore, 1);
+    assert.equal(claimed.p1, undefined);
+    assert.equal(engine.players[0].resources.ore, 0);
+    assert.equal(production.p1.ore, undefined);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), true);
+    assert.deepEqual(engine.getStateForPlayer('p1').pendingAqueductClaims, ['p1']);
   });
 
-  it('claimAqueductResource validates Science level >= 5', () => {
+  it('claimAqueductResource validates Science level >= 3 and requires a pending blank roll', () => {
     const engine = makeCkEngine();
-    engine.players[0].cityImprovements.science = 4;
+    engine.players[0].cityImprovements.science = 2;
     assert.throws(() => engine.claimAqueductResource('p1', 'ore'), /AQUEDUCT_NOT_UNLOCKED/);
 
-    engine.players[0].cityImprovements.science = 5;
+    engine.players[0].cityImprovements.science = 3;
     assert.throws(() => engine.claimAqueductResource('p1', 'wheat'), /AQUEDUCT_NOT_ELIGIBLE/);
+
+    engine.hasRolledDice = true;
+    engine.dice = [2, 3];
+    engine.armAqueductEligibility({ p1: {}, p2: { wood: 1 } });
+    const res = engine.claimAqueductResource('p1', 'wheat');
+    assert.equal(res.resource, 'wheat');
+    assert.equal(engine.players[0].resources.wheat, 1);
+    assert.equal(engine.pendingAqueductClaims.has('p1'), false);
   });
 });
 
