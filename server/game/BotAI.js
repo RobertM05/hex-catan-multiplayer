@@ -488,7 +488,7 @@ export class BotAI {
   static findCityWithoutWall(engine, botPlayer) {
     for (const vid of botPlayer.citiesBuilt || []) {
       const v = engine.grid.vertices.get(vid);
-      if (v?.building?.type === 'city' && !v.building.hasWall) return vid;
+      if (engine.isCityWallHost(v?.building) && !v.building.hasWall) return vid;
     }
     return null;
   }
