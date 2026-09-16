@@ -159,6 +159,11 @@ export class CatanApp {
 
     await lobbyAuth.init();
     network.setAccessToken(lobbyAuth.accessToken);
+    network.onInvalidAuth = () => {
+      // Stale JWT must not hard-block reconnects — clear session and continue as guest.
+      lobbyAuth.clearStoredSession();
+      this.syncAuthChrome();
+    };
     this.syncAuthChrome();
 
     // Connect to WebSocket Server

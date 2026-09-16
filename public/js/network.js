@@ -17,6 +17,9 @@ export class NetworkClient {
     this.onChatReceived = null;
     this.onError = null;
     this.onKicked = null;
+    /** Called when handshake rejects a stored JWT; caller should clear the session. */
+    this.onInvalidAuth = null;
+    this._clearingInvalidAuth = false;
   }
 
   connect() {
@@ -28,7 +31,12 @@ export class NetworkClient {
 
       this.socket.on('connect', () => {
         console.log('Connected to game server, socket id:', this.socket.id);
+        this._clearingInvalidAuth = false;
         resolve(this.socket);
+      });
+
+      this.socket.on('connect_error', (err) => {
+        this.handleConnectError(err);
       });
 
       this.socket.on('game_state_update', (data) => {
@@ -55,6 +63,23 @@ export class NetworkClient {
         if (this.onKicked) this.onKicked(data);
       });
     });
+  }
+
+  handleConnectError(err) {
+    const msg = String(err?.message || err || '');
+    if (!/INVALID_AUTH_TOKEN/i.test(msg)) return;
+    if (this._clearingInvalidAuth) return;
+    this._clearingInvalidAuth = true;
+    this.accessToken = null;
+    if (this.socket) this.socket.auth = {};
+    if (typeof this.onInvalidAuth === 'function') {
+      try {
+        this.onInvalidAuth(err);
+      } catch (e) {
+        console.warn('[auth] onInvalidAuth handler failed:', e);
+      }
+    }
+    // Next Socket.IO reconnect attempt goes as guest (auth cleared).
   }
 
   createRoom(hostName, options) {

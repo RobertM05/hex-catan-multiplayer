@@ -107,6 +107,13 @@ export class LobbyAuth {
     if (error) throw error;
   }
 
+  /** Drop the local Supabase session without waiting on the remote client. */
+  clearStoredSession() {
+    this.session = null;
+    this.persistSession();
+    this.onChange?.(null);
+  }
+
   async signOut() {
     try {
       const client = await this.loadClient();
@@ -114,9 +121,7 @@ export class LobbyAuth {
     } catch {
       // local sign-out still proceeds
     }
-    this.session = null;
-    this.persistSession();
-    this.onChange?.(null);
+    this.clearStoredSession();
   }
 
   async refreshProfileName() {

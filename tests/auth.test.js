@@ -98,6 +98,47 @@ describe('AUTH-04 match payload', () => {
     assert.equal(inserts.length, 1);
   });
 
+  it('single-flights persist while the first insert is still in flight', async () => {
+    let releaseInsert;
+    const inserts = [];
+    const admin = {
+      async insertMatch(matchRow, playerRows) {
+        inserts.push({ matchRow, playerRows });
+        await new Promise((resolve) => { releaseInsert = resolve; });
+      }
+    };
+    const engine = {
+      isGameOver: true,
+      players: [{ id: 'p1', name: 'A', victoryPoints: 10 }],
+      winner: { id: 'p1' }
+    };
+    const live = {
+      code: 'FLIGHT',
+      mode: 'base',
+      engine,
+      players: [{ id: 'p1', name: 'A', frozenUserId: 'u1', frozenDisplayName: 'A' }]
+    };
+
+    const firstPromise = persistFinishedMatch(live, { admin, jwtSecret: SECRET });
+    // First call sets matchPersistStarted synchronously before awaiting insertMatch.
+    assert.equal(live.matchPersistStarted, true);
+    assert.equal(live.matchPersisted, undefined);
+
+    const whileInFlight = await persistFinishedMatch(live, { admin, jwtSecret: SECRET });
+    assert.equal(whileInFlight.skipped, true);
+    assert.equal(whileInFlight.reason, 'in_flight');
+    assert.equal(inserts.length, 1);
+
+    releaseInsert();
+    const first = await firstPromise;
+    assert.equal(first.skipped, false);
+    assert.equal(live.matchPersisted, true);
+
+    const afterDone = await persistFinishedMatch(live, { admin, jwtSecret: SECRET });
+    assert.equal(afterDone.reason, 'already_persisted');
+    assert.equal(inserts.length, 1);
+  });
+
   it('summarizes only the caller rows', () => {
     const stats = summarizeStats([
       { rank: 1, vp: 10, match_id: 'm1', abandoned: false, matches: { mode: 'base', ended_at: 't', room_code: 'A' } },

@@ -50,8 +50,11 @@ export function buildMatchPayload(room, now = Date.now()) {
 
 export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
   if (!room?.engine?.isGameOver) return { skipped: true, reason: 'not_over' };
+  // Single-flight: skip while an insert is in flight or already completed.
+  if (room.matchPersistStarted) {
+    return { skipped: true, reason: room.matchPersisted ? 'already_persisted' : 'in_flight' };
+  }
   if (!runtime.admin?.insertMatch) return { skipped: true, reason: 'supabase_unconfigured' };
-  if (room.matchPersistStarted && room.matchPersisted) return { skipped: true, reason: 'already_persisted' };
   room.matchPersistStarted = true;
   try {
     const payload = buildMatchPayload(room);
