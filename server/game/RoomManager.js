@@ -39,6 +39,18 @@ export function validatePlayerColor(value) {
 
 export const STALE_ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 export const STALE_ROOM_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+export const BOT_DISCARD_DELAY_MS = 800;
+export const BOT_TURN_DELAY_MS = 900;
+
+// Delayed bot callbacks must re-check after a human reclaims a stand-in seat.
+export function isBotActionAllowed(room, playerId) {
+  if (!room || !playerId) return false;
+  const seat = room.players?.find(p => p.id === playerId);
+  const enginePlayer = room.engine?.players?.find(p => p.id === playerId);
+  if (!seat && !enginePlayer) return false;
+  if (seat && !seat.isBot && !seat.isStandInBot) return false;
+  return Boolean(seat?.isBot || enginePlayer?.isBot);
+}
 
 export class RoomManager {
   constructor(io, options = {}) {
@@ -146,6 +158,7 @@ export class RoomManager {
       discardTimer: null,
       robberTimer: null,
       cardChoiceTimer: null,
+      botActionTimers: new Map(),
       turnTimeRemaining: options.turnDuration || 60,
       chatMessages: [],
       pendingAgentSpawns: 0,
@@ -342,6 +355,40 @@ export class RoomManager {
     player.isStandInBot = false;
     const enginePlayer = room.engine.players.find(x => x.id === player.id);
     if (enginePlayer) enginePlayer.isBot = false;
+    this.clearBotActionTimersForPlayer(room, player.id);
+    if (room.botTradeTimer && room.engine.activeTrade?.fromPlayerId === player.id) {
+      clearTimeout(room.botTradeTimer);
+      room.botTradeTimer = null;
+    }
+  }
+
+  scheduleBotAction(room, delayMs, playerId, callback) {
+    if (!room.botActionTimers) room.botActionTimers = new Map();
+    const timer = setTimeout(() => {
+      room.botActionTimers.delete(timer);
+      if (!room.isStarted) return;
+      if (!isBotActionAllowed(room, playerId)) return;
+      callback();
+    }, delayMs);
+    if (typeof timer.unref === 'function') timer.unref();
+    room.botActionTimers.set(timer, playerId);
+    return timer;
+  }
+
+  clearBotActionTimersForPlayer(room, playerId) {
+    if (!room?.botActionTimers) return;
+    for (const [timer, pid] of room.botActionTimers) {
+      if (pid === playerId) {
+        clearTimeout(timer);
+        room.botActionTimers.delete(timer);
+      }
+    }
+  }
+
+  clearAllBotActionTimers(room) {
+    if (!room?.botActionTimers) return;
+    for (const timer of room.botActionTimers.keys()) clearTimeout(timer);
+    room.botActionTimers.clear();
   }
 
   // A socket may act as playerId only while it owns the live human seat.
@@ -692,7 +739,7 @@ export class RoomManager {
       for (const pId of Array.from(engine.pendingProgressDiscard)) {
         const p = engine.players.find(x => x.id === pId);
         if (p && p.isBot) {
-          setTimeout(() => {
+          this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, pId, () => {
             if (room.isStarted && engine.pendingProgressDiscard.has(pId)) {
               try {
                 const cardId = BotAI.decideProgressDiscard(p);
@@ -703,7 +750,7 @@ export class RoomManager {
                 console.error('Bot progress discard error:', err);
               }
             }
-          }, 800);
+          });
         }
       }
     }
@@ -713,7 +760,7 @@ export class RoomManager {
       for (const pId of Array.from(engine.pendingDiscards)) {
         const p = engine.players.find(x => x.id === pId);
         if (p && p.isBot) {
-          setTimeout(() => {
+          this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, pId, () => {
             if (room.isStarted && engine.pendingDiscards.has(pId)) {
               try {
                 const dis = BotAI.decideDiscard(engine, p);
@@ -724,7 +771,7 @@ export class RoomManager {
                 console.error('Bot discard error:', err);
               }
             }
-          }, 800);
+          });
         }
       }
       return;
@@ -734,7 +781,7 @@ export class RoomManager {
       for (const pId of Array.from(engine.pendingBarbarianDowngrades)) {
         const p = engine.players.find(x => x.id === pId);
         if (p && p.isBot) {
-          setTimeout(() => {
+          this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, pId, () => {
             if (room.isStarted && engine.pendingBarbarianDowngrades.has(pId)) {
               try {
                 const city = BotAI.chooseCityToDowngrade(engine, pId) || engine.getFirstVulnerableCityId?.(p) || p.citiesBuilt[0];
@@ -745,7 +792,7 @@ export class RoomManager {
                 console.error('Bot barbarian downgrade error:', err);
               }
             }
-          }, 800);
+          });
         }
       }
       return;
@@ -755,7 +802,7 @@ export class RoomManager {
       for (const pId of Array.from(engine.pendingBarbarianTieDraws || [])) {
         const p = engine.players.find(x => x.id === pId);
         if (p && p.isBot) {
-          setTimeout(() => {
+          this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, pId, () => {
             if (room.isStarted && engine.pendingBarbarianTieDraws?.has(pId)) {
               try {
                 const deck = BotAI.chooseBarbarianRewardDeck(p);
@@ -766,7 +813,7 @@ export class RoomManager {
                 console.error('Bot barbarian reward error:', err);
               }
             }
-          }, 800);
+          });
         }
       }
       return;
@@ -776,7 +823,7 @@ export class RoomManager {
       const chooserId = engine.pendingMetropolisChoice?.playerId || engine.getCurrentPlayer()?.id;
       const chooser = engine.players.find(p => p.id === chooserId);
       if (chooser && chooser.isBot) {
-        setTimeout(() => {
+        this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, chooserId, () => {
           if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_METROPOLIS) {
             try {
               const city = BotAI.chooseCityForMetropolis(engine, chooserId) || engine.getFirstVulnerableCityId?.(chooser);
@@ -787,7 +834,7 @@ export class RoomManager {
               console.error('Bot metropolis choice error:', err);
             }
           }
-        }, 800);
+        });
       }
       return;
     }
@@ -796,7 +843,7 @@ export class RoomManager {
       const pending = engine.pendingKnightRelocation;
       const chooser = pending && engine.players.find(p => p.id === pending.playerId);
       if (chooser && chooser.isBot) {
-        setTimeout(() => {
+        this.scheduleBotAction(room, BOT_DISCARD_DELAY_MS, chooser.id, () => {
           if (room.isStarted && engine.phase === GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) {
             try {
               engine.autoResolveKnightRelocation();
@@ -806,7 +853,7 @@ export class RoomManager {
               console.error('Bot knight relocate error:', err);
             }
           }
-        }, 800);
+        });
       }
       return;
     }
@@ -840,7 +887,7 @@ export class RoomManager {
     }
     if (!curPlayer || !curPlayer.isBot) return;
 
-    setTimeout(() => {
+    this.scheduleBotAction(room, BOT_TURN_DELAY_MS, curPlayer.id, () => {
       if (!room.isStarted || engine.phase === GAME_PHASES.GAME_OVER) return;
 
       try {
@@ -911,7 +958,7 @@ export class RoomManager {
           } catch (e) {}
         }
       }
-    }, 900);
+    });
   }
 
   startBotTradeTimer(room, botPlayerId) {
@@ -922,6 +969,7 @@ export class RoomManager {
     room.botTradeTimer = setTimeout(() => {
       room.botTradeTimer = null;
       const engine = room.engine;
+      if (!isBotActionAllowed(room, botPlayerId)) return;
       if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId === botPlayerId) {
         if (engine.activeTrade.acceptedBy && engine.activeTrade.acceptedBy.size > 0) {
           const partnerId = Array.from(engine.activeTrade.acceptedBy)[0];
@@ -951,6 +999,7 @@ export class RoomManager {
       if (!room.isStarted || !engine.activeTrade) return;
 
       const proposerId = engine.activeTrade.fromPlayerId;
+      if (!isBotActionAllowed(room, proposerId)) return;
       try {
         engine.confirmTrade(proposerId, partnerId);
       } catch (err) {
@@ -982,7 +1031,7 @@ export class RoomManager {
         clearTimeout(room.botTradeTimer);
         room.botTradeTimer = null;
       }
-      setTimeout(() => {
+      this.scheduleBotAction(room, 300, proposer.id, () => {
         if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId === proposer.id) {
           try {
             engine.cancelTrade(proposer.id);
@@ -990,7 +1039,7 @@ export class RoomManager {
           this.broadcastState(room);
           this.checkAndTriggerBotTurn(room);
         }
-      }, 300);
+      });
     }
   }
 
@@ -1004,7 +1053,7 @@ export class RoomManager {
         if (!botPlayer) continue;
 
         if (BotAI.canBotAcceptTrade(engine, botPlayer, engine.activeTrade)) {
-          setTimeout(() => {
+          this.scheduleBotAction(room, 600, botPlayer.id, () => {
             if (room.isStarted && engine.activeTrade && engine.activeTrade.fromPlayerId !== botPlayer.id) {
               try {
                 engine.respondToTrade(botPlayer.id, true);
@@ -1017,7 +1066,7 @@ export class RoomManager {
                 // ignore
               }
             }
-          }, 600);
+          });
         } else {
           if (engine.activeTrade.declinedBy) {
             engine.activeTrade.declinedBy.add(botPlayer.id);
@@ -1072,6 +1121,7 @@ export class RoomManager {
       if (room.robberTimer) clearTimeout(room.robberTimer);
       if (room.cardChoiceTimer) clearTimeout(room.cardChoiceTimer);
       if (room.botTradeTimer) clearTimeout(room.botTradeTimer);
+      this.clearAllBotActionTimers(room);
     }
     this.rooms.delete(code);
     if (this.onRoomDestroyed) this.onRoomDestroyed(code);
