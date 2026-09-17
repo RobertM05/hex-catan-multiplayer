@@ -4379,7 +4379,7 @@ export class CatanApp {
       let confirmButtonsHTML = '';
       if (acceptedPlayers.length > 0) {
         confirmButtonsHTML = acceptedPlayers.map(p =>
-          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${p.name}</button>`
+          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${escapeHtml(p.name)}</button>`
         ).join('');
       }
 
@@ -4401,7 +4401,7 @@ export class CatanApp {
             </div>
           </div>
           ${acceptedPlayers.length > 0
-            ? `<div class="trade-status-badge">✔ ${acceptedPlayers.map(p => p.name).join(', ')} a acceptat!</div>`
+            ? `<div class="trade-status-badge">✔ ${acceptedPlayers.map(p => escapeHtml(p.name)).join(', ')} a acceptat!</div>`
             : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
           }
         </div>
@@ -4438,7 +4438,7 @@ export class CatanApp {
         <div class="trade-banner-body">
           <div class="trade-banner-header">
             <span>🤝</span>
-            <span>${i18n.t('TRADE_OFFER_FROM', { name: fromName })}</span>
+            <span>${i18n.t('TRADE_OFFER_FROM', { name: escapeHtml(fromName) })}</span>
           </div>
           <div class="trade-banner-exchange">
             <div class="trade-exchange-side">
