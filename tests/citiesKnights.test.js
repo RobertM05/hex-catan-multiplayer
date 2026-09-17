@@ -3481,7 +3481,7 @@ describe('CK-32: Progress cards cannot be played the turn they are drawn', () =>
       boughtTurn: engine.turnNumber - 1
     };
     engine.players[0].progressCards.push(card);
-    engine.playProgressCard('p1', card.id, {});
+    engine.playProgressCard('p1', card.id, { resource: 'wood' });
     assert.equal(card.played, true);
   });
 
@@ -3891,7 +3891,7 @@ describe('CK-40: Progress deck draw order and recycle', () => {
     engine.players[0].progressCards.push(card);
     engine.players[0].resources.wood = 2;
 
-    engine.playProgressCard('p1', card.id, {});
+    engine.playProgressCard('p1', card.id, { resource: 'wood' });
     assert.equal(engine.players[0].progressCards.some(c => c.id === 'played-fleet'), false);
     assert.equal(engine.progressDecks.trade[0].id, 'played-fleet');
     assert.equal(engine.progressDecks.trade[0].type, 'merchant_fleet');
@@ -4091,6 +4091,8 @@ describe('CK-37: Knight timing, road movement, displace, supply 2/2/2', () => {
       () => engine.moveKnight('p1', vertex.id, otherVertexId),
       /KNIGHT_ALREADY_ACTED_THIS_TURN/
     );
+    engine.barbariansHaveAttacked = true;
+    engine.grid.robberHexId = Array.from(engine.grid.hexes.keys())[0];
     const robberHex = engine.grid.robberHexId;
     const chaseHex = Array.from(engine.grid.hexes.keys()).find(id => id !== robberHex);
     assert.throws(
