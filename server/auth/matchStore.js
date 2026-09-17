@@ -1,6 +1,68 @@
 import { randomUUID } from 'node:crypto';
 import { getAuthRuntime } from './identity.js';
 
+export const queue = new Map();
+let queueInterval = null;
+
+function ensureQueueInterval() {
+  if (queueInterval) return;
+  queueInterval = setInterval(processQueue, 5000);
+  queueInterval.unref();
+}
+
+async function processQueue() {
+  const now = Date.now();
+  const tasksToRun = [];
+  for (const [matchId, task] of queue.entries()) {
+    if (now >= task.nextAttemptAt && !task.inFlight) {
+      tasksToRun.push(task);
+    }
+  }
+  await Promise.all(tasksToRun.map(attemptPersist));
+}
+
+async function attemptPersist(task) {
+  task.attempts++;
+  task.inFlight = true;
+  
+  try {
+    await task.runtime.admin.insertMatch(task.payload.matchRow, task.payload.playerRows);
+    queue.delete(task.payload.matchId);
+    task.inFlight = false;
+  } catch (err) {
+    task.inFlight = false;
+    
+    const isClientError = err.status >= 400 && err.status < 500;
+    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.name === 'TimeoutError' || err.message?.includes('network timeout');
+    const isServerError = err.status >= 500 && err.status < 600;
+    
+    if (isClientError && !isServerError && !isNetworkError) {
+      console.error('[auth] match persist client error (no retry):', err.message);
+      queue.delete(task.payload.matchId);
+    } else {
+      if (task.attempts >= 10) {
+        console.error('[auth] match persist max attempts reached:', err.message);
+        queue.delete(task.payload.matchId);
+      } else {
+        const delay = Math.min(300000, 1000 * Math.pow(2, task.attempts) + Math.random() * 1000);
+        task.nextAttemptAt = Date.now() + delay;
+      }
+    }
+  }
+}
+
+export async function flushPendingQueue(timeoutMs = 10000) {
+  const tasks = Array.from(queue.values()).filter(t => !t.inFlight);
+  const promises = tasks.map(t => {
+    return attemptPersist(t);
+  });
+  
+  if (promises.length === 0) return;
+  
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, timeoutMs));
+  await Promise.race([Promise.allSettled(promises), timeoutPromise]);
+}
+
 export function computeFinishRanks(engine) {
   const players = [...(engine?.players || [])];
   const winnerId = engine?.winner?.id || null;
@@ -50,21 +112,60 @@ export function buildMatchPayload(room, now = Date.now()) {
 
 export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
   if (!room?.engine?.isGameOver) return { skipped: true, reason: 'not_over' };
-  // Single-flight: skip while an insert is in flight or already completed.
+
   if (room.matchPersistStarted) {
     return { skipped: true, reason: room.matchPersisted ? 'already_persisted' : 'in_flight' };
   }
+
   if (!runtime.admin?.insertMatch) return { skipped: true, reason: 'supabase_unconfigured' };
+
   room.matchPersistStarted = true;
+
+  const payload = buildMatchPayload(room);
+  room.matchId = payload.matchId;
+
+  // Single-flight deduplication on queue level
+  if (queue.has(payload.matchId)) {
+    return { skipped: true, reason: 'in_flight' };
+  }
+
+  const task = {
+    payload,
+    runtime,
+    attempts: 0,
+    nextAttemptAt: Date.now(),
+    inFlight: true
+  };
+  
+  // Add to queue initially to handle single-flight deduplication for concurrent calls
+  queue.set(payload.matchId, task);
+  ensureQueueInterval();
+
   try {
-    const payload = buildMatchPayload(room);
-    room.matchId = payload.matchId;
     await runtime.admin.insertMatch(payload.matchRow, payload.playerRows);
     room.matchPersisted = true;
+    queue.delete(payload.matchId);
     return { skipped: false, matchId: payload.matchId };
   } catch (err) {
-    room.matchPersistStarted = false;
-    console.error('[auth] match persist failed:', err.message);
-    return { skipped: true, reason: 'error', error: err.message };
+    task.inFlight = false;
+
+    const isClientError = err.status >= 400 && err.status < 500;
+    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.name === 'TimeoutError' || err.message?.includes('network timeout');
+    const isServerError = err.status >= 500 && err.status < 600;
+
+    if (isClientError && !isServerError && !isNetworkError) {
+      room.matchPersistStarted = false;
+      queue.delete(payload.matchId);
+      console.error('[auth] match persist client error:', err.message);
+      return { skipped: true, reason: 'error', error: err.message };
+    }
+
+    // Queue for retry
+    task.attempts++;
+    const delay = Math.min(300000, 1000 * Math.pow(2, task.attempts) + Math.random() * 1000);
+    task.nextAttemptAt = Date.now() + delay;
+    console.error(`[auth] match persist failed (5xx/network), retrying in ${Math.round(delay/1000)}s:`, err.message);
+
+    return { skipped: true, reason: 'queued_for_retry', error: err.message };
   }
 }
