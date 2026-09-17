@@ -242,6 +242,14 @@ describe('QA Audit: Cities & Knights Progress Cards', () => {
   it('Irrigation and Mining grant 2 resources per city-adjacent resource hex', () => {
     const engine = makeCkEngine();
     const p1 = engine.players[0];
+
+    // Clear initial setup buildings so only the test cities are counted
+    for (const v of engine.grid.vertices.values()) {
+      if (v.building?.playerId === 'p1') v.building = null;
+    }
+    p1.citiesBuilt = [];
+    p1.settlementsBuilt = [];
+
     const wheatHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.WHEAT);
     const vWheat = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(wheatHex.id) && !v.building);
     vWheat.building = { type: 'city', playerId: 'p1', color: p1.color };
