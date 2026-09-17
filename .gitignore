@@ -23,3 +23,4 @@ Thumbs.db
 dist/
 coverage/
 scratch/
+.worktrees/
