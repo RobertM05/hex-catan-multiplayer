@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameEngine, GAME_PHASES } from '../server/game/GameEngine.js';
 
-function makeEngine(playerCount) {
-  const engine = new GameEngine({ roomId: 'sbp-test' });
+function makeEngine(playerCount, mode = 'base') {
+  const engine = new GameEngine({ roomId: 'sbp-test', mode });
   for (let i = 1; i <= playerCount; i++) {
     engine.addPlayer({ id: `p${i}`, name: `P${i}` });
   }
@@ -151,5 +151,18 @@ describe('RULE-01 Colonist Special Building Phase', () => {
     assert.equal(done.winner?.id, 'p2');
     assert.equal(engine.phase, GAME_PHASES.GAME_OVER);
     assert.equal(engine.isGameOver, true);
+  });
+
+  it('rejects playing progress cards during Special Building Phase', () => {
+    const engine = makeEngine(5, 'cities_knights');
+    engine.endTurn('p1');
+    assert.equal(engine.phase, GAME_PHASES.TURN_SPECIAL_BUILDING);
+    const p2 = engine.getCurrentPlayer();
+    p2.progressCards.push({ id: 'card1', type: 'crane', played: false, boughtTurn: 0 });
+
+    assert.throws(
+      () => engine.playProgressCard(p2.id, 'card1', { resource: 'trade' }),
+      /CANNOT_PLAY_CARDS_DURING_SBP/
+    );
   });
 });

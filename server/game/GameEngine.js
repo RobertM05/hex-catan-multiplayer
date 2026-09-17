@@ -2839,6 +2839,7 @@ export class GameEngine {
 
   playProgressCard(playerId, cardId, options = {}) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('CANNOT_PLAY_CARDS_DURING_SBP');
     const player = this.getCurrentPlayer();
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
 
