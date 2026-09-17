@@ -544,9 +544,9 @@ describe('SEC-18: Saboteur callback fog-of-war', () => {
 
     assert.equal(callbackPayload.cardType, 'saboteur');
     assert.equal(callbackPayload.victims.length, 1);
-    assert.deepEqual(Object.keys(callbackPayload.victims[0]).sort(), ['count', 'playerId']);
+    assert.deepEqual(Object.keys(callbackPayload.victims[0]).sort(), ['discardNeeded', 'playerId']);
     assert.equal(callbackPayload.victims[0].playerId, 'p2');
-    assert.equal(callbackPayload.victims[0].count, 3);
+    assert.equal(callbackPayload.victims[0].discardNeeded, 3);
     assert.equal(callbackPayload.victims[0].discarded, undefined);
 
     const serialized = JSON.stringify(callbackPayload);
@@ -554,11 +554,13 @@ describe('SEC-18: Saboteur callback fog-of-war', () => {
     assert.equal(serialized.includes('"cloth"'), false);
     assert.equal(serialized.includes('"brick"'), false);
 
+    engine.discardCards('p2', { wood: 2, cloth: 1 });
     assert.equal(engine.countTotalCards(engine.players[1]), 3);
   });
 
   it('keeps opponent hand types hidden after Saboteur in getStateForPlayer', () => {
     const { engine } = playSaboteurAgainstAheadOpponent();
+    engine.discardCards('p2', { wood: 2, cloth: 1 });
     const asCaster = engine.getStateForPlayer('p1').players.find(p => p.id === 'p2');
     const asVictim = engine.getStateForPlayer('p2').players.find(p => p.id === 'p2');
 
