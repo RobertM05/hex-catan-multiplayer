@@ -6,8 +6,15 @@ let queueInterval = null;
 
 function ensureQueueInterval() {
   if (queueInterval) return;
-  queueInterval = setInterval(processQueue, 5000);
+  queueInterval = setInterval(() => { processQueue().catch(console.error) }, 5000);
   queueInterval.unref();
+}
+
+export function stopQueueInterval() {
+  if (queueInterval) {
+    clearInterval(queueInterval);
+    queueInterval = null;
+  }
 }
 
 async function processQueue() {
@@ -21,6 +28,19 @@ async function processQueue() {
   await Promise.all(tasksToRun.map(attemptPersist));
 }
 
+function isRetryableError(err) {
+  if (err.status === 429 || err.status === 408) return true;
+  if (err.status >= 500 && err.status < 600) return true;
+  
+  const code = err.code || err.cause?.code;
+  if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'ENOTFOUND' || code === 'ECONNRESET') return true;
+  
+  if (err.name === 'TimeoutError' || err.cause?.name === 'TimeoutError') return true;
+  if (err.message?.includes('network timeout')) return true;
+  
+  return false;
+}
+
 async function attemptPersist(task) {
   task.attempts++;
   task.inFlight = true;
@@ -29,20 +49,19 @@ async function attemptPersist(task) {
     await task.runtime.admin.insertMatch(task.payload.matchRow, task.payload.playerRows);
     queue.delete(task.payload.matchId);
     task.inFlight = false;
+    if (task.room) task.room.matchPersisted = true;
   } catch (err) {
     task.inFlight = false;
     
-    const isClientError = err.status >= 400 && err.status < 500;
-    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.name === 'TimeoutError' || err.message?.includes('network timeout');
-    const isServerError = err.status >= 500 && err.status < 600;
-    
-    if (isClientError && !isServerError && !isNetworkError) {
+    if (!isRetryableError(err)) {
       console.error('[auth] match persist client error (no retry):', err.message);
       queue.delete(task.payload.matchId);
+      if (task.room) task.room.matchPersistStarted = false;
     } else {
       if (task.attempts >= 10) {
         console.error('[auth] match persist max attempts reached:', err.message);
         queue.delete(task.payload.matchId);
+        if (task.room) task.room.matchPersistStarted = false;
       } else {
         const delay = Math.min(300000, 1000 * Math.pow(2, task.attempts) + Math.random() * 1000);
         task.nextAttemptAt = Date.now() + delay;
@@ -59,8 +78,16 @@ export async function flushPendingQueue(timeoutMs = 10000) {
   
   if (promises.length === 0) return;
   
-  const timeoutPromise = new Promise(resolve => setTimeout(resolve, timeoutMs));
-  await Promise.race([Promise.allSettled(promises), timeoutPromise]);
+  let timer;
+  const timeoutPromise = new Promise(resolve => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  
+  try {
+    await Promise.race([Promise.allSettled(promises), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function computeFinishRanks(engine) {
@@ -130,6 +157,7 @@ export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
   }
 
   const task = {
+    room,
     payload,
     runtime,
     attempts: 0,
@@ -149,11 +177,7 @@ export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
   } catch (err) {
     task.inFlight = false;
 
-    const isClientError = err.status >= 400 && err.status < 500;
-    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.name === 'TimeoutError' || err.message?.includes('network timeout');
-    const isServerError = err.status >= 500 && err.status < 600;
-
-    if (isClientError && !isServerError && !isNetworkError) {
+    if (!isRetryableError(err)) {
       room.matchPersistStarted = false;
       queue.delete(payload.matchId);
       console.error('[auth] match persist client error:', err.message);
