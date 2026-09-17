@@ -2524,10 +2524,6 @@ export class CatanApp {
       } else if (ratio === 2) {
         ratioClass = 'harbor-special';
         ratioTag = `2:1 Port`;
-      }
-      } else if (ratio === 2) {
-        ratioClass = 'harbor-special';
-        ratioTag = `2:1 Port`;
       } else if (ratio === 3) {
         ratioClass = 'harbor-generic';
         ratioTag = `3:1 Port`;
