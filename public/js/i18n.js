@@ -367,6 +367,7 @@ export const STRINGS = {
     TRADE_GIVE_LABEL: "You give",
     TRADE_WAITING_PLAYERS: "Waiting for other players...",
     TRADE_YOU_ACCEPTED: "You accepted! Waiting for confirmation...",
+    TRADE_PLAYERS_ACCEPTED: "{names} accepted!",
     TRADE_NOT_ENOUGH_CARDS: "Not enough cards",
     TRADE_RETRACT: "Withdraw",
     NO_OFFERS: "No active trade offers.",

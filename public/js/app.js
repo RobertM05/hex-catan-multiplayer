@@ -9,7 +9,7 @@ import { audio } from './audio.js';
 import { network } from './network.js';
 import { lobbyAuth } from './auth.js';
 import { BoardRenderer } from './renderer.js';
-import { ico } from './icons.js';
+import { ico, mountIcons } from './icons.js';
 import { mapPhaseToStatusKey, mapPhaseToOpponentStateKey, canPayCost, canBuildWall, isCityWallHost, BUILD_COSTS } from './turnStatus.js';
 import {
   getProgressDeck,
@@ -267,9 +267,23 @@ export class CatanApp {
     document.body.classList.toggle('match-active', inMatch);
     const authed = Boolean(lobbyAuth.accessToken);
     const authEnabled = Boolean(lobbyAuth.config?.enabled);
-    document.getElementById('lobby-auth-card')?.classList.toggle('is-hidden', !authEnabled || inMatch);
+
+    // Header controls next to Sound / Rules
+    document.getElementById('btn-header-sign-in')?.classList.toggle('is-hidden', !authEnabled || authed || inMatch);
+    
+    // Header Profile button: visible ONLY when authenticated and not in a live match
+    const profileBtn = document.getElementById('header-user-profile');
+    if (profileBtn) {
+      profileBtn.classList.toggle('is-hidden', !authed || inMatch);
+      const userNameEl = document.getElementById('header-user-name');
+      if (userNameEl && authed) {
+        userNameEl.textContent = lobbyAuth.displayName || 'Player';
+      }
+      this.updateUserAvatar('header-user-avatar', authed ? lobbyAuth.avatarUrl : null);
+    }
     document.getElementById('btn-sign-out')?.classList.toggle('is-hidden', !authEnabled || !authed || inMatch);
-    document.getElementById('btn-my-stats')?.classList.toggle('is-hidden', !authEnabled || !authed || inMatch);
+    document.getElementById('btn-my-stats')?.classList.toggle('is-hidden', true);
+
     const nameLocked = authed;
     ['host-player-name', 'join-player-name'].forEach((id) => {
       const input = document.getElementById(id);
@@ -277,8 +291,15 @@ export class CatanApp {
       input.disabled = nameLocked;
       if (nameLocked && lobbyAuth.displayName) input.value = lobbyAuth.displayName;
     });
+
+    // Inside Auth Modal
     document.getElementById('lobby-auth-signed-out')?.classList.toggle('is-hidden', authed);
-    document.getElementById('form-display-name')?.classList.toggle('is-hidden', !authed);
+    document.getElementById('auth-modal-signed-in')?.classList.toggle('is-hidden', !authed);
+    const modalTitle = document.getElementById('auth-modal-title');
+    if (modalTitle) {
+      modalTitle.textContent = authed ? (i18n.t('DISPLAY_NAME_LABEL') || 'Profile name') : (i18n.t('SIGN_IN') || 'Sign In');
+    }
+
     const status = document.getElementById('lobby-auth-status');
     if (status) {
       if (authed) {
@@ -493,8 +514,68 @@ export class CatanApp {
     }
   }
 
+  validateAuthEmail(email) {
+    if (!email) return i18n.t('EMAIL_REQUIRED') || 'Please enter an email address.';
+    if (!email.includes('@')) {
+      return i18n.t('EMAIL_INVALID') || 'Please enter a valid email address ("@" is expected, e.g. name@example.com).';
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return i18n.t('EMAIL_INVALID') || 'Please enter a valid email address ("@" is expected, e.g. name@example.com).';
+    }
+    return null;
+  }
+
+  validateAuthPassword(password) {
+    if (!password) return i18n.t('PASSWORD_REQUIRED') || 'Please enter your password.';
+    if (password.length < 6) {
+      return i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.';
+    }
+    return null;
+  }
+
   setupAuthUi() {
+    const authModal = document.getElementById('auth-modal');
     lobbyAuth.onChange = () => this.syncAuthChrome();
+
+    const authState = { email: '', exists: false };
+
+    const showAuthStep = (step) => {
+      document.getElementById('auth-step-email')?.classList.toggle('is-hidden', step !== 'email');
+      document.getElementById('auth-step-login')?.classList.toggle('is-hidden', step !== 'login');
+      document.getElementById('auth-step-register')?.classList.toggle('is-hidden', step !== 'register');
+      if (step === 'email') {
+        setTimeout(() => document.getElementById('auth-email-input')?.focus(), 50);
+      } else if (step === 'login') {
+        const chip = document.getElementById('auth-chip-email');
+        if (chip) chip.textContent = authState.email;
+        const pass = document.getElementById('auth-login-password');
+        if (pass) pass.value = '';
+        setTimeout(() => pass?.focus(), 50);
+      } else if (step === 'register') {
+        const chip = document.getElementById('auth-chip-email-reg');
+        if (chip) chip.textContent = authState.email;
+        const pass = document.getElementById('auth-register-password');
+        if (pass) pass.value = '';
+        setTimeout(() => pass?.focus(), 50);
+      }
+    };
+
+    document.getElementById('btn-header-sign-in')?.addEventListener('click', () => {
+      showAuthStep('email');
+      authModal?.classList.add('active');
+    });
+    document.getElementById('header-user-profile')?.addEventListener('click', () => {
+      this.openProfilePage('overview');
+    });
+    document.getElementById('btn-close-auth-modal')?.addEventListener('click', () => {
+      authModal?.classList.remove('active');
+    });
+    authModal?.addEventListener('click', (e) => {
+      if (e.target.id === 'auth-modal') authModal?.classList.remove('active');
+    });
+
+    document.getElementById('btn-auth-change-email')?.addEventListener('click', () => showAuthStep('email'));
+    document.getElementById('btn-auth-change-email-reg')?.addEventListener('click', () => showAuthStep('email'));
 
     document.getElementById('btn-sign-in-google')?.addEventListener('click', async () => {
       try {
@@ -504,13 +585,94 @@ export class CatanApp {
       }
     });
 
-    document.getElementById('form-magic-link')?.addEventListener('submit', async (e) => {
+    // Step 1: Check Email
+    document.getElementById('form-auth-email')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('magic-link-email')?.value.trim();
-      if (!email) return;
+      const email = document.getElementById('auth-email-input')?.value.trim();
+      const emailErr = this.validateAuthEmail(email);
+      if (emailErr) {
+        this.showToast(emailErr, true);
+        document.getElementById('auth-email-input')?.focus();
+        return;
+      }
+      authState.email = email;
+      const btn = document.getElementById('btn-auth-continue');
+      const originalText = btn ? btn.textContent : 'Continue';
+      if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
       try {
-        await lobbyAuth.signInWithMagicLink(email);
+        const exists = await lobbyAuth.checkUserExists(email);
+        authState.exists = exists;
+        showAuthStep(exists ? 'login' : 'register');
+      } catch (err) {
+        this.showToast(err.message, true);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
+    });
+
+    // Step 2A: Sign In with Password
+    document.getElementById('form-auth-login')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('auth-login-password')?.value;
+      const passErr = this.validateAuthPassword(password);
+      if (passErr) {
+        this.showToast(passErr, true);
+        document.getElementById('auth-login-password')?.focus();
+        return;
+      }
+      try {
+        await lobbyAuth.signInWithPassword(authState.email, password);
+        network.setAccessToken(lobbyAuth.accessToken);
+        await network.reconnectWithAuth(lobbyAuth.accessToken);
+        this.syncAuthChrome();
+        this.showToast(i18n.t('SIGNED_IN_AS', { name: lobbyAuth.displayName || 'Player' }));
+        authModal?.classList.remove('active');
+      } catch (err) {
+        let msg = err.message;
+        if (/invalid login credentials/i.test(msg)) {
+          msg = i18n.t('INVALID_CREDENTIALS') || 'Invalid password. Please try again.';
+        }
+        this.showToast(msg, true);
+      }
+    });
+
+    // Step 2A Option: Send Magic Link
+    document.getElementById('btn-auth-login-magic')?.addEventListener('click', async () => {
+      try {
+        await lobbyAuth.signInWithMagicLink(authState.email);
         this.showToast(i18n.t('MAGIC_LINK_SENT'));
+        authModal?.classList.remove('active');
+      } catch (err) {
+        let msg = err.message;
+        if (/rate limit/i.test(msg) || /over_email_send_rate_limit/i.test(msg)) {
+          msg = 'Email rate limit exceeded (max 3/hr). Please use your password to sign in.';
+        }
+        this.showToast(msg, true);
+      }
+    });
+
+    // Step 2B: Register New Account
+    document.getElementById('form-auth-register')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('auth-register-password')?.value;
+      const passErr = this.validateAuthPassword(password);
+      if (passErr) {
+        this.showToast(passErr, true);
+        document.getElementById('auth-register-password')?.focus();
+        return;
+      }
+      try {
+        const data = await lobbyAuth.signUpWithPassword(authState.email, password);
+        if (lobbyAuth.accessToken) {
+          network.setAccessToken(lobbyAuth.accessToken);
+          await network.reconnectWithAuth(lobbyAuth.accessToken);
+          this.syncAuthChrome();
+          this.showToast(i18n.t('SIGNED_IN_AS', { name: lobbyAuth.displayName || 'Player' }));
+          authModal?.classList.remove('active');
+        } else {
+          this.showToast('Account created successfully! You can now sign in.');
+          showAuthStep('login');
+        }
       } catch (err) {
         this.showToast(err.message, true);
       }
@@ -519,13 +681,27 @@ export class CatanApp {
     document.getElementById('form-display-name')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('profile-display-name')?.value.trim();
+      const newPass = document.getElementById('profile-new-password')?.value;
+      if (!name) return;
       try {
         await lobbyAuth.saveDisplayName(name);
+        if (newPass) {
+          if (newPass.length < 6) {
+            this.showToast(i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.', true);
+            return;
+          }
+          await lobbyAuth.updatePassword(newPass);
+          const newPassInput = document.getElementById('profile-new-password');
+          if (newPassInput) newPassInput.value = '';
+          this.showToast('Profile and password updated successfully!');
+        } else {
+          this.showToast(i18n.t('PROFILE_SAVED') || 'Profile name saved.');
+        }
         await network.reconnectWithAuth(lobbyAuth.accessToken);
         this.syncAuthChrome();
-        this.showToast(i18n.t('SAVE_DISPLAY_NAME'));
+        authModal?.classList.remove('active');
       } catch (err) {
-        this.showToast(err.message, true);
+        this.showToast(i18n.t(err.message) || err.message, true);
       }
     });
 
@@ -533,57 +709,292 @@ export class CatanApp {
       await lobbyAuth.signOut();
       await network.reconnectWithAuth(null);
       this.syncAuthChrome();
+      authModal?.classList.remove('active');
     });
 
     document.getElementById('btn-my-stats')?.addEventListener('click', () => {
-      this.openStatsPage();
+      this.openProfilePage('history');
     });
 
     document.getElementById('btn-stats-back')?.addEventListener('click', () => {
       this.showView('view-lobby');
     });
+
+    document.getElementById('btn-profile-back')?.addEventListener('click', () => {
+      this.showView('view-lobby');
+    });
+
+    document.getElementById('btn-profile-guest-signin')?.addEventListener('click', () => {
+      showAuthStep('email');
+      authModal?.classList.add('active');
+    });
+
+    // Profile sidebar tabs (Overview, History, Friends, Account)
+    document.querySelectorAll('.profile-nav-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-profile-tab');
+        if (tab) this.switchProfileTab(tab);
+      });
+    });
+
+    // Profile search
+    document.getElementById('profile-search-player')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        if (q) this.showToast(`Search for player "${q}" (mock result: 1 player found).`);
+      }
+    });
+
+    // Profile Friends invite link
+    document.getElementById('btn-profile-invite-link')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.origin);
+        this.showToast('Invite link copied to clipboard!');
+      } catch {
+        this.showToast('Copy invite URL: ' + window.location.origin);
+      }
+    });
+
+    // Account settings: Update display name
+    document.getElementById('form-profile-account-name')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('account-display-name')?.value.trim();
+      if (!name) return;
+      try {
+        await lobbyAuth.saveDisplayName(name);
+        await network.reconnectWithAuth(lobbyAuth.accessToken);
+        this.syncAuthChrome();
+        const headerName = document.getElementById('profile-display-name-header');
+        if (headerName) headerName.textContent = name;
+        const overviewName = document.getElementById('profile-overview-name');
+        if (overviewName) overviewName.textContent = name;
+        this.showToast(i18n.t('PROFILE_SAVED') || 'Profile name saved.');
+      } catch (err) {
+        this.showToast(i18n.t(err.message) || err.message, true);
+      }
+    });
+
+    // Account settings: Update password
+    document.getElementById('form-profile-account-password')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPass = document.getElementById('account-new-password')?.value;
+      if (!newPass) return;
+      if (newPass.length < 6) {
+        this.showToast(i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.', true);
+        return;
+      }
+      try {
+        await lobbyAuth.updatePassword(newPass);
+        const input = document.getElementById('account-new-password');
+        if (input) input.value = '';
+        this.showToast('Password updated successfully!');
+      } catch (err) {
+        this.showToast(i18n.t(err.message) || err.message, true);
+      }
+    });
+
+    // Account settings: Sign out
+    document.getElementById('btn-account-signout')?.addEventListener('click', async () => {
+      await lobbyAuth.signOut();
+      await network.reconnectWithAuth(null);
+      this.syncAuthChrome();
+      this.showView('view-lobby');
+      this.showToast('Signed out successfully.');
+    });
+
+    this.syncAuthChrome();
   }
 
-  async openStatsPage() {
-    this.showView('view-stats');
-    const guest = document.getElementById('stats-guest');
-    const body = document.getElementById('stats-body');
-    if (!lobbyAuth.accessToken) {
-      guest?.classList.remove('is-hidden');
-      body?.classList.add('is-hidden');
+  switchProfileTab(tabName) {
+    document.querySelectorAll('.profile-nav-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-profile-tab') === tabName);
+    });
+    document.querySelectorAll('.profile-tab-panel').forEach(panel => {
+      panel.classList.toggle('active', panel.id === `ptab-${tabName}`);
+    });
+  }
+
+  updateUserAvatar(containerId, avatarUrl) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'))) {
+      container.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="Avatar" referrerpolicy="no-referrer" />`;
+    } else {
+      const iconName = avatarUrl || 'user';
+      container.innerHTML = `<span class="ico" data-icon="${iconName}"></span>`;
+      mountIcons(container);
+    }
+  }
+
+  renderAvatarPicker() {
+    const picker = document.getElementById('profile-avatar-picker');
+    if (!picker) return;
+
+    const AVATARS = [
+      { id: '/assets/avatars/settler.jpg', name: 'Settler' },
+      { id: '/assets/avatars/monarch.jpg', name: 'Monarch' },
+      { id: '/assets/avatars/knight.jpg', name: 'Knight' },
+      { id: '/assets/avatars/merchant.jpg', name: 'Merchant' },
+      { id: '/assets/avatars/farmer.jpg', name: 'Farmer' },
+      { id: '/assets/avatars/lumberjack.jpg', name: 'Lumberjack' },
+      { id: '/assets/avatars/miner.jpg', name: 'Miner' },
+      { id: '/assets/avatars/bandit.jpg', name: 'Bandit' }
+    ];
+
+    const googlePhoto = lobbyAuth.user?.user_metadata?.avatar_url || lobbyAuth.user?.user_metadata?.picture;
+    const currentAvatar = lobbyAuth.avatarUrl;
+
+    let html = '';
+    if (googlePhoto) {
+      const isGoogleActive = currentAvatar === googlePhoto;
+      html += `
+        <button type="button" class="avatar-choice-btn ${isGoogleActive ? 'active' : ''}" data-avatar-url="${escapeHtml(googlePhoto)}" title="Google Profile Photo">
+          <img src="${escapeHtml(googlePhoto)}" alt="Google Photo" referrerpolicy="no-referrer" />
+        </button>
+      `;
+    }
+
+    AVATARS.forEach(av => {
+      const isActive = currentAvatar === av.id;
+      html += `
+        <button type="button" class="avatar-choice-btn ${isActive ? 'active' : ''}" data-avatar-url="${av.id}" title="${av.name}">
+          <img src="${av.id}" alt="${av.name}" />
+        </button>
+      `;
+    });
+
+    picker.innerHTML = html;
+
+    picker.querySelectorAll('.avatar-choice-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.getAttribute('data-avatar-url');
+        if (!url) return;
+        lobbyAuth.setCustomAvatar(url);
+        if (lobbyAuth.session) {
+          lobbyAuth.saveProfile({ avatarUrl: url }).catch(err => console.warn('[profile] Failed to persist avatar:', err));
+        }
+        network.setAvatar?.(url);
+        this.renderAvatarPicker();
+        this.syncAuthChrome();
+        this.updateUserAvatar('profile-main-avatar', lobbyAuth.avatarUrl);
+        this.updateUserAvatar('profile-hero-avatar', lobbyAuth.avatarUrl);
+        this.showToast('Avatar updated!');
+      });
+    });
+  }
+
+  async openProfilePage(activeTab = 'overview') {
+    const authed = Boolean(lobbyAuth.accessToken);
+    if (!authed) {
+      this.showToast('Please sign in to view your profile.', true);
+      const authModal = document.getElementById('auth-modal');
+      if (authModal) {
+        document.getElementById('auth-step-email')?.classList.remove('is-hidden');
+        document.getElementById('auth-step-login')?.classList.add('is-hidden');
+        document.getElementById('auth-step-register')?.classList.add('is-hidden');
+        authModal.classList.add('active');
+      }
+      this.showView('view-lobby');
       return;
     }
-    guest?.classList.add('is-hidden');
-    body?.classList.remove('is-hidden');
+
+    this.showView('view-profile');
+    const root = document.getElementById('view-profile');
+    if (root) mountIcons(root);
+
+    const displayName = lobbyAuth.displayName || 'Player';
+    const email = lobbyAuth.user?.email || '';
+
+    // Header & Identity
+    this.updateUserAvatar('profile-main-avatar', lobbyAuth.avatarUrl);
+    this.updateUserAvatar('profile-hero-avatar', lobbyAuth.avatarUrl);
+    const nameHeader = document.getElementById('profile-display-name-header');
+    if (nameHeader) nameHeader.textContent = displayName;
+    const overviewName = document.getElementById('profile-overview-name');
+    if (overviewName) overviewName.textContent = displayName;
+
+    // Account tab inputs & avatar picker
+    this.renderAvatarPicker();
+    const accName = document.getElementById('account-display-name');
+    if (accName) accName.value = lobbyAuth.displayName || '';
+    const accEmail = document.getElementById('account-email-display');
+    if (accEmail) accEmail.textContent = email;
+    const accStatus = document.getElementById('account-status-display');
+    if (accStatus) accStatus.textContent = 'Active Player';
+
+    // Guest banner
+    const guestBanner = document.getElementById('profile-guest-banner');
+    if (guestBanner) {
+      guestBanner.classList.add('is-hidden');
+    }
+
+    // Switch tab
+    this.switchProfileTab(activeTab);
+
     try {
       const stats = await lobbyAuth.fetchStats();
-      const summary = document.getElementById('stats-summary');
-      const recent = document.getElementById('stats-recent');
-      if (summary) {
-        summary.innerHTML = `
-          <div class="victory-stat-card"><span class="victory-stat-val">${stats.matches || 0}</span><span class="victory-stat-lbl">${i18n.t('STATS_MATCHES')}</span></div>
-          <div class="victory-stat-card"><span class="victory-stat-val">${stats.wins || 0}</span><span class="victory-stat-lbl">${i18n.t('STATS_WINS')}</span></div>
-          <div class="victory-stat-card"><span class="victory-stat-val">${stats.averageRank ?? '—'}</span><span class="victory-stat-lbl">${i18n.t('STATS_AVG_RANK')}</span></div>
-          <div class="victory-stat-card"><span class="victory-stat-val">${stats.averageVp ?? '—'}</span><span class="victory-stat-lbl">${i18n.t('STATS_AVG_VP')}</span></div>
-        `;
-      }
-      if (recent) {
-        if (!stats.matches) {
-          recent.innerHTML = `<p class="muted-label">${i18n.t('STATS_EMPTY')}</p>`;
+      const totalGames = stats.matches || 0;
+      const wins = stats.wins || 0;
+      const winRate = stats.winRate != null ? Number(stats.winRate).toFixed(2) : (totalGames > 0 ? ((wins / totalGames) * 100).toFixed(2) : '0.00');
+      const pointGame = stats.pointsPerGame != null ? Number(stats.pointsPerGame).toFixed(2) : (stats.averageVp != null ? Number(stats.averageVp).toFixed(2) : '0.00');
+      const totalPoints = stats.totalPoints != null ? stats.totalPoints : (totalGames && stats.averageVp ? Math.round(totalGames * stats.averageVp) : 0);
+
+      const elGames = document.getElementById('cstat-total-games');
+      if (elGames) elGames.textContent = String(totalGames);
+      const elWinRate = document.getElementById('cstat-win-rate');
+      if (elWinRate) elWinRate.textContent = String(winRate);
+      const elPointGame = document.getElementById('cstat-point-game');
+      if (elPointGame) elPointGame.textContent = String(pointGame);
+      const elTotalPoints = document.getElementById('cstat-total-points');
+      if (elTotalPoints) elTotalPoints.textContent = String(totalPoints);
+      const elWins = document.getElementById('cstat-wins');
+      if (elWins) elWins.textContent = String(wins);
+      const elAvgRank = document.getElementById('cstat-avg-rank');
+      if (elAvgRank) elAvgRank.textContent = stats.averageRank != null ? String(stats.averageRank) : '—';
+
+      // History Table
+      const tbody = document.getElementById('colonist-history-tbody');
+      if (tbody) {
+        const rows = stats.recent || [];
+        if (rows.length === 0) {
+          tbody.innerHTML = `
+            <tr class="history-empty-row">
+              <td colspan="5">No games played yet. Play a match to build your history!</td>
+            </tr>
+          `;
         } else {
-          recent.innerHTML = (stats.recent || []).map(row => `
-            <div class="stats-row">
-              <span>${escapeHtml(row.roomCode || '')}</span>
-              <span>${i18n.t('STATS_RANK', { rank: row.rank })}</span>
-              <span>${row.vp} VP</span>
-              <span>${escapeHtml(row.mode || '')}</span>
-            </div>
-          `).join('');
+          tbody.innerHTML = rows.map((match) => {
+            const isWin = Number(match.rank) === 1;
+            const rankText = match.rankDisplay || `${match.rank || 1}/4`;
+            const opponentsList = Array.isArray(match.opponents) && match.opponents.length > 0
+              ? match.opponents.map(name => escapeHtml(name)).join(' ')
+              : escapeHtml(displayName);
+            const dateText = match.dateDisplay || (match.endedAt ? new Date(match.endedAt).toLocaleString() : '—');
+            const durationText = match.durationDisplay || '—';
+
+            return `
+              <tr>
+                <td class="cell-date">${dateText}</td>
+                <td class="cell-rank ${isWin ? 'rank-win' : ''}">${rankText}</td>
+                <td class="cell-opponents">${opponentsList}</td>
+                <td class="cell-duration">${durationText}</td>
+                <td class="cell-replay">
+                  <button type="button" class="btn-replay-icon" title="Game ${escapeHtml(match.roomCode || match.matchId || '')}">
+                    ${ico('play')}
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('');
         }
       }
     } catch (err) {
-      this.showToast(err.message, true);
+      console.warn('Failed to load profile stats:', err);
     }
+  }
+
+  async openStatsPage() {
+    return this.openProfilePage('history');
   }
 
   setupLobbyActions() {
@@ -604,6 +1015,7 @@ export class CatanApp {
           mode,
           turnDuration,
           mapSize,
+          avatar: lobbyAuth.avatarUrl || '/assets/avatars/settler.jpg',
           vpTarget: mode === 'cities_knights' ? 13 : 10
         });
         this.myPlayerId = res.playerId;
@@ -621,7 +1033,9 @@ export class CatanApp {
       if (!code) return;
 
       try {
-        const res = await network.joinRoom(code, playerName);
+        const res = await network.joinRoom(code, playerName, {
+          avatar: lobbyAuth.avatarUrl || '/assets/avatars/settler.jpg'
+        });
         this.myPlayerId = res.playerId;
         if (res.isStarted) {
           this.showView('view-game');
@@ -763,12 +1177,18 @@ export class CatanApp {
       const card = document.createElement('div');
       card.className = 'player-slot-card';
       card.style.setProperty('--player-color', p.color);
+      const playerAvatar = p.avatar || '/assets/avatars/settler.jpg';
       card.innerHTML = `
         <div class="player-slot-header">
-          <div class="player-slot-name" style="display: flex; align-items: center; gap: 6px;">
-            ${escapeHtml(p.name)}
-            ${p.id === lobbyData.hostId ? '<span class="player-badge host-badge">Host</span>' : ''}
-            ${p.isBot ? '<span class="player-badge bot-badge">Bot</span>' : ''}
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="${escapeHtml(playerAvatar)}" class="slot-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
+            <div>
+              <div class="player-slot-name" style="display: flex; align-items: center; gap: 6px;">
+                ${escapeHtml(p.name)}
+                ${p.id === lobbyData.hostId ? '<span class="player-badge host-badge">Host</span>' : ''}
+                ${p.isBot ? '<span class="player-badge bot-badge">Bot</span>' : ''}
+              </div>
+            </div>
           </div>
           <span class="ready-badge ${p.isReady ? 'ready' : 'not-ready'}">
             ${p.isReady ? i18n.t('STATUS_READY') : i18n.t('STATUS_NOT_READY')}
@@ -1682,8 +2102,8 @@ export class CatanApp {
       <div class="knights-defense-headline ${isReady ? 'safe' : 'danger'}">
         <span>${isReady ? '🛡️' : '⚠️'}</span>
         <span>${isReady
-          ? i18n.t('DEFENSE_BANNER_SAFE', { active: overview.totalActiveStrength, cities: overview.totalCities, margin })
-          : i18n.t('DEFENSE_BANNER_DANGER', { active: overview.totalActiveStrength, cities: overview.totalCities, shortfall: Math.abs(margin) })}</span>
+        ? i18n.t('DEFENSE_BANNER_SAFE', { active: overview.totalActiveStrength, cities: overview.totalCities, margin })
+        : i18n.t('DEFENSE_BANNER_DANGER', { active: overview.totalActiveStrength, cities: overview.totalCities, shortfall: Math.abs(margin) })}</span>
       </div>
       <div class="knights-defense-track-row">
         <span>Barbarian Fleet: <strong>${overview.barbarianPosition} / 7</strong></span>
@@ -3037,7 +3457,7 @@ export class CatanApp {
       const revealed = revealedProgressCards(me?.progressCards);
       special.innerHTML = revealed.length
         ? `<div class="progress-special-label">${i18n.t('PROGRESS_SPECIAL_TITLE')}</div>` +
-          revealed.map(c => `<span class="progress-special-chip">${i18n.t(`CARD_${c.type.toUpperCase()}`)} +1 VP</span>`).join('')
+        revealed.map(c => `<span class="progress-special-chip">${i18n.t(`CARD_${c.type.toUpperCase()}`)} +1 VP</span>`).join('')
         : '';
     }
 
@@ -3152,8 +3572,8 @@ export class CatanApp {
 
     if (type === 'alchemist') {
       box.innerHTML = `<div class="alchemist-dice-row">
-        <label>${i18n.t('PROGRESS_DIE_1')}<select id="alchemist-d1">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
-        <label>${i18n.t('PROGRESS_DIE_2')}<select id="alchemist-d2">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
+        <label>${i18n.t('PROGRESS_DIE_1')}<select id="alchemist-d1">${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
+        <label>${i18n.t('PROGRESS_DIE_2')}<select id="alchemist-d2">${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
       </div>`;
       if (playBtn) playBtn.disabled = !(this.gameState.phase === 'TURN_ROLL' && isMyTurn);
       return;
@@ -3212,7 +3632,7 @@ export class CatanApp {
     }
 
     if (type === 'commercial_harbor') {
-      const available = ['wood','brick','wool','wheat','ore'].filter(r => (me?.resources?.[r] || 0) > 0);
+      const available = ['wood', 'brick', 'wool', 'wheat', 'ore'].filter(r => (me?.resources?.[r] || 0) > 0);
       const opponentsWithCom = (this.gameState?.players || []).filter(p => p.id !== this.myPlayerId && this.countPlayerCommodities(p) > 0);
 
       if (available.length === 0) {
@@ -3225,15 +3645,15 @@ export class CatanApp {
 
       box.innerHTML = `<div>Select 1 resource to offer to opponents in exchange for their commodities:</div>
         <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0;">
-          ${['wood','brick','wool','wheat','ore'].map(r => {
-            const count = me?.resources?.[r] || 0;
-            return `<button type="button" class="btn-glass res-choice-btn" data-res="${r}" ${count < 1 ? 'disabled' : ''}>${this.cardLabel(r)} (${count})</button>`;
-          }).join('')}
+          ${['wood', 'brick', 'wool', 'wheat', 'ore'].map(r => {
+        const count = me?.resources?.[r] || 0;
+        return `<button type="button" class="btn-glass res-choice-btn" data-res="${r}" ${count < 1 ? 'disabled' : ''}>${this.cardLabel(r)} (${count})</button>`;
+      }).join('')}
         </div>
         <div style="font-size:11px;color:var(--text-secondary);">
           ${opponentsWithCom.length > 0
-            ? `Opponents holding commodities: ${opponentsWithCom.map(p => escapeHtml(p.name)).join(', ')}. Each will choose which commodity to give.`
-            : 'Notice: Opponents currently hold 0 commodities.'}
+          ? `Opponents holding commodities: ${opponentsWithCom.map(p => escapeHtml(p.name)).join(', ')}. Each will choose which commodity to give.`
+          : 'Notice: Opponents currently hold 0 commodities.'}
         </div>`;
 
       if (playBtn) playBtn.disabled = true;
@@ -3288,11 +3708,11 @@ export class CatanApp {
       box.innerHTML = `<div>Choose an adjacent hex to place the Merchant (gives 2:1 bank trade & 1 VP):</div>
         <div class="progress-target-grid">
           ${validHexes.map(h => {
-            const tokenStr = h.token ? ` (#${h.token})` : '';
-            return `<button type="button" class="btn-glass progress-target-card-btn" data-hex-id="${h.id}">
+        const tokenStr = h.token ? ` (#${h.token})` : '';
+        return `<button type="button" class="btn-glass progress-target-card-btn" data-hex-id="${h.id}">
               <span>${this.cardLabel(h.resource)}${tokenStr}</span>
             </button>`;
-          }).join('')}
+      }).join('')}
         </div>`;
 
       if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
@@ -3324,12 +3744,12 @@ export class CatanApp {
       box.innerHTML = `<div>Choose a city to fortify with a city wall for free:</div>
         <div class="progress-target-grid">
           ${unwalled.map(vid => {
-            const v = this.gameState.grid.vertices[vid];
-            const hexes = (v.hexes || []).map(hid => this.cardLabel(this.gameState.grid.hexes[hid]?.resource)).filter(Boolean).join(', ');
-            return `<button type="button" class="btn-glass progress-target-card-btn" data-vertex-id="${vid}">
+        const v = this.gameState.grid.vertices[vid];
+        const hexes = (v.hexes || []).map(hid => this.cardLabel(this.gameState.grid.hexes[hid]?.resource)).filter(Boolean).join(', ');
+        return `<button type="button" class="btn-glass progress-target-card-btn" data-vertex-id="${vid}">
               <span>🏰 City (${hexes || vid})</span>
             </button>`;
-          }).join('')}
+      }).join('')}
         </div>`;
 
       if (pickBoardBtn) pickBoardBtn.classList.remove('is-hidden');
@@ -3396,11 +3816,11 @@ export class CatanApp {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_OPPONENT')}</div>
         <div class="modal-res-buttons-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
           ${opponents.map(p => {
-            const count = Array.isArray(p.progressCards)
-              ? unplayedProgressCards(p.progressCards).length
-              : Math.max(0, (p.progressCards?.count || 0) - (p.progressCards?.revealed?.length || 0));
-            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count} cards)</button>`;
-          }).join('')}
+        const count = Array.isArray(p.progressCards)
+          ? unplayedProgressCards(p.progressCards).length
+          : Math.max(0, (p.progressCards?.count || 0) - (p.progressCards?.revealed?.length || 0));
+        return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count} cards)</button>`;
+      }).join('')}
         </div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
@@ -3431,9 +3851,9 @@ export class CatanApp {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_DESERTER_OPPONENT')}</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;">
           ${opponentsWithKnights.map(p => {
-            const count = (p.knightsPlaced || []).filter(k => k.vertexId).length;
-            return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count})</button>`;
-          }).join('')}
+        const count = (p.knightsPlaced || []).filter(k => k.vertexId).length;
+        return `<button type="button" class="btn-glass progress-target-btn" data-id="${p.id}">${escapeHtml(p.name)} (${count})</button>`;
+      }).join('')}
         </div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.progress-target-btn').forEach(b => {
@@ -3488,7 +3908,7 @@ export class CatanApp {
   }
 
   handTypeOptions() {
-    return ['wood','brick','wool','wheat','ore','cloth','coin','paper']
+    return ['wood', 'brick', 'wool', 'wheat', 'ore', 'cloth', 'coin', 'paper']
       .map(t => `<option value="${t}">${this.cardLabel(t)}</option>`).join('');
   }
 
@@ -4053,11 +4473,17 @@ export class CatanApp {
       const cardCount = resourceCount + commodityCount;
       const stateKey = mapPhaseToOpponentStateKey(s.phase, isActivePlayer);
       const you = p.id === this.myPlayerId ? ` ${i18n.t('YOU_SUFFIX')}` : '';
+      const playerAvatar = p.avatar || '/assets/avatars/settler.jpg';
 
       card.innerHTML = `
         <div class="opponent-identity">
-          <span class="opponent-swatch" style="background: ${p.color};"></span>
-          <span class="opponent-name">${escapeHtml(p.name)}${you}</span>
+          <img src="${escapeHtml(playerAvatar)}" class="opponent-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="opponent-swatch" style="background: ${p.color};"></span>
+              <span class="opponent-name">${escapeHtml(p.name)}${you}</span>
+            </div>
+          </div>
         </div>
         <div class="opponent-card-meta">
           <span class="opponent-phase">${i18n.t(stateKey)}</span>
@@ -4106,6 +4532,8 @@ export class CatanApp {
       const winner = s.players?.find(p => p.victoryPoints >= (s.vpTarget || 10)) || curPlayer;
       const winnerEl = document.getElementById('victory-winner-name');
       if (winnerEl) winnerEl.textContent = winner?.name || '---';
+      const winnerAvatarEl = document.getElementById('victory-winner-avatar');
+      if (winnerAvatarEl && winner?.avatar) winnerAvatarEl.src = winner.avatar;
       this.renderVictoryStats(winner, s);
       const victoryModal = document.getElementById('victory-modal');
       if (victoryModal) victoryModal.classList.add('active');
@@ -4401,9 +4829,9 @@ export class CatanApp {
             </div>
           </div>
           ${acceptedPlayers.length > 0
-            ? `<div class="trade-status-badge">✔ ${acceptedPlayers.map(p => escapeHtml(p.name)).join(', ')} a acceptat!</div>`
-            : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
-          }
+          ? `<div class="trade-status-badge">✔ ${i18n.t('TRADE_PLAYERS_ACCEPTED', { names: acceptedPlayers.map(p => escapeHtml(p.name)).join(', ') })}</div>`
+          : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
+        }
         </div>
         <div class="trade-banner-actions">
           ${confirmButtonsHTML}
@@ -4436,9 +4864,9 @@ export class CatanApp {
 
       contentHTML = `
         <div class="trade-banner-body">
-          <div class="trade-banner-header">
-            <span>🤝</span>
-            <span>${i18n.t('TRADE_OFFER_FROM', { name: escapeHtml(fromName) })}</span>
+          <div class="trade-banner-header" style="display: flex; align-items: center; gap: 8px;">
+            <img src="${from?.avatar || '/assets/avatars/settler.jpg'}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 2px solid ${from?.color || 'var(--gold-primary)'};" alt="${escapeHtml(fromName)}" />
+            <span>${i18n.t('TRADE_OFFER_FROM', { name: fromName })}</span>
           </div>
           <div class="trade-banner-exchange">
             <div class="trade-exchange-side">

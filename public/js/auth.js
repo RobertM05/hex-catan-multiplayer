@@ -359,7 +359,6 @@ export class LobbyAuth {
     this.onChange?.(this.session);
     return body.profile;
   }
-
   async updatePassword(newPassword) {
     const client = await this.loadClient();
     if (!client) throw new Error('AUTH_NOT_CONFIGURED');

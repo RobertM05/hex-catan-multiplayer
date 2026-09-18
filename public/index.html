@@ -1,19 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HexSettlers Online - Hexagonal Board Game</title>
-  <meta name="description" content="Real-time multiplayer hexagonal board game for 3-8 players. Build settlements, trade resources, and compete!">
-  
+  <meta name="description"
+    content="Real-time multiplayer hexagonal board game for 3-8 players. Build settlements, trade resources, and compete!">
+
   <!-- Stylesheets -->
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/board.css">
-  <link rel="stylesheet" href="/css/ui.css">
+  <link rel="stylesheet" href="/css/ui.css?v=6">
 
   <!-- Socket.IO Client -->
   <script src="/socket.io/socket.io.js"></script>
 </head>
+
 <body>
 
   <!-- Toast Notification Container -->
@@ -21,7 +24,8 @@
 
   <!-- Header & Navigation Bar -->
   <header class="app-header">
-    <button type="button" class="brand-section" id="btn-brand-home" data-i18n-title="GO_HOME_TITLE" title="Go to homepage">
+    <button type="button" class="brand-section" id="btn-brand-home" data-i18n-title="GO_HOME_TITLE"
+      title="Go to homepage">
       <span class="brand-logo">
         <span class="ico" data-icon="hexagon"></span>
       </span>
@@ -29,8 +33,23 @@
     </button>
 
     <div class="header-actions">
+      <!-- Signed-out: Sign In button -->
+      <button id="btn-header-sign-in" class="btn-glass auth-lobby-only" type="button"
+        data-i18n-title="SIGN_IN" title="Sign in">
+        <span class="btn-icon ico" data-icon="user"></span>
+        <span class="auth-label" data-i18n="SIGN_IN">Sign in</span>
+      </button>
+
+      <!-- User Profile Badge: Click to open profile (visible only when logged in) -->
+      <button id="header-user-profile" class="btn-glass header-profile-badge auth-lobby-only is-hidden" type="button" title="View Profile">
+        <span id="header-user-avatar" class="header-avatar-circle">
+          <span class="ico" data-icon="user"></span>
+        </span>
+        <span id="header-user-name" class="header-user-name">Profile</span>
+      </button>
       <button id="btn-my-stats" class="btn-glass is-hidden auth-lobby-only" type="button" data-i18n="MY_STATS">My stats</button>
       <button id="btn-sign-out" class="btn-glass is-hidden auth-lobby-only" type="button" data-i18n="SIGN_OUT">Sign out</button>
+
       <!-- Sound Toggle -->
       <button id="btn-sound-toggle" class="btn-glass" data-i18n-title="SOUND_TOGGLE" title="Sound" aria-label="Sound">
         <span class="btn-icon ico" data-icon="speakerHigh"></span>
@@ -55,23 +74,6 @@
         <p data-i18n="TAGLINE">Hexagonal Strategy & Trading Board Game</p>
       </div>
 
-      <div id="lobby-auth-card" class="lobby-auth-card is-hidden auth-lobby-only">
-        <p class="lobby-auth-hint" data-i18n="SIGN_IN_HINT">Optional. Guests can host and join without an account.</p>
-        <p id="lobby-auth-status" class="lobby-auth-status is-hidden"></p>
-        <div id="lobby-auth-signed-out" class="lobby-auth-actions">
-          <button type="button" id="btn-sign-in-google" class="btn-glass" data-i18n="SIGN_IN_GOOGLE">Continue with Google</button>
-          <form id="form-magic-link" class="magic-link-form">
-            <input type="email" id="magic-link-email" class="form-input" data-i18n-placeholder="SIGN_IN_EMAIL_PLACEHOLDER" placeholder="you@example.com" required>
-            <button type="submit" class="btn-glass" data-i18n="SIGN_IN_MAGIC">Email magic link</button>
-          </form>
-        </div>
-        <form id="form-display-name" class="magic-link-form is-hidden">
-          <label for="profile-display-name" data-i18n="DISPLAY_NAME_LABEL">Profile name</label>
-          <input type="text" id="profile-display-name" class="form-input" maxlength="32">
-          <button type="submit" class="btn-glass" data-i18n="SAVE_DISPLAY_NAME">Save name</button>
-        </form>
-      </div>
-
       <div class="lobby-tabs">
         <button id="tab-btn-host" class="lobby-tab-btn active" data-i18n="HOST_ROOM_TAB">Host Game</button>
         <button id="tab-btn-join" class="lobby-tab-btn" data-i18n="JOIN_ROOM_TAB">Join Game</button>
@@ -83,12 +85,14 @@
         <form id="form-create-room" class="form-grid">
           <div class="form-group">
             <label data-i18n="PLAYER_NAME_LABEL">Player Name</label>
-            <input type="text" id="host-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER" placeholder="Enter your name..." required maxlength="18" value="Player 1">
+            <input type="text" id="host-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER"
+              placeholder="Enter your name..." required maxlength="18" value="Player 1">
           </div>
 
           <div class="form-group">
             <label data-i18n="ROOM_NAME_LABEL">Room Name</label>
-            <input type="text" id="create-room-name" class="form-input" data-i18n-placeholder="ROOM_NAME_PLACEHOLDER" placeholder="e.g. Catan Table 1..." required maxlength="24" value="Catan Table 1">
+            <input type="text" id="create-room-name" class="form-input" data-i18n-placeholder="ROOM_NAME_PLACEHOLDER"
+              placeholder="e.g. Catan Table 1..." required maxlength="24" value="Catan Table 1">
           </div>
 
           <div class="form-group">
@@ -131,7 +135,8 @@
           </div>
 
           <div class="form-group full-width">
-            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="CREATE_ROOM_BTN">Create Room</button>
+            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="CREATE_ROOM_BTN">Create
+              Room</button>
           </div>
         </form>
       </div>
@@ -141,16 +146,19 @@
         <form id="form-join-room" class="form-grid">
           <div class="form-group">
             <label data-i18n="PLAYER_NAME_LABEL">Player Name</label>
-            <input type="text" id="join-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER" placeholder="Enter your name..." required maxlength="18" value="Player">
+            <input type="text" id="join-player-name" class="form-input" data-i18n-placeholder="PLAYER_NAME_PLACEHOLDER"
+              placeholder="Enter your name..." required maxlength="18" value="Player">
           </div>
 
           <div class="form-group">
             <label data-i18n="ROOM_CODE_LABEL">Room Code</label>
-            <input type="text" id="join-room-code" class="form-input room-code-input" data-i18n-placeholder="ROOM_CODE_PLACEHOLDER" placeholder="e.g. K9X4A" required maxlength="6">
+            <input type="text" id="join-room-code" class="form-input room-code-input"
+              data-i18n-placeholder="ROOM_CODE_PLACEHOLDER" placeholder="e.g. K9X4A" required maxlength="6">
           </div>
 
           <div class="form-group full-width">
-            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="JOIN_ROOM_BTN">Join Game</button>
+            <button type="submit" class="btn-glass btn-primary btn-submit-block" data-i18n="JOIN_ROOM_BTN">Join
+              Game</button>
           </div>
         </form>
       </div>
@@ -162,23 +170,213 @@
     </div>
   </main>
 
-  <section id="view-stats" class="view-screen">
-    <div class="lobby-container">
-      <div class="lobby-hero">
-        <h1 data-i18n="STATS_TITLE">Match history</h1>
+  <!-- =========================================================
+   * VIEW: PROFILE & STATS (COLONIST.IO STYLE)
+   * ========================================================= -->
+  <section id="view-profile" class="view-screen view-colonist-profile">
+    <div class="profile-viewport">
+      <!-- Profile Header Bar -->
+      <div class="profile-top-bar">
+        <div class="profile-user-identity">
+          <div id="profile-main-avatar" class="profile-avatar-hat">
+            <span class="ico" data-icon="user"></span>
+          </div>
+          <div class="profile-user-meta">
+            <h2 id="profile-display-name-header" class="profile-username">Player</h2>
+          </div>
+        </div>
+
+        <div class="profile-top-right">
+          <div class="profile-currency-badge" title="HexCoins">
+            <span class="currency-coin">🪙</span>
+            <span class="currency-amount">0</span>
+            <span class="currency-plus">+</span>
+          </div>
+
+          <div class="profile-search-wrapper">
+            <input type="text" id="profile-search-player" class="profile-search-input" placeholder="Search Player">
+            <span class="search-icon ico" data-icon="magnifyingGlass"></span>
+          </div>
+
+          <button type="button" id="btn-profile-back" class="btn-glass btn-profile-exit" title="Back to Lobby">
+            <span class="btn-icon ico" data-icon="house"></span>
+            <span>Lobby</span>
+          </button>
+        </div>
       </div>
-      <div id="stats-guest" class="lobby-panel is-hidden">
-        <p data-i18n="STATS_GUEST">Sign in from the lobby to see your stats.</p>
+
+      <!-- Guest notice if not authenticated -->
+      <div id="profile-guest-banner" class="profile-guest-notice is-hidden">
+        <span class="ico" data-icon="user"></span>
+        <div class="guest-notice-text">
+          <strong>Playing as Guest.</strong> Sign in or register to record your match history and track stats!
+        </div>
+        <button type="button" id="btn-profile-guest-signin" class="btn-glass btn-primary">Sign in / Register</button>
       </div>
-      <div id="stats-body" class="lobby-panel">
-        <div class="stats-summary" id="stats-summary"></div>
-        <div id="stats-recent" class="stats-recent"></div>
-      </div>
-      <div class="waiting-actions">
-        <button type="button" id="btn-stats-back" class="btn-glass" data-i18n="STATS_BACK">Back to lobby</button>
+
+      <!-- Profile Body: Sidebar Tabs + Content -->
+      <div class="profile-body-layout">
+        <!-- Left Sidebar Navigation Tabs (Overview, History, Friends, Account) -->
+        <nav class="profile-sidebar-tabs">
+          <button type="button" class="profile-nav-btn active" data-profile-tab="overview">
+            <span class="profile-nav-icon ico" data-icon="user"></span>
+            <span class="profile-nav-label">Overview</span>
+          </button>
+          <button type="button" class="profile-nav-btn" data-profile-tab="history">
+            <span class="profile-nav-icon ico" data-icon="chartBar"></span>
+            <span class="profile-nav-label">History</span>
+          </button>
+          <button type="button" class="profile-nav-btn" data-profile-tab="friends">
+            <span class="profile-nav-icon ico" data-icon="users"></span>
+            <span class="profile-nav-label">Friends</span>
+          </button>
+          <button type="button" class="profile-nav-btn" data-profile-tab="account">
+            <span class="profile-nav-icon ico" data-icon="gear"></span>
+            <span class="profile-nav-label">Account</span>
+          </button>
+        </nav>
+
+        <!-- Right Content Panels -->
+        <div class="profile-tab-contents">
+          <!-- TAB 1: OVERVIEW -->
+          <div id="ptab-overview" class="profile-tab-panel active">
+            <div class="panel-hero-row">
+              <div id="profile-hero-avatar" class="hero-avatar-large">
+                <span class="ico" data-icon="user"></span>
+              </div>
+              <h3 id="profile-overview-name" class="panel-hero-title">Player</h3>
+            </div>
+
+            <h4 class="profile-section-title">Overview</h4>
+            <div class="colonist-stat-row">
+              <div class="colonist-stat-card">
+                <span class="cstat-title">Total Games</span>
+                <span id="cstat-total-games" class="cstat-val">0</span>
+              </div>
+              <div class="colonist-stat-card">
+                <span class="cstat-title">Win %</span>
+                <span id="cstat-win-rate" class="cstat-val">0.00</span>
+              </div>
+              <div class="colonist-stat-card">
+                <span class="cstat-title">Point/Game</span>
+                <span id="cstat-point-game" class="cstat-val">0.00</span>
+              </div>
+              <div class="colonist-stat-card">
+                <span class="cstat-title">Points</span>
+                <span id="cstat-total-points" class="cstat-val">0</span>
+              </div>
+            </div>
+
+            <div class="profile-sub-summary">
+              <div class="profile-sub-card">
+                <span class="sub-card-label">Victories (1st Place)</span>
+                <span id="cstat-wins" class="sub-card-val">0</span>
+              </div>
+              <div class="profile-sub-card">
+                <span class="sub-card-label">Average Rank</span>
+                <span id="cstat-avg-rank" class="sub-card-val">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: HISTORY -->
+          <div id="ptab-history" class="profile-tab-panel">
+            <h4 class="profile-section-title">History of Last 100 Games</h4>
+            <div class="colonist-history-container">
+              <table class="colonist-history-table">
+                <thead>
+                  <tr>
+                    <th class="th-date">Date</th>
+                    <th class="th-rank">Rank</th>
+                    <th class="th-opponents">Opponents</th>
+                    <th class="th-duration">Duration</th>
+                    <th class="th-replay">Replay</th>
+                  </tr>
+                </thead>
+                <tbody id="colonist-history-tbody">
+                  <tr class="history-empty-row">
+                    <td colspan="5">No games played yet. Play a match to build your history!</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 3: FRIENDS -->
+          <div id="ptab-friends" class="profile-tab-panel">
+            <h4 class="profile-section-title">Friends & Companions</h4>
+            <div class="friends-container">
+              <div class="friends-empty-box">
+                <span class="ico" data-icon="users"></span>
+                <p>No friends added yet. Share your room code to play with friends!</p>
+                <button type="button" id="btn-profile-invite-link" class="btn-glass btn-primary">
+                  <span class="btn-icon ico" data-icon="link"></span> Copy Invite Link
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 4: ACCOUNT -->
+          <div id="ptab-account" class="profile-tab-panel">
+            <h4 class="profile-section-title">Account Settings</h4>
+            <div class="account-settings-container">
+              <!-- Player Avatar Selection -->
+              <div class="account-card-form">
+                <label>Player Avatar</label>
+                <p class="field-hint">Choose your game character avatar or use your Google profile photo.</p>
+                <div id="profile-avatar-picker" class="avatar-picker-grid"></div>
+              </div>
+
+              <!-- Change display name -->
+              <form id="form-profile-account-name" class="account-card-form">
+                <div class="form-group">
+                  <label for="account-display-name">Player Display Name</label>
+                  <div class="input-with-action">
+                    <input type="text" id="account-display-name" class="form-input" maxlength="32" required placeholder="Choose display name">
+                    <button type="submit" id="btn-save-account-name" class="btn-glass btn-primary">Save</button>
+                  </div>
+                  <p class="field-hint">Unique in-game handle visible to all players.</p>
+                </div>
+              </form>
+
+              <!-- Change password -->
+              <form id="form-profile-account-password" class="account-card-form">
+                <div class="form-group">
+                  <label for="account-new-password">Change Password</label>
+                  <div class="input-with-action">
+                    <input type="password" id="account-new-password" class="form-input" minlength="6" placeholder="New password (min 6 chars)">
+                    <button type="submit" id="btn-save-account-password" class="btn-glass">Update</button>
+                  </div>
+                </div>
+              </form>
+
+              <!-- Account details & sign out -->
+              <div class="account-card-info">
+                <div class="account-detail-row">
+                  <span class="detail-label">Email:</span>
+                  <span id="account-email-display" class="detail-val">—</span>
+                </div>
+                <div class="account-detail-row">
+                  <span class="detail-label">Account Status:</span>
+                  <span id="account-status-display" class="detail-val text-gold">Active Player</span>
+                </div>
+                <div class="account-actions-row">
+                  <button type="button" id="btn-account-signout" class="btn-glass btn-danger">
+                    <span class="btn-icon ico" data-icon="user"></span> Sign out
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
+
+  <!-- Backward compatible hidden hook for stats if queried -->
+  <div id="stats-guest" class="is-hidden"></div>
+  <div id="stats-body" class="is-hidden"><div id="stats-summary"></div><div id="stats-recent"></div></div>
+  <button type="button" id="btn-stats-back" class="is-hidden"></button>
 
   <!-- =========================================================
    * VIEW 2: WAITING ROOM
@@ -207,7 +405,8 @@
           <button id="btn-add-bot" class="btn-glass" data-i18n="ADD_BOT_BTN">Add Bot</button>
           <button id="btn-spawn-agent" class="btn-glass" data-i18n="SPAWN_AGENT_BTN">🤖 Summon AI Agent</button>
         </div>
-        <button id="btn-start-game" class="btn-glass btn-primary btn-start-game" data-i18n="START_GAME_BTN">Start Game</button>
+        <button id="btn-start-game" class="btn-glass btn-primary btn-start-game" data-i18n="START_GAME_BTN">Start
+          Game</button>
       </div>
     </div>
   </section>
@@ -221,223 +420,239 @@
       <!-- Left HUD (Turn Status, Dice, Building Desk) -->
       <aside class="hud-left">
         <div class="hud-left-status">
-        <div class="turn-banner">
-          <div class="turn-title"><span data-i18n="ROUND_LABEL">Round</span> <span id="round-number-display">1</span></div>
-          <div class="turn-of-line">
-            <span data-i18n="TURN_LABEL">Turn</span>
-            <span id="turn-commander-name" class="turn-commander">---</span>
-          </div>
-          <div id="turn-phase-status" class="turn-phase-status"></div>
-          <div class="turn-timer-bar timer-normal" id="turn-timer-wrapper">
-            <div class="timer-header">
-              <span class="timer-icon ico" data-icon="clock"></span>
-              <span id="turn-timer-display">--</span>
+          <div class="turn-banner">
+            <div class="turn-title"><span data-i18n="ROUND_LABEL">Round</span> <span id="round-number-display">1</span>
             </div>
-            <div class="timer-progress-track" id="turn-timer-track">
-              <div class="timer-progress-fill" id="turn-timer-fill"></div>
+            <div class="turn-of-line">
+              <span data-i18n="TURN_LABEL">Turn</span>
+              <span id="turn-commander-name" class="turn-commander">---</span>
+            </div>
+            <div id="turn-phase-status" class="turn-phase-status"></div>
+            <div class="turn-timer-bar timer-normal" id="turn-timer-wrapper">
+              <div class="timer-header">
+                <span class="timer-icon ico" data-icon="clock"></span>
+                <span id="turn-timer-display">--</span>
+              </div>
+              <div class="timer-progress-track" id="turn-timer-track">
+                <div class="timer-progress-fill" id="turn-timer-fill"></div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Dice Roll Desk -->
-        <div class="dice-container">
-          <div class="dice-cubes">
-            <div id="die-1" class="die">?</div>
-            <div id="die-2" class="die">?</div>
-            <div id="die-event" class="die die-event ck-hud-widget" aria-label="Event die">?</div>
+          <!-- Dice Roll Desk -->
+          <div class="dice-container">
+            <div class="dice-cubes">
+              <div id="die-1" class="die">?</div>
+              <div id="die-2" class="die">?</div>
+              <div id="die-event" class="die die-event ck-hud-widget" aria-label="Event die">?</div>
+            </div>
+            <div class="dice-sum-label">
+              <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" class="dice-sum-value">-</span>
+            </div>
+            <button id="btn-roll-dice" class="btn-glass btn-primary btn-block" data-i18n="ACTION_ROLL">Roll
+              Dice</button>
           </div>
-          <div class="dice-sum-label">
-            <span data-i18n="DICE_TOTAL">Total</span>: <span id="dice-sum" class="dice-sum-value">-</span>
-          </div>
-          <button id="btn-roll-dice" class="btn-glass btn-primary btn-block" data-i18n="ACTION_ROLL">Roll Dice</button>
-        </div>
 
-        <div id="barbarian-track" class="barbarian-track ck-hud-widget" title="Barbarian Fleet Approach Track">
-          <div class="barbarian-track-header">
-            <div class="barbarian-track-title">
-              <span class="barbarian-icon">🏴‍☠️</span>
-              <span data-i18n="BARBARIAN_TRACK">Barbarian Fleet</span>
+          <div id="barbarian-track" class="barbarian-track ck-hud-widget" title="Barbarian Fleet Approach Track">
+            <div class="barbarian-track-header">
+              <div class="barbarian-track-title">
+                <span class="barbarian-icon">🏴‍☠️</span>
+                <span data-i18n="BARBARIAN_TRACK">Barbarian Fleet</span>
+              </div>
+              <span id="barbarian-track-count" class="barbarian-status-badge">0/7</span>
             </div>
-            <span id="barbarian-track-count" class="barbarian-status-badge">0/7</span>
-          </div>
-          <div class="barbarian-voyage-container">
-            <div class="barbarian-voyage-line"></div>
-            <div class="barbarian-ship-wrapper" id="barbarian-ship-wrapper" title="Barbarian Warship">
-              <svg class="barbarian-ship-svg" viewBox="0 0 36 28" width="34" height="28" aria-label="Barbarian Warship">
-                <!-- Dragon / Viking Warship Hull -->
-                <path d="M 4 19 Q 18 25 32 19 Q 34 16 33 13 Q 29 17 18 17 Q 7 17 3 13 Q 2 16 4 19 Z" fill="#3b0764" stroke="#e11d48" stroke-width="1.2"/>
-                <!-- Dragon prow / head -->
-                <path d="M 32 18 Q 36 12 34 8 Q 33 6 31 7 Q 32 11 29 14 Z" fill="#e11d48"/>
-                <!-- Stern dragon tail -->
-                <path d="M 4 18 Q 0 13 2 9 Q 4 8 5 10 Q 3 13 7 15 Z" fill="#e11d48"/>
-                <!-- Mast -->
-                <line x1="18" y1="5" x2="18" y2="17" stroke="#fbbf24" stroke-width="1.8"/>
-                <!-- Sail (striped Viking sail) -->
-                <path d="M 18 6 Q 10 10 12 15 L 24 15 Q 26 10 18 6 Z" fill="#fef2f2" stroke="#991b1b" stroke-width="1"/>
-                <path d="M 15 8 L 15 15 M 21 8 L 21 15" stroke="#e11d48" stroke-width="1.2"/>
-                <!-- Shields along gunwale -->
-                <circle cx="11" cy="18" r="1.8" fill="#d97706" stroke="#1e1b4b" stroke-width="0.6"/>
-                <circle cx="16" cy="19" r="1.8" fill="#e11d48" stroke="#1e1b4b" stroke-width="0.6"/>
-                <circle cx="21" cy="19" r="1.8" fill="#d97706" stroke="#1e1b4b" stroke-width="0.6"/>
-                <circle cx="26" cy="18" r="1.8" fill="#e11d48" stroke="#1e1b4b" stroke-width="0.6"/>
-                <!-- Water ripple -->
-                <path d="M 2 22 Q 18 26 34 22" stroke="rgba(56, 189, 248, 0.7)" stroke-width="1.2" fill="none"/>
-              </svg>
+            <div class="barbarian-voyage-container">
+              <div class="barbarian-voyage-line"></div>
+              <div class="barbarian-ship-wrapper" id="barbarian-ship-wrapper" title="Barbarian Warship">
+                <svg class="barbarian-ship-svg" viewBox="0 0 36 28" width="34" height="28"
+                  aria-label="Barbarian Warship">
+                  <!-- Dragon / Viking Warship Hull -->
+                  <path d="M 4 19 Q 18 25 32 19 Q 34 16 33 13 Q 29 17 18 17 Q 7 17 3 13 Q 2 16 4 19 Z" fill="#3b0764"
+                    stroke="#e11d48" stroke-width="1.2" />
+                  <!-- Dragon prow / head -->
+                  <path d="M 32 18 Q 36 12 34 8 Q 33 6 31 7 Q 32 11 29 14 Z" fill="#e11d48" />
+                  <!-- Stern dragon tail -->
+                  <path d="M 4 18 Q 0 13 2 9 Q 4 8 5 10 Q 3 13 7 15 Z" fill="#e11d48" />
+                  <!-- Mast -->
+                  <line x1="18" y1="5" x2="18" y2="17" stroke="#fbbf24" stroke-width="1.8" />
+                  <!-- Sail (striped Viking sail) -->
+                  <path d="M 18 6 Q 10 10 12 15 L 24 15 Q 26 10 18 6 Z" fill="#fef2f2" stroke="#991b1b"
+                    stroke-width="1" />
+                  <path d="M 15 8 L 15 15 M 21 8 L 21 15" stroke="#e11d48" stroke-width="1.2" />
+                  <!-- Shields along gunwale -->
+                  <circle cx="11" cy="18" r="1.8" fill="#d97706" stroke="#1e1b4b" stroke-width="0.6" />
+                  <circle cx="16" cy="19" r="1.8" fill="#e11d48" stroke="#1e1b4b" stroke-width="0.6" />
+                  <circle cx="21" cy="19" r="1.8" fill="#d97706" stroke="#1e1b4b" stroke-width="0.6" />
+                  <circle cx="26" cy="18" r="1.8" fill="#e11d48" stroke="#1e1b4b" stroke-width="0.6" />
+                  <!-- Water ripple -->
+                  <path d="M 2 22 Q 18 26 34 22" stroke="rgba(56, 189, 248, 0.7)" stroke-width="1.2" fill="none" />
+                </svg>
+              </div>
+              <div class="barbarian-waypoints" id="barbarian-track-pips"></div>
             </div>
-            <div class="barbarian-waypoints" id="barbarian-track-pips"></div>
+            <div class="barbarian-sublabel" id="barbarian-sublabel">Distant Waters — Catan is Safe</div>
           </div>
-          <div class="barbarian-sublabel" id="barbarian-sublabel">Distant Waters — Catan is Safe</div>
-        </div>
 
-        <div id="city-improvements-panel" class="ck-improvements-panel ck-hud-widget">
-          <button type="button" id="btn-toggle-improvements" class="ck-panel-title" data-i18n="IMPROVEMENTS_TITLE">City Improvements</button>
-          <div class="improvement-track" data-track="trade">
-            <div class="track-head">
-              <span class="track-label track-trade" data-i18n="TRACK_TRADE">Trade</span>
-              <span class="track-level" id="improve-level-trade">0/5</span>
+          <div id="city-improvements-panel" class="ck-improvements-panel ck-hud-widget">
+            <button type="button" id="btn-toggle-improvements" class="ck-panel-title"
+              data-i18n="IMPROVEMENTS_TITLE">City Improvements</button>
+            <div class="improvement-track" data-track="trade">
+              <div class="track-head">
+                <span class="track-label track-trade" data-i18n="TRACK_TRADE">Trade</span>
+                <span class="track-level" id="improve-level-trade">0/5</span>
+              </div>
+              <div class="track-progress">
+                <div class="track-fill track-fill-trade" id="improve-fill-trade"></div>
+              </div>
+              <span class="track-perk" id="improve-perk-trade" data-i18n="TRACK_PERK_TRADE">L3 Trading House: 2:1
+                commodities</span>
+              <button type="button" class="btn-glass btn-improve" data-improve-track="trade" id="btn-improve-trade">
+                <span data-i18n="IMPROVE_BTN">Improve</span>
+                <span class="improve-cost" id="improve-cost-trade">1</span>
+              </button>
             </div>
-            <div class="track-progress"><div class="track-fill track-fill-trade" id="improve-fill-trade"></div></div>
-            <span class="track-perk" id="improve-perk-trade" data-i18n="TRACK_PERK_TRADE">L3 Trading House: 2:1 commodities</span>
-            <button type="button" class="btn-glass btn-improve" data-improve-track="trade" id="btn-improve-trade">
-              <span data-i18n="IMPROVE_BTN">Improve</span>
-              <span class="improve-cost" id="improve-cost-trade">1</span>
-            </button>
-          </div>
-          <div class="improvement-track" data-track="politics">
-            <div class="track-head">
-              <span class="track-label track-politics" data-i18n="TRACK_POLITICS">Politics</span>
-              <span class="track-level" id="improve-level-politics">0/5</span>
+            <div class="improvement-track" data-track="politics">
+              <div class="track-head">
+                <span class="track-label track-politics" data-i18n="TRACK_POLITICS">Politics</span>
+                <span class="track-level" id="improve-level-politics">0/5</span>
+              </div>
+              <div class="track-progress">
+                <div class="track-fill track-fill-politics" id="improve-fill-politics"></div>
+              </div>
+              <span class="track-perk" id="improve-perk-politics" data-i18n="TRACK_PERK_POLITICS">L3 Fortress: Mighty
+                knights</span>
+              <button type="button" class="btn-glass btn-improve" data-improve-track="politics"
+                id="btn-improve-politics">
+                <span data-i18n="IMPROVE_BTN">Improve</span>
+                <span class="improve-cost" id="improve-cost-politics">1</span>
+              </button>
             </div>
-            <div class="track-progress"><div class="track-fill track-fill-politics" id="improve-fill-politics"></div></div>
-            <span class="track-perk" id="improve-perk-politics" data-i18n="TRACK_PERK_POLITICS">L3 Fortress: Mighty knights</span>
-            <button type="button" class="btn-glass btn-improve" data-improve-track="politics" id="btn-improve-politics">
-              <span data-i18n="IMPROVE_BTN">Improve</span>
-              <span class="improve-cost" id="improve-cost-politics">1</span>
-            </button>
-          </div>
-          <div class="improvement-track" data-track="science">
-            <div class="track-head">
-              <span class="track-label track-science" data-i18n="TRACK_SCIENCE">Science</span>
-              <span class="track-level" id="improve-level-science">0/5</span>
+            <div class="improvement-track" data-track="science">
+              <div class="track-head">
+                <span class="track-label track-science" data-i18n="TRACK_SCIENCE">Science</span>
+                <span class="track-level" id="improve-level-science">0/5</span>
+              </div>
+              <div class="track-progress">
+                <div class="track-fill track-fill-science" id="improve-fill-science"></div>
+              </div>
+              <span class="track-perk" id="improve-perk-science" data-i18n="TRACK_PERK_SCIENCE">L3 Aqueduct: resource on
+                empty roll</span>
+              <button type="button" class="btn-glass btn-improve" data-improve-track="science" id="btn-improve-science">
+                <span data-i18n="IMPROVE_BTN">Improve</span>
+                <span class="improve-cost" id="improve-cost-science">1</span>
+              </button>
             </div>
-            <div class="track-progress"><div class="track-fill track-fill-science" id="improve-fill-science"></div></div>
-            <span class="track-perk" id="improve-perk-science" data-i18n="TRACK_PERK_SCIENCE">L3 Aqueduct: resource on empty roll</span>
-            <button type="button" class="btn-glass btn-improve" data-improve-track="science" id="btn-improve-science">
-              <span data-i18n="IMPROVE_BTN">Improve</span>
-              <span class="improve-cost" id="improve-cost-science">1</span>
-            </button>
           </div>
-        </div>
         </div>
 
         <!-- Building Actions List -->
         <div class="hud-left-actions">
-        <div class="build-actions-list">
-          <!-- Road -->
-          <button id="btn-build-road" class="btn-build-action">
-            <span class="build-action-label">
-              <span class="ico" data-icon="path"></span>
-              <span data-i18n="BUILD_ROAD">Road</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Wood">
-                <span class="ico" data-icon="wood"></span> 1
+          <div class="build-actions-list">
+            <!-- Road -->
+            <button id="btn-build-road" class="btn-build-action">
+              <span class="build-action-label">
+                <span class="ico" data-icon="path"></span>
+                <span data-i18n="BUILD_ROAD">Road</span>
               </span>
-              <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
-                <span class="ico" data-icon="brick"></span> 1
-              </span>
-            </div>
-          </button>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Wood">
+                  <span class="ico" data-icon="wood"></span> 1
+                </span>
+                <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
+                  <span class="ico" data-icon="brick"></span> 1
+                </span>
+              </div>
+            </button>
 
-          <!-- Settlement -->
-          <button id="btn-build-settlement" class="btn-build-action">
-            <span class="build-action-label">
-              <span class="ico" data-icon="house"></span>
-              <span data-i18n="BUILD_SETTLEMENT">Settlement</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Wood">
-                <span class="ico" data-icon="wood"></span> 1
+            <!-- Settlement -->
+            <button id="btn-build-settlement" class="btn-build-action">
+              <span class="build-action-label">
+                <span class="ico" data-icon="house"></span>
+                <span data-i18n="BUILD_SETTLEMENT">Settlement</span>
               </span>
-              <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
-                <span class="ico" data-icon="brick"></span> 1
-              </span>
-              <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
-                <span class="ico" data-icon="wool"></span> 1
-              </span>
-              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
-                <span class="ico" data-icon="wheat"></span> 1
-              </span>
-            </div>
-          </button>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-wood" data-i18n-title="RES_WOOD" title="Wood">
+                  <span class="ico" data-icon="wood"></span> 1
+                </span>
+                <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
+                  <span class="ico" data-icon="brick"></span> 1
+                </span>
+                <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
+                  <span class="ico" data-icon="wool"></span> 1
+                </span>
+                <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
+                  <span class="ico" data-icon="wheat"></span> 1
+                </span>
+              </div>
+            </button>
 
-          <!-- City -->
-          <button id="btn-build-city" class="btn-build-action">
-            <span class="build-action-label">
-              <span class="ico" data-icon="city"></span>
-              <span data-i18n="BUILD_CITY">City</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
-                <span class="ico" data-icon="ore"></span> 3
+            <!-- City -->
+            <button id="btn-build-city" class="btn-build-action">
+              <span class="build-action-label">
+                <span class="ico" data-icon="city"></span>
+                <span data-i18n="BUILD_CITY">City</span>
               </span>
-              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
-                <span class="ico" data-icon="wheat"></span> 2
-              </span>
-            </div>
-          </button>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
+                  <span class="ico" data-icon="ore"></span> 3
+                </span>
+                <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
+                  <span class="ico" data-icon="wheat"></span> 2
+                </span>
+              </div>
+            </button>
 
-          <button id="btn-build-city-wall" class="btn-build-action ck-build-only">
-            <span class="build-action-label">
-              <span class="ico" data-icon="city"></span>
-              <span data-i18n="BUILD_CITY_WALL">Wall</span>
-              <span id="wall-supply-count" class="wall-supply-count">3</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
-                <span class="ico" data-icon="brick"></span> 2
+            <button id="btn-build-city-wall" class="btn-build-action ck-build-only">
+              <span class="build-action-label">
+                <span class="ico" data-icon="city"></span>
+                <span data-i18n="BUILD_CITY_WALL">Wall</span>
+                <span id="wall-supply-count" class="wall-supply-count">3</span>
               </span>
-            </div>
-          </button>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-brick" data-i18n-title="RES_BRICK" title="Brick">
+                  <span class="ico" data-icon="brick"></span> 2
+                </span>
+              </div>
+            </button>
 
-          <!-- Dev Card -->
-          <button id="btn-buy-dev-card" class="btn-build-action">
-            <span class="build-action-label">
-              <span class="ico" data-icon="cards"></span>
-              <span data-i18n="BUY_DEV_CARD">Dev Card</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
-                <span class="ico" data-icon="ore"></span> 1
+            <!-- Dev Card -->
+            <button id="btn-buy-dev-card" class="btn-build-action">
+              <span class="build-action-label">
+                <span class="ico" data-icon="cards"></span>
+                <span data-i18n="BUY_DEV_CARD">Dev Card</span>
               </span>
-              <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
-                <span class="ico" data-icon="wool"></span> 1
-              </span>
-              <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
-                <span class="ico" data-icon="wheat"></span> 1
-              </span>
-            </div>
-          </button>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
+                  <span class="ico" data-icon="ore"></span> 1
+                </span>
+                <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
+                  <span class="ico" data-icon="wool"></span> 1
+                </span>
+                <span class="cost-pill pill-wheat" data-i18n-title="RES_WHEAT" title="Wheat">
+                  <span class="ico" data-icon="wheat"></span> 1
+                </span>
+              </div>
+            </button>
 
-          <button id="btn-place-knight" class="btn-build-action ck-hud-widget">
-            <span class="build-action-label">
-              <span data-i18n="PLACE_KNIGHT">Knight</span>
-            </span>
-            <div class="build-cost-pills">
-              <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
-                <span class="ico" data-icon="ore"></span> 1
+            <button id="btn-place-knight" class="btn-build-action ck-hud-widget">
+              <span class="build-action-label">
+                <span data-i18n="PLACE_KNIGHT">Knight</span>
               </span>
-              <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
-                <span class="ico" data-icon="wool"></span> 1
-              </span>
-            </div>
-          </button>
-        </div>
+              <div class="build-cost-pills">
+                <span class="cost-pill pill-ore" data-i18n-title="RES_ORE" title="Ore">
+                  <span class="ico" data-icon="ore"></span> 1
+                </span>
+                <span class="cost-pill pill-wool" data-i18n-title="RES_WOOL" title="Wool">
+                  <span class="ico" data-icon="wool"></span> 1
+                </span>
+              </div>
+            </button>
+          </div>
 
-        <div id="knight-supply" class="ck-hud-widget knight-supply" aria-live="polite"></div>
+          <div id="knight-supply" class="ck-hud-widget knight-supply" aria-live="polite"></div>
 
-        <button id="btn-end-turn" class="btn-glass btn-end-turn" data-i18n="ACTION_END_TURN">End Turn</button>
-        <button id="btn-pass-sbp" class="btn-glass btn-end-turn is-hidden" data-i18n="ACTION_PASS">Pass</button>
+          <button id="btn-end-turn" class="btn-glass btn-end-turn" data-i18n="ACTION_END_TURN">End Turn</button>
+          <button id="btn-pass-sbp" class="btn-glass btn-end-turn is-hidden" data-i18n="ACTION_PASS">Pass</button>
       </aside>
 
       <!-- Center Board Viewport -->
@@ -454,21 +669,27 @@
         <div id="board-pick-banner" class="board-pick-banner is-hidden">
           <span class="board-pick-banner-icon">🎯</span>
           <span id="board-pick-banner-text" class="board-pick-banner-text">Select a target on the board</span>
-          <button type="button" id="btn-cancel-board-pick" class="btn-glass btn-sm" data-i18n="CANCEL_ACTION">Cancel</button>
+          <button type="button" id="btn-cancel-board-pick" class="btn-glass btn-sm"
+            data-i18n="CANCEL_ACTION">Cancel</button>
         </div>
 
         <!-- Floating Zoom Controls -->
         <div class="board-controls">
-          <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button" data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-label="Players & chat" aria-expanded="false" aria-controls="hud-right-panel">
+          <button id="btn-toggle-sidebar" class="board-control-btn hud-overlay-toggle" type="button"
+            data-i18n-title="TOGGLE_SIDEBAR" title="Players & chat" aria-label="Players & chat" aria-expanded="false"
+            aria-controls="hud-right-panel">
             <span class="ico" data-icon="chat"></span>
           </button>
-          <button id="btn-zoom-in" class="board-control-btn" data-i18n-title="ZOOM_IN" title="Zoom In" aria-label="Zoom In">
+          <button id="btn-zoom-in" class="board-control-btn" data-i18n-title="ZOOM_IN" title="Zoom In"
+            aria-label="Zoom In">
             <span class="ico" data-icon="plus"></span>
           </button>
-          <button id="btn-zoom-out" class="board-control-btn" data-i18n-title="ZOOM_OUT" title="Zoom Out" aria-label="Zoom Out">
+          <button id="btn-zoom-out" class="board-control-btn" data-i18n-title="ZOOM_OUT" title="Zoom Out"
+            aria-label="Zoom Out">
             <span class="ico" data-icon="minus"></span>
           </button>
-          <button id="btn-zoom-reset" class="board-control-btn" data-i18n-title="ZOOM_RESET" title="Reset View" aria-label="Reset View">
+          <button id="btn-zoom-reset" class="board-control-btn" data-i18n-title="ZOOM_RESET" title="Reset View"
+            aria-label="Reset View">
             <span class="ico" data-icon="refresh"></span>
           </button>
         </div>
@@ -486,7 +707,8 @@
             <div id="bank-pills-container" class="bank-pills-container"></div>
           </div>
           <div class="bank-strip-right">
-            <button type="button" id="btn-open-knights-modal" class="btn-glass btn-defense-summary ck-only" data-i18n-title="KNIGHTS_OVERVIEW_TITLE" title="Knights & Realm Defense Overview">
+            <button type="button" id="btn-open-knights-modal" class="btn-glass btn-defense-summary ck-only"
+              data-i18n-title="KNIGHTS_OVERVIEW_TITLE" title="Knights & Realm Defense Overview">
               <span class="defense-status-icon">🛡️</span>
               <span id="defense-summary-text">Defense: --/--</span>
             </button>
@@ -557,7 +779,8 @@
         <div class="bottom-action-buttons">
           <div class="vp-counter-badge">
             <span class="ico" data-icon="trophy"></span>
-            <span class="vp-count-text"><span id="my-vp-count">0</span> <span data-i18n="VICTORY_POINTS_ABBR">VP</span></span>
+            <span class="vp-count-text"><span id="my-vp-count">0</span> <span
+                data-i18n="VICTORY_POINTS_ABBR">VP</span></span>
           </div>
 
           <button id="btn-open-trade" class="btn-glass">
@@ -602,7 +825,8 @@
         <div id="panel-chat" class="tab-content is-hidden">
           <div id="chat-messages" class="chat-messages"></div>
           <form id="chat-form" class="chat-input-bar">
-            <input type="text" id="chat-input" class="form-input chat-compact-input" data-i18n-placeholder="CHAT_PLACEHOLDER" placeholder="Type a message..." maxlength="120">
+            <input type="text" id="chat-input" class="form-input chat-compact-input"
+              data-i18n-placeholder="CHAT_PLACEHOLDER" placeholder="Type a message..." maxlength="120">
             <button type="submit" class="btn-glass btn-primary btn-chat-send" data-i18n="SEND_CHAT_BTN">Send</button>
           </form>
         </div>
@@ -629,10 +853,12 @@
 
       <!-- Segmented Sub-Tabs -->
       <div class="segmented-tabs trade-tabs">
-        <button type="button" id="tab-trade-player" class="segmented-tab active" data-i18n="TAB_TRADE_PLAYER">Player Trade</button>
-        <button type="button" id="tab-trade-bank" class="segmented-tab" data-i18n="TAB_TRADE_BANK">Bank & Harbor</button>
+        <button type="button" id="tab-trade-player" class="segmented-tab active" data-i18n="TAB_TRADE_PLAYER">Player
+          Trade</button>
+        <button type="button" id="tab-trade-bank" class="segmented-tab" data-i18n="TAB_TRADE_BANK">Bank &
+          Harbor</button>
       </div>
-      
+
       <!-- Domestic Player Trade Section -->
       <div id="trade-player-section" class="trade-tab-section">
         <form id="form-propose-trade" class="form-stack">
@@ -865,8 +1091,10 @@
           </div>
 
           <div class="modal-actions-end">
-            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Cancel</button>
-            <button type="submit" id="btn-submit-propose-trade" class="btn-glass btn-primary" data-i18n="PROPOSE_TRADE_BTN">Propose Trade</button>
+            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal"
+              data-i18n="CANCEL_ACTION">Cancel</button>
+            <button type="submit" id="btn-submit-propose-trade" class="btn-glass btn-primary"
+              data-i18n="PROPOSE_TRADE_BTN">Propose Trade</button>
           </div>
         </form>
       </div>
@@ -877,16 +1105,19 @@
           <div class="bank-ratio-pill" id="bank-ratio-banner">
             <div>
               <span class="bank-ratio-text" id="bank-ratio-text" data-i18n="BANK_RATE_DEFAULT">Rate: 4:1</span>
-              <span class="bank-ratio-desc" id="bank-ratio-desc" data-i18n="BANK_STANDARD_RATIO">Standard bank exchange (4:1)</span>
+              <span class="bank-ratio-desc" id="bank-ratio-desc" data-i18n="BANK_STANDARD_RATIO">Standard bank exchange
+                (4:1)</span>
             </div>
-            <span class="bank-harbors-status" id="bank-harbors-status" data-i18n="BANK_NO_HARBORS">No harbors owned</span>
+            <span class="bank-harbors-status" id="bank-harbors-status" data-i18n="BANK_NO_HARBORS">No harbors
+              owned</span>
           </div>
 
           <!-- Visual Give Selection -->
           <div>
             <div class="section-head">
               <label class="section-head-label" data-i18n="BANK_GIVE_LABEL">You Give</label>
-              <span class="section-head-hint" id="bank-give-needed-label" data-i18n="SELECT_GIVE">Select resource to give</span>
+              <span class="section-head-hint" id="bank-give-needed-label" data-i18n="SELECT_GIVE">Select resource to
+                give</span>
             </div>
             <div class="bank-res-grid" id="bank-give-grid"></div>
           </div>
@@ -908,8 +1139,10 @@
           </div>
 
           <div class="modal-actions-end">
-            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal" data-i18n="CANCEL_ACTION">Cancel</button>
-            <button type="submit" id="btn-submit-bank-trade" class="btn-glass btn-primary" data-i18n="ACTION_TRADE_BANK">Bank Trade</button>
+            <button type="button" class="btn-glass btn-secondary btn-close-trade-modal"
+              data-i18n="CANCEL_ACTION">Cancel</button>
+            <button type="submit" id="btn-submit-bank-trade" class="btn-glass btn-primary"
+              data-i18n="ACTION_TRADE_BANK">Bank Trade</button>
           </div>
         </form>
       </div>
@@ -923,11 +1156,14 @@
         <h3 class="modal-title danger" data-i18n="DISCARD_TITLE">Discard Cards (Rolled 7)</h3>
         <span id="discard-timer-display" class="discard-timer"></span>
       </div>
-      <p class="modal-lede tight" data-i18n="DISCARD_INSTRUCTION">You have more than 7 cards. Select half your cards to discard:</p>
+      <p class="modal-lede tight" data-i18n="DISCARD_INSTRUCTION">You have more than 7 cards. Select half your cards to
+        discard:</p>
       <p id="discard-threshold-hint" class="discard-threshold-hint"></p>
       <div class="discard-stats">
-        <span><span data-i18n="DISCARD_MUST_LABEL">Must discard:</span> <strong id="discard-needed-count" class="discard-needed">0</strong></span>
-        <span><span data-i18n="DISCARD_SELECTED_LABEL">Selected:</span> <strong id="discard-current-count" class="discard-selected">0</strong></span>
+        <span><span data-i18n="DISCARD_MUST_LABEL">Must discard:</span> <strong id="discard-needed-count"
+            class="discard-needed">0</strong></span>
+        <span><span data-i18n="DISCARD_SELECTED_LABEL">Selected:</span> <strong id="discard-current-count"
+            class="discard-selected">0</strong></span>
       </div>
 
       <form id="discard-form" class="form-stack">
@@ -1034,7 +1270,8 @@
             </div>
           </div>
         </div>
-        <button type="submit" id="btn-submit-discard" class="btn-glass btn-primary" data-i18n="CONFIRM_DISCARD_BTN">Discard Cards</button>
+        <button type="submit" id="btn-submit-discard" class="btn-glass btn-primary"
+          data-i18n="CONFIRM_DISCARD_BTN">Discard Cards</button>
       </form>
     </div>
   </div>
@@ -1068,7 +1305,8 @@
       <p id="barbarian-modal-body" class="barbarian-modal-body"></p>
       <div id="barbarian-downgrade-list" class="barbarian-downgrade-list"></div>
       <div class="barbarian-actions">
-        <button type="button" id="btn-close-barbarian" class="btn-glass btn-primary" data-i18n="BARBARIAN_CONTINUE">Continue</button>
+        <button type="button" id="btn-close-barbarian" class="btn-glass btn-primary"
+          data-i18n="BARBARIAN_CONTINUE">Continue</button>
       </div>
     </div>
   </div>
@@ -1094,8 +1332,10 @@
       <p id="progress-card-modal-desc" class="progress-card-modal-desc"></p>
       <div id="progress-card-target-ui" class="progress-card-target-ui"></div>
       <div class="progress-card-actions">
-        <button type="button" id="btn-pick-progress-board" class="btn-glass is-hidden" data-i18n="PROGRESS_PICK_ON_BOARD">🎯 Pick on Board</button>
-        <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary" data-i18n="ACTION_PLAY_CARD">Play Card</button>
+        <button type="button" id="btn-pick-progress-board" class="btn-glass is-hidden"
+          data-i18n="PROGRESS_PICK_ON_BOARD">🎯 Pick on Board</button>
+        <button type="button" id="btn-play-progress-card" class="btn-glass btn-primary"
+          data-i18n="ACTION_PLAY_CARD">Play Card</button>
         <button type="button" id="btn-cancel-progress-card" class="btn-glass" data-i18n="CANCEL_ACTION">Cancel</button>
       </div>
     </div>
@@ -1104,7 +1344,8 @@
   <div id="progress-discard-modal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal-box modal-md">
       <h3 class="modal-title" data-i18n="PROGRESS_DISCARD_TITLE">Discard a progress card</h3>
-      <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress cards. Discard one to continue.</p>
+      <p class="progress-card-modal-desc" data-i18n="PROGRESS_DISCARD_HINT">You have more than 4 unplayed progress
+        cards. Discard one to continue.</p>
       <div id="progress-discard-list" class="progress-discard-list"></div>
     </div>
   </div>
@@ -1119,7 +1360,8 @@
       <div id="knights-defense-status-banner" class="knights-defense-banner"></div>
       <div id="knights-players-table-container" class="knights-table-container"></div>
       <div class="modal-footer-actions">
-        <button type="button" id="btn-close-knights-modal" class="btn-glass btn-primary btn-modal-close-block" data-i18n="CLOSE_BTN">Close</button>
+        <button type="button" id="btn-close-knights-modal" class="btn-glass btn-primary btn-modal-close-block"
+          data-i18n="CLOSE_BTN">Close</button>
       </div>
     </div>
   </div>
@@ -1131,7 +1373,8 @@
         <h3 class="modal-title" data-i18n="MONOPOLY_SELECT_TITLE">Monopoly: Choose Resource</h3>
         <button type="button" id="btn-close-monopoly" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
-      <p class="modal-lede" data-i18n="CARD_MONOPOLY_DESC">Select 1 resource. All other players must give you all their cards of that type.</p>
+      <p class="modal-lede" data-i18n="CARD_MONOPOLY_DESC">Select 1 resource. All other players must give you all their
+        cards of that type.</p>
       <div class="modal-res-buttons-grid">
         <button type="button" class="btn-glass res-choice-btn" data-res="wood" data-i18n="RES_WOOD">Wood</button>
         <button type="button" class="btn-glass res-choice-btn" data-res="brick" data-i18n="RES_BRICK">Brick</button>
@@ -1148,7 +1391,8 @@
       <div class="modal-header-row mid">
         <h3 class="modal-title" data-i18n="AQUEDUCT_SELECT_TITLE">Aqueduct: Choose 1 Resource</h3>
       </div>
-      <p class="modal-lede" data-i18n="AQUEDUCT_SELECT_BODY">Your production roll yielded nothing. Take any 1 resource from the bank.</p>
+      <p class="modal-lede" data-i18n="AQUEDUCT_SELECT_BODY">Your production roll yielded nothing. Take any 1 resource
+        from the bank.</p>
       <div class="modal-res-buttons-grid">
         <button type="button" class="btn-glass res-choice-btn" data-res="wood" data-i18n="RES_WOOD">Wood</button>
         <button type="button" class="btn-glass res-choice-btn" data-res="brick" data-i18n="RES_BRICK">Brick</button>
@@ -1189,7 +1433,92 @@
           </select>
         </div>
       </div>
-      <button type="button" id="btn-confirm-yop" class="btn-glass btn-primary btn-block" data-i18n="ACTION_PLAY_CARD">Play Card</button>
+      <button type="button" id="btn-confirm-yop" class="btn-glass btn-primary btn-block"
+        data-i18n="ACTION_PLAY_CARD">Play Card</button>
+    </div>
+  </div>
+
+  <!-- Authentication & Profile Modal -->
+  <div id="auth-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="modal-box modal-sm auth-modal-box">
+      <div class="modal-header-row mid">
+        <h3 class="modal-title" id="auth-modal-title" data-i18n="SIGN_IN">Sign In</h3>
+        <button type="button" id="btn-close-auth-modal" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Signed-out view inside modal -->
+      <div id="lobby-auth-signed-out" class="auth-modal-content">
+        <p class="modal-lede tight" data-i18n="SIGN_IN_HINT">Optional. Guests can host and join without an account.</p>
+        <p id="lobby-auth-status" class="lobby-auth-status is-hidden"></p>
+
+        <div class="auth-modal-actions">
+          <button type="button" id="btn-sign-in-google" class="btn-glass btn-google-auth btn-block">
+            <span class="btn-icon ico" data-icon="google"></span>
+            <span data-i18n="SIGN_IN_GOOGLE">Continue with Google</span>
+          </button>
+
+          <div class="auth-divider">
+            <span>or with email</span>
+          </div>
+
+          <!-- Step 1: Enter Email -->
+          <div id="auth-step-email" class="auth-step">
+            <form id="form-auth-email" class="auth-email-form" novalidate>
+              <input type="email" id="auth-email-input" class="form-input"
+                data-i18n-placeholder="SIGN_IN_EMAIL_PLACEHOLDER" placeholder="you@example.com" required>
+              <button type="submit" id="btn-auth-continue" class="btn-glass btn-primary btn-block">Continue</button>
+            </form>
+          </div>
+
+          <!-- Step 2A: Account Exists -> Sign In -->
+          <div id="auth-step-login" class="auth-step is-hidden">
+            <div class="auth-user-chip">
+              <span id="auth-chip-email" class="auth-chip-text">user@example.com</span>
+              <button type="button" id="btn-auth-change-email" class="auth-chip-change">Change</button>
+            </div>
+            <form id="form-auth-login" class="auth-email-form" novalidate>
+              <input type="password" id="auth-login-password" class="form-input" placeholder="Enter your password"
+                minlength="6" required>
+              <button type="submit" id="btn-auth-login-submit" class="btn-glass btn-primary btn-block"
+                data-i18n="SIGN_IN">Sign In</button>
+              <button type="button" id="btn-auth-login-magic" class="btn-glass btn-secondary btn-block">Send Magic Link
+                instead</button>
+            </form>
+          </div>
+
+          <!-- Step 2B: New Account -> Create Password -->
+          <div id="auth-step-register" class="auth-step is-hidden">
+            <div class="auth-user-chip">
+              <span id="auth-chip-email-reg" class="auth-chip-text">new@example.com</span>
+              <button type="button" id="btn-auth-change-email-reg" class="auth-chip-change">Change</button>
+            </div>
+            <p class="modal-subtext">No account found with this email. Choose a password to create one:</p>
+            <form id="form-auth-register" class="auth-email-form" novalidate>
+              <input type="password" id="auth-register-password" class="form-input"
+                placeholder="Create password (min 6 chars)" minlength="6" required>
+              <button type="submit" id="btn-auth-register-submit" class="btn-glass btn-primary btn-block">Create
+                Account</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signed-in profile view inside modal -->
+      <div id="auth-modal-signed-in" class="auth-modal-content is-hidden">
+        <form id="form-display-name" class="auth-profile-form">
+          <div class="form-group">
+            <label for="profile-display-name" data-i18n="DISPLAY_NAME_LABEL">Profile name</label>
+            <input type="text" id="profile-display-name" class="form-input" maxlength="32">
+          </div>
+          <div class="form-group">
+            <label for="profile-new-password">Change password (optional)</label>
+            <input type="password" id="profile-new-password" class="form-input" placeholder="New password (min 6 chars)"
+              minlength="6">
+          </div>
+          <button type="submit" class="btn-glass btn-primary btn-block" data-i18n="SAVE_DISPLAY_NAME">Save
+            changes</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -1200,79 +1529,115 @@
       <div id="rules-copy-base" class="rules-copy">
         <div>
           <strong data-i18n="RULES_RESOURCES_TITLE">Resources:</strong>
-          <span data-i18n="RULES_RESOURCES_BODY">Wood (Forest), Brick (Hills), Wool (Pasture), Wheat (Fields), Ore (Mountains). The desert produces no resources.</span>
+          <span data-i18n="RULES_RESOURCES_BODY">Wood (Forest), Brick (Hills), Wool (Pasture), Wheat (Fields), Ore
+            (Mountains). The desert produces no resources.</span>
         </div>
         <div>
           <strong data-i18n="RULES_COSTS_TITLE">Building costs:</strong>
-          <span data-i18n="RULES_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP, replaces an existing settlement). Development Card = 1 Ore + 1 Wool + 1 Wheat.</span>
+          <span data-i18n="RULES_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat
+            (1 VP). City = 3 Ore + 2 Wheat (2 VP, replaces an existing settlement). Development Card = 1 Ore + 1 Wool +
+            1 Wheat.</span>
         </div>
         <div>
           <strong data-i18n="RULES_DISTANCE_TITLE">Distance rule:</strong>
-          <span data-i18n="RULES_DISTANCE_BODY">Any two settlements or cities must be at least 2 intersections apart.</span>
+          <span data-i18n="RULES_DISTANCE_BODY">Any two settlements or cities must be at least 2 intersections
+            apart.</span>
         </div>
         <div>
           <strong data-i18n="RULES_ROBBER_TITLE">The 7 & the Robber:</strong>
-          <span data-i18n="RULES_ROBBER_BODY">If the dice sum is 7, players with more than 7 cards in hand discard half. The active player moves the robber onto a hex and may take 1 resource from a player with an adjacent settlement or city.</span>
+          <span data-i18n="RULES_ROBBER_BODY">If the dice sum is 7, players with more than 7 cards in hand discard half.
+            The active player moves the robber onto a hex and may take 1 resource from a player with an adjacent
+            settlement or city.</span>
         </div>
         <div>
           <strong data-i18n="RULES_TITLES_TITLE">Special titles:</strong>
-          <span data-i18n="RULES_TITLES_BODY">Longest Road (at least 5 continuous segments) = +2 VP. Largest Army (at least 3 knights played) = +2 VP.</span>
+          <span data-i18n="RULES_TITLES_BODY">Longest Road (at least 5 continuous segments) = +2 VP. Largest Army (at
+            least 3 knights played) = +2 VP.</span>
         </div>
       </div>
       <div id="rules-copy-ck" class="rules-copy is-hidden">
         <div>
           <strong data-i18n="RULES_CK_VP_TITLE">Victory:</strong>
-          <span data-i18n="RULES_CK_VP_BODY">First to 13 VP wins, but no one may win until after the first barbarian attack. Classic development cards and Largest Army are not used.</span>
+          <span data-i18n="RULES_CK_VP_BODY">First to 13 VP wins, but no one may win until after the first barbarian
+            attack. Classic development cards and Largest Army are not used.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_COMMODITIES_TITLE">Commodities:</strong>
-          <span data-i18n="RULES_CK_COMMODITIES_BODY">Cities on wool/ore/wood produce 1 resource + 1 commodity (cloth/coin/paper). Cities on wheat/brick produce 2 resources. Settlements never produce commodities. Commodities count toward the 7-card discard limit and can be traded, but cannot pay for buildings.</span>
+          <span data-i18n="RULES_CK_COMMODITIES_BODY">Cities on wool/ore/wood produce 1 resource + 1 commodity
+            (cloth/coin/paper). Cities on wheat/brick produce 2 resources. Settlements never produce commodities.
+            Commodities count toward the 7-card discard limit and can be traded, but cannot pay for buildings.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_COSTS_TITLE">Building costs:</strong>
-          <span data-i18n="RULES_CK_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1 Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP). Knight = 1 Ore + 1 Wool (placed inactive). Activate knight = 1 Wheat. Promote knight = 1 Wool + 1 Ore. City wall = 2 Brick.</span>
+          <span data-i18n="RULES_CK_COSTS_BODY">Road = 1 Wood + 1 Brick. Settlement = 1 Wood + 1 Brick + 1 Wool + 1
+            Wheat (1 VP). City = 3 Ore + 2 Wheat (2 VP). Knight = 1 Ore + 1 Wool (placed inactive). Activate knight = 1
+            Wheat. Promote knight = 1 Wool + 1 Ore. City wall = 2 Brick.</span>
         </div>
         <div>
           <strong data-i18n="RULES_DISTANCE_TITLE">Distance rule:</strong>
-          <span data-i18n="RULES_DISTANCE_BODY">Any two settlements or cities must be at least 2 intersections apart.</span>
+          <span data-i18n="RULES_DISTANCE_BODY">Any two settlements or cities must be at least 2 intersections
+            apart.</span>
         </div>
         <div>
           <strong data-i18n="RULES_ROBBER_TITLE">The 7 & the Robber:</strong>
-          <span data-i18n="RULES_CK_ROBBER_BODY">Until barbarians have attacked once, a 7 only forces discards — no robber move or steal. After the first attack, a 7 works as in the base game: discard, then move the robber and steal.</span>
+          <span data-i18n="RULES_CK_ROBBER_BODY">Until barbarians have attacked once, a 7 only forces discards — no
+            robber move or steal. After the first attack, a 7 works as in the base game: discard, then move the robber
+            and steal.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_KNIGHTS_TITLE">Knights:</strong>
-          <span data-i18n="RULES_CK_KNIGHTS_BODY">Supply per player: 2 Basic, 2 Strong, 2 Mighty. Basic knights promote to Strong with no Politics requirement. Fortress (Politics 3) unlocks Mighty. Recruit then activate is legal the same turn; activating a knight (including Warlord) is its action for the turn. Promote is not an action. Active knights move along a continuous chain of your roads, displace a weaker enemy knight (who keeps active/inactive status and may enter the vacated intersection if roads connect), and chase the robber after the first barbarian attack (then become inactive).</span>
+          <span data-i18n="RULES_CK_KNIGHTS_BODY">Supply per player: 2 Basic, 2 Strong, 2 Mighty. Basic knights promote
+            to Strong with no Politics requirement. Fortress (Politics 3) unlocks Mighty. Recruit then activate is legal
+            the same turn; activating a knight (including Warlord) is its action for the turn. Promote is not an action.
+            Active knights move along a continuous chain of your roads, displace a weaker enemy knight (who keeps
+            active/inactive status and may enter the vacated intersection if roads connect), and chase the robber after
+            the first barbarian attack (then become inactive).</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_BARBARIANS_TITLE">Event die & barbarians:</strong>
-          <span data-i18n="RULES_CK_BARBARIANS_BODY">Each roll uses 2 production dice plus an event die (3/6 barbarian, 1/6 each Trade/Politics/Science). The barbarian ship advances on a barbarian face. At the end of the track, if active knight strength is at least the number of cities, Catan wins and the unique strongest defender gets Defender of Catan (+1 VP). If Catan loses, players with the fewest active knights who still have a city must downgrade one. All knights then become inactive. A color face lets every player whose matching track is at least the red die draw a progress card.</span>
+          <span data-i18n="RULES_CK_BARBARIANS_BODY">Each roll uses 2 production dice plus an event die (3/6 barbarian,
+            1/6 each Trade/Politics/Science). The barbarian ship advances on a barbarian face. At the end of the track,
+            if active knight strength is at least the number of cities, Catan wins and the unique strongest defender
+            gets Defender of Catan (+1 VP). If Catan loses, players with the fewest active knights who still have a city
+            must downgrade one. All knights then become inactive. A color face lets every player whose matching track is
+            at least the red die draw a progress card.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_IMPROVE_TITLE">City improvements:</strong>
-          <span data-i18n="RULES_CK_IMPROVE_BODY">Need a city to invest. Cost equals the level you reach (1–5) in cloth (Trade), coin (Politics), or paper (Science). Level 3 named buildings: Trading House (2:1 bank for commodities only), Fortress (Mighty knights), Aqueduct (take 1 resource when a production roll yields nothing). Draw a progress card at level 3. Unique leader at level 4+ places a metropolis (+2 VP). Level 5 has no extra perk. Walls raise the discard threshold by 2 each (3 walls max).</span>
+          <span data-i18n="RULES_CK_IMPROVE_BODY">Need a city to invest. Cost equals the level you reach (1–5) in cloth
+            (Trade), coin (Politics), or paper (Science). Level 3 named buildings: Trading House (2:1 bank for
+            commodities only), Fortress (Mighty knights), Aqueduct (take 1 resource when a production roll yields
+            nothing). Draw a progress card at level 3. Unique leader at level 4+ places a metropolis (+2 VP). Level 5
+            has no extra perk. Walls raise the discard threshold by 2 each (3 walls max).</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_TITLES_TITLE">Special titles:</strong>
-          <span data-i18n="RULES_CK_TITLES_BODY">Longest Road (at least 5 continuous segments) = +2 VP. Defender of Catan cards = +1 VP each. There is no Largest Army.</span>
+          <span data-i18n="RULES_CK_TITLES_BODY">Longest Road (at least 5 continuous segments) = +2 VP. Defender of
+            Catan cards = +1 VP each. There is no Largest Army.</span>
         </div>
         <div>
           <strong data-i18n="RULES_CK_PROGRESS_TITLE">Progress cards:</strong>
-          <span data-i18n="RULES_CK_PROGRESS_BODY">Replace development cards. Hand limit 4 unplayed cards. Play on your turn (Alchemist before you roll).</span>
+          <span data-i18n="RULES_CK_PROGRESS_BODY">Replace development cards. Hand limit 4 unplayed cards. Play on your
+            turn (Alchemist before you roll).</span>
         </div>
       </div>
-      <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net (CC BY 3.0) by Delapouite & Lorc.</p>
-      <button id="btn-close-rules" class="btn-glass btn-primary btn-after-copy" data-i18n="CANCEL_ACTION">Cancel</button>
+      <p class="icon-credit" data-i18n="ICON_CREDIT">UI icons: Phosphor Duotone (MIT). Resource icons: Game-Icons.net
+        (CC BY 3.0) by Delapouite & Lorc.</p>
+      <button id="btn-close-rules" class="btn-glass btn-primary btn-after-copy"
+        data-i18n="CANCEL_ACTION">Cancel</button>
     </div>
   </div>
 
   <!-- Confirm leave / homepage -->
-  <div id="confirm-home-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-home-title">
+  <div id="confirm-home-modal" class="modal-overlay" role="dialog" aria-modal="true"
+    aria-labelledby="confirm-home-title">
     <div class="modal-box modal-confirm-home">
-      <h3 id="confirm-home-title" class="modal-title" data-i18n="GO_HOME_CONFIRM">Are you sure you wanna go back to the homepage?</h3>
+      <h3 id="confirm-home-title" class="modal-title" data-i18n="GO_HOME_CONFIRM">Are you sure you wanna go back to the
+        homepage?</h3>
       <div class="confirm-home-actions">
         <button type="button" id="btn-confirm-home-stay" class="btn-glass" data-i18n="GO_HOME_STAY">Stay</button>
-        <button type="button" id="btn-confirm-home-leave" class="btn-glass btn-danger" data-i18n="GO_HOME_LEAVE">Go back</button>
+        <button type="button" id="btn-confirm-home-leave" class="btn-glass btn-danger" data-i18n="GO_HOME_LEAVE">Go
+          back</button>
       </div>
     </div>
   </div>
@@ -1284,6 +1649,9 @@
       <div class="victory-icon-badge">
         <span class="ico" data-icon="trophy"></span>
       </div>
+      <div class="victory-avatar-wrap">
+        <img id="victory-winner-avatar" src="/assets/avatars/settler.jpg" class="victory-winner-avatar" alt="Winner Avatar" />
+      </div>
       <h2 class="modal-title" data-i18n="VICTORY_TITLE">Victory!</h2>
       <p class="victory-message">
         <strong id="victory-winner-name" class="victory-winner-name">---</strong>
@@ -1291,12 +1659,14 @@
       </p>
       <div id="victory-stats" class="victory-stats-grid"></div>
       <div class="victory-actions">
-        <button id="btn-victory-lobby" class="btn btn-primary btn-play-again" data-i18n="PLAY_AGAIN_BTN">Back to Lobby</button>
+        <button id="btn-victory-lobby" class="btn btn-primary btn-play-again" data-i18n="PLAY_AGAIN_BTN">Back to
+          Lobby</button>
       </div>
     </div>
   </div>
 
   <!-- Main App Script -->
-  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/app.js?v=6"></script>
 </body>
+
 </html>
