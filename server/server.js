@@ -31,6 +31,7 @@ import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCa
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 import { logger, serializeError } from './logger.js';
+import { initRedisAdapter, closeRedisClients } from './redis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1898,6 +1899,9 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   });
 
   const PORT = process.env.PORT || 3000;
+  if (process.env.REDIS_URL) {
+    await initRedisAdapter({ io, limiter: socketRateLimiter });
+  }
   server.listen(PORT, () => {
     logger.info({ port: PORT, trustProxy: describeTrustProxySetting(TRUST_PROXY_SETTING) }, `Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
@@ -1980,6 +1984,7 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 
   await Promise.all(closePromises);
+  await closeRedisClients();
   console.log('Graceful shutdown completed.');
   
   if (!options.noExit) {
@@ -1987,4 +1992,4 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 }
 
-export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger };
+export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger, initRedisAdapter, closeRedisClients };
