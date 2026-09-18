@@ -18,21 +18,52 @@ const LEVEL_NAMES = {
   50: 'error'
 };
 
-export function serializeError(err) {
+export function serializeError(err, seen = new WeakSet()) {
   if (!err) return null;
   if (err instanceof Error) {
-    return {
+    if (seen.has(err)) return '[Circular Error]';
+    seen.add(err);
+    const serialized = {
       name: err.name || 'Error',
       message: err.message,
       stack: err.stack,
-      ...(err.code ? { code: err.code } : {}),
-      ...(err.status ? { status: err.status } : {})
+      ...(err.code !== undefined ? { code: err.code } : {}),
+      ...(err.status !== undefined ? { status: err.status } : {})
     };
+    if (err.cause !== undefined) {
+      serialized.cause = serializeError(err.cause, seen);
+    }
+    return serialized;
   }
   if (typeof err === 'object') {
     return err;
   }
   return { message: String(err) };
+}
+
+export function safeStringify(obj) {
+  const seen = new WeakSet();
+  try {
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch (err) {
+    return JSON.stringify({
+      level: 'error',
+      time: Date.now(),
+      msg: 'Failed to serialize log entry',
+      err: serializeError(err)
+    });
+  }
 }
 
 export class Logger {
@@ -42,10 +73,17 @@ export class Logger {
     this.errorStream = options.errorStream || process.stderr;
     this.isProduction = options.isProduction ?? (process.env.NODE_ENV === 'production');
 
-    const envLevel = (process.env.LOG_LEVEL || '').toLowerCase();
+    const envLevel = (process.env.LOG_LEVEL || '').toLowerCase().trim();
     const defaultLevel = this.isProduction ? 'info' : 'debug';
-    const targetLevel = options.level || (LOG_LEVELS[envLevel] ? envLevel : defaultLevel);
-    this.minLevel = LOG_LEVELS[targetLevel] || LOG_LEVELS.info;
+    let targetLevel = options.level !== undefined ? options.level : (envLevel || defaultLevel);
+    if (typeof targetLevel === 'string') {
+      targetLevel = targetLevel.toLowerCase().trim();
+    }
+    if (typeof targetLevel === 'number') {
+      this.minLevel = targetLevel;
+    } else {
+      this.minLevel = LOG_LEVELS[targetLevel] ?? (this.isProduction ? LOG_LEVELS.info : LOG_LEVELS.debug);
+    }
   }
 
   child(bindings = {}) {
@@ -66,8 +104,18 @@ export class Logger {
 
     if (typeof arg1 === 'string') {
       msg = arg1;
-      if (typeof arg2 === 'object' && arg2 !== null) {
-        meta = arg2;
+      if (arg2 instanceof Error) {
+        meta = { err: serializeError(arg2) };
+      } else if (typeof arg2 === 'object' && arg2 !== null) {
+        meta = { ...arg2 };
+        if (meta.err && meta.err instanceof Error) {
+          meta.err = serializeError(meta.err);
+        }
+        if (meta.error && meta.error instanceof Error) {
+          meta.error = serializeError(meta.error);
+        }
+      } else if (arg2 !== undefined) {
+        msg = `${arg1} ${String(arg2)}`;
       }
     } else if (arg1 instanceof Error) {
       meta = { err: serializeError(arg1) };
@@ -77,11 +125,21 @@ export class Logger {
       if (meta.err && meta.err instanceof Error) {
         meta.err = serializeError(meta.err);
       }
+      if (meta.error && meta.error instanceof Error) {
+        meta.error = serializeError(meta.error);
+      }
       msg = typeof arg2 === 'string' ? arg2 : (meta.msg || meta.message || '');
       delete meta.msg;
       delete meta.message;
-    } else if (arg2 !== undefined) {
-      msg = String(arg2);
+    } else if (arg1 !== undefined) {
+      msg = String(arg1);
+      if (arg2 instanceof Error) {
+        meta = { err: serializeError(arg2) };
+      } else if (typeof arg2 === 'object' && arg2 !== null) {
+        meta = { ...arg2 };
+      } else if (typeof arg2 === 'string') {
+        msg = `${msg} ${arg2}`;
+      }
     }
 
     const levelStr = LEVEL_NAMES[levelNum] || 'info';
@@ -95,7 +153,7 @@ export class Logger {
         ...meta,
         msg
       };
-      const line = JSON.stringify(record) + '\n';
+      const line = safeStringify(record) + '\n';
       if (levelNum >= LOG_LEVELS.error) {
         this.errorStream.write(line);
       } else {
@@ -106,7 +164,7 @@ export class Logger {
       const prefix = `[${timeStr}] [${levelStr.toUpperCase()}]`;
       const allMeta = { ...this.bindings, ...meta };
       const hasMeta = Object.keys(allMeta).length > 0;
-      const metaStr = hasMeta ? ` ${JSON.stringify(allMeta)}` : '';
+      const metaStr = hasMeta ? ` ${safeStringify(allMeta)}` : '';
       const line = `${prefix} ${msg}${metaStr}\n`;
       if (levelNum >= LOG_LEVELS.error) {
         this.errorStream.write(line);
