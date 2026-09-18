@@ -6,6 +6,7 @@
 import { HexGrid, RESOURCE_TYPES } from './HexGrid.js';
 import { BoardManager } from './BoardManager.js';
 import { TradeManager } from './TradeManager.js';
+import { CitiesKnightsModule } from './CitiesKnightsModule.js';
 
 export const GAME_MODES = {
   BASE: 'base',
@@ -229,6 +230,9 @@ export class GameEngine {
     this.eventDie = null;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
+
+    // Cities & Knights expansion module (ARCH-03)
+    this.ckModule = this.mode === GAME_MODES.CITIES_KNIGHTS ? new CitiesKnightsModule(this) : null;
 
     // Cities & Knights shared state (serialized even in base mode as empty/defaults)
     this.barbarianPosition = 0;
@@ -838,6 +842,7 @@ export class GameEngine {
   }
 
   initProgressCardDecks() {
+    if (this.ckModule) return this.ckModule.initProgressCardDecks();
     this.progressDecks = { trade: [], politics: [], science: [] };
     for (const [deck, cards] of Object.entries(PROGRESS_CARD_DECKS)) {
       for (const card of cards) {
@@ -850,11 +855,13 @@ export class GameEngine {
   }
 
   countUnplayedProgressCards(player) {
-    return (player.progressCards || []).filter(c => !c.played).length;
+    if (this.ckModule) return this.ckModule.countUnplayedProgressCards(player);
+    return (player?.progressCards || []).filter(c => !c.played).length;
   }
 
   getActiveKnightStrength(player) {
-    return (player.knightsPlaced || []).reduce((sum, k) => sum + (k.active ? k.strength : 0), 0);
+    if (this.ckModule) return this.ckModule.getActiveKnightStrength(player);
+    return (player?.knightsPlaced || []).reduce((sum, k) => sum + (k.active ? k.strength : 0), 0);
   }
 
   /* =========================================================
@@ -993,7 +1000,9 @@ export class GameEngine {
 
     if (this.isCitiesKnights()) {
       this.eventDie = EVENT_DIE_FACES[Math.floor(Math.random() * EVENT_DIE_FACES.length)];
-      if (this.eventDie === 'barbarian') {
+      if (this.ckModule) {
+        this.ckModule.onDiceRoll(d1, d2, this.eventDie);
+      } else if (this.eventDie === 'barbarian') {
         this.barbarianPosition = Math.min(BARBARIAN_TRACK_MAX, this.barbarianPosition + 1);
         this.logEvent({
           type: 'BARBARIAN_ADVANCED',
@@ -1265,6 +1274,7 @@ export class GameEngine {
   }
 
   distributeProgressCardDraws(track, redDie) {
+    if (this.ckModule) return this.ckModule.distributeProgressCardDraws(track, redDie);
     const eligible = this.getProgressCardEligiblePlayers(track, redDie);
     this.pendingProgressDraws = eligible.map(p => {
       const drawn = this.drawProgressCard(p, track);
@@ -1280,6 +1290,7 @@ export class GameEngine {
   }
 
   drawProgressCard(player, track) {
+    if (this.ckModule) return this.ckModule.drawProgressCard(player, track);
     const deck = this.progressDecks?.[track];
     if (!deck || deck.length === 0) return null;
     const card = deck.pop();
@@ -1303,6 +1314,7 @@ export class GameEngine {
   }
 
   discardProgressCard(playerId, cardId) {
+    if (this.ckModule) return this.ckModule.discardProgressCard(playerId, cardId);
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
     if (!this.pendingProgressDiscard.has(playerId)) throw new Error('NO_PROGRESS_DISCARD_NEEDED');
@@ -1722,6 +1734,10 @@ export class GameEngine {
     this.recalculateVictoryPoints();
     this.checkVictory();
 
+    if (this.ckModule) {
+      this.ckModule.onBuildingUpgraded(player, vertexId, 'city');
+    }
+
     this.logEvent({
       type: 'BUILD_CITY',
       messageKey: 'LOG_BUILT_CITY',
@@ -1764,6 +1780,7 @@ export class GameEngine {
 
   improveCityTrack(playerId, track) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.improveCityTrack(playerId, track);
     const player = this.assertBuildTurn(playerId);
     if (!IMPROVEMENT_TRACKS[track]) throw new Error('INVALID_IMPROVEMENT_TRACK');
     if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
@@ -1835,6 +1852,8 @@ export class GameEngine {
   }
 
   chooseMetropolis(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chooseMetropolis(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) throw new Error('NOT_IN_METROPOLIS_PHASE');
     if (!this.pendingMetropolisChoice || this.pendingMetropolisChoice.playerId !== playerId) {
       throw new Error('NOT_YOUR_CHOICE');
@@ -2006,7 +2025,15 @@ export class GameEngine {
     return this.listKnightRelocations(playerId, fromVertexId, extraAllow)[0] || null;
   }
 
+  recruitKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.recruitKnight(playerId, vertexId);
+    return this.placeKnight(playerId, vertexId);
+  }
+
   placeKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.placeKnight(playerId, vertexId);
     const player = this.assertCkAction(playerId);
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex) throw new Error('INVALID_VERTEX');
@@ -2038,6 +2065,8 @@ export class GameEngine {
   }
 
   activateKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.activateKnight(playerId, vertexId);
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2058,6 +2087,8 @@ export class GameEngine {
   }
 
   promoteKnight(playerId, vertexId, options = {}) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.promoteKnight(playerId, vertexId, options);
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2086,6 +2117,8 @@ export class GameEngine {
   }
 
   moveKnight(playerId, fromVertexId, toVertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.moveKnight(playerId, fromVertexId, toVertexId);
     const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     const knight = this.getKnightRecord(player, fromVertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2132,6 +2165,7 @@ export class GameEngine {
   }
 
   displaceKnight(victimKnight, fromVertexId, attackerFromId) {
+    if (this.ckModule) return this.ckModule.displaceKnight(victimKnight, fromVertexId, attackerFromId);
     const owner = this.players.find(p => p.id === victimKnight.playerId);
     const vacated = this.grid.vertices.get(fromVertexId);
     if (vacated && vacated.knight === victimKnight) vacated.knight = null;
@@ -2159,6 +2193,8 @@ export class GameEngine {
   }
 
   relocateDisplacedKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.relocateDisplacedKnight(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) throw new Error('NOT_IN_KNIGHT_RELOCATE_PHASE');
     const pending = this.pendingKnightRelocation;
     if (!pending || pending.playerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
@@ -2385,6 +2421,8 @@ export class GameEngine {
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chaseRobber(playerId, vertexId, hexId, targetPlayerId);
     const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
     const knight = this.getKnightRecord(player, vertexId);
@@ -2421,6 +2459,8 @@ export class GameEngine {
   }
 
   resolveBarbarianAttack() {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.resolveBarbarianAttack();
     this.phase = GAME_PHASES.TURN_BARBARIAN_RESOLVE;
     const totalCities = this.players.reduce((sum, p) => sum + p.citiesBuilt.length, 0);
     const strengths = this.players.map(p => ({
@@ -2501,6 +2541,7 @@ export class GameEngine {
   }
 
   continueAfterBarbarian() {
+    if (this.ckModule) return this.ckModule.continueAfterBarbarian();
     if (this.pendingProductionRoll != null) {
       this.resolveDiceProduction(this.pendingProductionRoll);
       this.pendingProductionRoll = null;
@@ -2515,6 +2556,8 @@ export class GameEngine {
   }
 
   downgradeCity(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.downgradeCity(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) throw new Error('NOT_IN_BARBARIAN_DOWNGRADE');
     if (!this.pendingBarbarianDowngrades.has(playerId)) throw new Error('NO_DOWNGRADE_NEEDED');
     const player = this.players.find(p => p.id === playerId);
@@ -2560,6 +2603,8 @@ export class GameEngine {
   }
 
   chooseBarbarianReward(playerId, deck) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chooseBarbarianReward(playerId, deck);
     if (this.phase !== GAME_PHASES.TURN_BARBARIAN_REWARD) {
       throw new Error('NOT_IN_BARBARIAN_REWARD_PHASE');
     }
@@ -3266,7 +3311,9 @@ export class GameEngine {
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
-    if (this.isCitiesKnights()) {
+    if (this.ckModule) {
+      this.ckModule.onTurnEnd(player);
+    } else if (this.isCitiesKnights()) {
       if (this.pendingProgressDiscard?.has(playerId) || this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
         if (this.pendingProgressDiscard) {
           this.pendingProgressDiscard.add(playerId);
@@ -3882,3 +3929,6 @@ export class GameEngine {
     };
   }
 }
+
+export { CitiesKnightsModule };
+
