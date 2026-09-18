@@ -1481,9 +1481,23 @@
                 minlength="6" required>
               <button type="submit" id="btn-auth-login-submit" class="btn-glass btn-primary btn-block"
                 data-i18n="SIGN_IN">Sign In</button>
+              <button type="button" id="btn-auth-forgot-password" class="btn-glass btn-secondary btn-block">Forgot password?</button>
               <button type="button" id="btn-auth-login-magic" class="btn-glass btn-secondary btn-block">Send Magic Link
                 instead</button>
             </form>
+          </div>
+
+          <!-- Step 2A-alt: Forgot Password -->
+          <div id="auth-step-forgot" class="auth-step is-hidden">
+            <div class="auth-user-chip">
+              <span id="auth-chip-email-forgot" class="auth-chip-text"></span>
+              <button type="button" id="btn-auth-change-email-forgot" class="auth-chip-change">Change</button>
+            </div>
+            <p class="modal-subtext">We'll send a reset link to this email address.</p>
+            <button type="button" id="btn-auth-send-reset" class="btn-glass btn-primary btn-block">Send Reset Link</button>
+            <div id="auth-forgot-sent" class="is-hidden" style="text-align:center;padding:12px 0;">
+              <p style="color:#86efac;margin:0;">✔ Check your inbox — reset link sent!</p>
+            </div>
           </div>
 
           <!-- Step 2B: New Account -> Create Password -->

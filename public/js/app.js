@@ -550,6 +550,7 @@ export class CatanApp {
       document.getElementById('auth-step-email')?.classList.toggle('is-hidden', step !== 'email');
       document.getElementById('auth-step-login')?.classList.toggle('is-hidden', step !== 'login');
       document.getElementById('auth-step-register')?.classList.toggle('is-hidden', step !== 'register');
+      document.getElementById('auth-step-forgot')?.classList.toggle('is-hidden', step !== 'forgot');
       if (step === 'email') {
         setTimeout(() => document.getElementById('auth-email-input')?.focus(), 50);
       } else if (step === 'login') {
@@ -564,8 +565,15 @@ export class CatanApp {
         const pass = document.getElementById('auth-register-password');
         if (pass) pass.value = '';
         setTimeout(() => pass?.focus(), 50);
+      } else if (step === 'forgot') {
+        // Reset state so user can re-send
+        document.getElementById('auth-forgot-sent')?.classList.add('is-hidden');
+        const btn = document.getElementById('btn-auth-send-reset');
+        if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; btn.style.display = ''; }
+        document.getElementById('auth-chip-email-forgot').textContent = authState.email || '';
       }
     };
+
 
     document.getElementById('btn-header-sign-in')?.addEventListener('click', () => {
       showAuthStep('email');
@@ -640,6 +648,30 @@ export class CatanApp {
           msg = i18n.t('INVALID_CREDENTIALS') || 'Invalid password. Please try again.';
         }
         this.showToast(msg, true);
+      }
+    });
+
+    // Step 2A Option: Forgot Password
+    document.getElementById('btn-auth-forgot-password')?.addEventListener('click', () => {
+      document.getElementById('auth-chip-email-forgot').textContent = authState.email || '';
+      showAuthStep('forgot');
+    });
+    document.getElementById('btn-auth-change-email-forgot')?.addEventListener('click', () => showAuthStep('email'));
+    document.getElementById('btn-auth-send-reset')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-auth-send-reset');
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authState.email })
+        });
+        // Always show success to avoid email enumeration
+        document.getElementById('auth-forgot-sent')?.classList.remove('is-hidden');
+        if (btn) { btn.style.display = 'none'; }
+      } catch {
+        this.showToast('Could not send reset email. Try again later.', true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
       }
     });
 

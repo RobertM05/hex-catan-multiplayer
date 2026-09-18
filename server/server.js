@@ -32,6 +32,7 @@ import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCa
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 import { logger, serializeError } from './logger.js';
+import { sendEmail, buildPasswordResetEmail } from './email.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -481,6 +482,80 @@ app.get(['/health', '/api/health'], (req, res) => {
 
 app.get('/api/auth/config', (req, res) => {
   res.json(publicAuthConfig());
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Accepts { email } and sends a password-reset link via Resend.
+ * Uses the Supabase Admin API to generate a one-time recovery link,
+ * then delivers it through Resend (not Supabase's built-in mailer).
+ */
+app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
+    return res.status(400).json({ error: 'INVALID_EMAIL' });
+  }
+
+  // Always respond 200 to avoid email enumeration
+  res.json({ ok: true });
+
+  try {
+    const runtime = getAuthRuntime();
+    if (!runtime.supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE) {
+      logger.warn('[forgot-password] Supabase service role not configured — cannot generate reset link');
+      return;
+    }
+    if (!process.env.RESEND_API_KEY) {
+      logger.warn('[forgot-password] RESEND_API_KEY not set — email will not be sent');
+      return;
+    }
+
+    const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+    const adminRes = await fetch(`${base}/auth/v1/admin/users`, {
+      method: 'GET',
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE}`,
+      }
+    });
+    // Generate a recovery link using Supabase Admin API
+    const linkRes = await fetch(`${base}/auth/v1/admin/generate_link`, {
+      method: 'POST',
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type: 'recovery',
+        email,
+        options: {
+          redirect_to: `${process.env.PUBLIC_URL || 'https://peer-interventions-upcoming-demo.trycloudflare.com'}/reset-password`
+        }
+      })
+    });
+
+    if (!linkRes.ok) {
+      // User not found or other Supabase error — silently drop (no enumeration)
+      const body = await linkRes.text();
+      logger.warn('[forgot-password] Supabase generate_link failed:', body);
+      return;
+    }
+
+    const linkData = await linkRes.json();
+    const resetLink = linkData?.action_link;
+    if (!resetLink) {
+      logger.warn('[forgot-password] No action_link in Supabase response');
+      return;
+    }
+
+    const { subject, html, text } = buildPasswordResetEmail(resetLink);
+    await sendEmail({ to: email, subject, html, text });
+    logger.info(`[forgot-password] Reset email sent to ${email}`);
+  } catch (err) {
+    // Fire-and-forget — response already sent
+    logger.error('[forgot-password] Error sending reset email:', serializeError(err));
+  }
 });
 
 app.get('/api/me/stats', async (req, res) => {
