@@ -197,7 +197,8 @@ export class RoomManager {
       isBot: false,
       socketId: hostData.socketId,
       reconnectTokenHash: hostData.reconnectTokenHash || null,
-      userId: hostData.userId || null
+      userId: hostData.userId || null,
+      avatar: hostData.avatar || null
     });
 
     engine.addPlayer({
@@ -244,6 +245,9 @@ export class RoomManager {
       || (playerData.allowLegacyId !== false && (p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId))));
     if (existing) {
       existing.socketId = playerData.socketId;
+      if (playerData.avatar !== undefined) {
+        existing.avatar = playerData.avatar || null;
+      }
       if (!room.isStarted && !room.authFrozen && playerData.userId) {
         existing.userId = playerData.userId;
         if (playerData.name) {
@@ -281,7 +285,8 @@ export class RoomManager {
       isBot: false,
       socketId: playerData.socketId,
       reconnectTokenHash: playerData.reconnectTokenHash || null,
-      userId: playerData.userId || null
+      userId: playerData.userId || null,
+      avatar: playerData.avatar || null
     };
 
     room.players.push(playerObj);
@@ -461,6 +466,16 @@ export class RoomManager {
       return true;
     }
     return false;
+  }
+
+  setPlayerAvatar(code, playerId, avatar) {
+    const room = this.getRoom(code);
+    if (!room || room.isStarted) return false;
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return false;
+    player.avatar = typeof avatar === 'string' && avatar.trim() ? avatar.trim() : null;
+    this.touchRoom(room);
+    return true;
   }
 
   reserveAgentSpawn(code) {

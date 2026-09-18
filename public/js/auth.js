@@ -296,7 +296,7 @@ export class LobbyAuth {
   async refreshProfileName() {
     if (!this.accessToken) return;
     try {
-      const res = await fetch(`${this.config.url}/rest/v1/profiles?select=display_name&id=eq.${this.user?.id || ''}`, {
+      const res = await fetch(`${this.config.url}/rest/v1/profiles?select=display_name,avatar_url&id=eq.${this.user?.id || ''}`, {
         headers: {
           apikey: this.config.anonKey,
           Authorization: `Bearer ${this.accessToken}`
@@ -306,8 +306,11 @@ export class LobbyAuth {
       const rows = await res.json();
       if (rows?.[0]?.display_name) {
         this.session.profileDisplayName = rows[0].display_name;
-        this.persistSession();
       }
+      if (rows?.[0]?.avatar_url) {
+        this.session.customAvatar = rows[0].avatar_url;
+      }
+      this.persistSession();
     } catch {
       // keep JWT local-part fallback
     }
@@ -333,6 +336,29 @@ export class LobbyAuth {
     return body.profile;
   }
 
+  async saveProfile({ displayName, avatarUrl } = {}) {
+    await this.ensureValidSession();
+    const payload = {};
+    if (displayName !== undefined) payload.displayName = displayName;
+    if (avatarUrl !== undefined) payload.avatarUrl = avatarUrl;
+    const res = await fetch('/api/me/profile', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.accessToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'PROFILE_UPDATE_FAILED');
+    if (this.session) {
+      if (displayName !== undefined) this.session.profileDisplayName = displayName;
+      if (avatarUrl !== undefined) this.session.customAvatar = avatarUrl;
+      this.persistSession();
+    }
+    this.onChange?.(this.session);
+    return body.profile;
+  }
   async updatePassword(newPassword) {
     const client = await this.loadClient();
     if (!client) throw new Error('AUTH_NOT_CONFIGURED');

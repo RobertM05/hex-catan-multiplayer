@@ -870,7 +870,10 @@ export class CatanApp {
         const url = btn.getAttribute('data-avatar-url');
         if (!url) return;
         lobbyAuth.setCustomAvatar(url);
-        network.setAvatar(url);
+        if (lobbyAuth.session) {
+          lobbyAuth.saveProfile({ avatarUrl: url }).catch(err => console.warn('[profile] Failed to persist avatar:', err));
+        }
+        network.setAvatar?.(url);
         this.renderAvatarPicker();
         this.syncAuthChrome();
         this.updateUserAvatar('profile-main-avatar', lobbyAuth.avatarUrl);
@@ -1178,7 +1181,7 @@ export class CatanApp {
       card.innerHTML = `
         <div class="player-slot-header">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="${playerAvatar}" class="slot-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
+            <img src="${escapeHtml(playerAvatar)}" class="slot-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
             <div>
               <div class="player-slot-name" style="display: flex; align-items: center; gap: 6px;">
                 ${escapeHtml(p.name)}
@@ -4474,7 +4477,7 @@ export class CatanApp {
 
       card.innerHTML = `
         <div class="opponent-identity">
-          <img src="${playerAvatar}" class="opponent-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
+          <img src="${escapeHtml(playerAvatar)}" class="opponent-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
           <div style="display: flex; flex-direction: column; min-width: 0;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <span class="opponent-swatch" style="background: ${p.color};"></span>
@@ -4804,7 +4807,7 @@ export class CatanApp {
       let confirmButtonsHTML = '';
       if (acceptedPlayers.length > 0) {
         confirmButtonsHTML = acceptedPlayers.map(p =>
-          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${p.name}</button>`
+          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${escapeHtml(p.name)}</button>`
         ).join('');
       }
 
@@ -4826,7 +4829,7 @@ export class CatanApp {
             </div>
           </div>
           ${acceptedPlayers.length > 0
-          ? `<div class="trade-status-badge">✔ ${acceptedPlayers.map(p => p.name).join(', ')} a acceptat!</div>`
+          ? `<div class="trade-status-badge">✔ ${i18n.t('TRADE_PLAYERS_ACCEPTED', { names: acceptedPlayers.map(p => escapeHtml(p.name)).join(', ') })}</div>`
           : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
         }
         </div>

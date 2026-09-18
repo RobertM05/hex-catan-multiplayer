@@ -27,13 +27,28 @@ import {
   extractClientIp
 } from './clientIp.js';
 import { extractBearerToken } from './auth/jwt.js';
-import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity } from './auth/identity.js';
+import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, '..', 'public');
+
+export function isValidAvatarUrl(url) {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.length > 500) return false;
+  return trimmed.startsWith('/assets/avatars/') || trimmed.startsWith('https://');
+}
+
+export function sanitizeAvatarUrl(url) {
+  if (typeof url === 'string') {
+    const trimmed = url.trim();
+    if (isValidAvatarUrl(trimmed)) return trimmed;
+  }
+  return null;
+}
 
 const app = express();
 // SEC-08: never `trust proxy: true`. Default is loopback (Cloudflare tunnel).
@@ -311,6 +326,22 @@ export function summarizePacketPayload(event, data) {
   }
 }
 
+// Graceful shutdown state
+export let isShuttingDown = false;
+
+// Graceful shutdown HTTP middleware
+app.use((req, res, next) => {
+  if (isShuttingDown) {
+    res.setHeader('Connection', 'close');
+    const path = req.path.replace(/\/+$/, '');
+    if (path === '/health' || path === '/api/health') {
+      return res.status(503).json({ status: 'shutting_down' });
+    }
+    return res.status(503).send('Service Unavailable');
+  }
+  next();
+});
+
 // HTTP request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
@@ -400,7 +431,7 @@ io.use(async (socket, next) => {
       return next();
     }
     const runtime = getAuthRuntime();
-    if (!runtime.jwtSecret) {
+    if (!runtime.jwtSecret && !runtime.supabaseUrl) {
       socket.data.auth = { userId: null, displayName: null };
       return next();
     }
@@ -440,16 +471,93 @@ app.get('/api/me/stats', async (req, res) => {
   try {
     const identity = await resolveAccessToken(token);
     if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
-    const admin = getAuthRuntime().admin;
-    if (!admin?.listOwnMatchPlayers) {
-      return res.json({ matches: 0, wins: 0, averageRank: null, averageVp: null, recent: [] });
+    const runtime = getAuthRuntime();
+    const admin = runtime.admin;
+
+    // --- Fetch elo/games from ratings table ---
+    let elo = 1000;
+    let games = 0;
+    if (admin?.getRating) {
+      const rating = await admin.getRating(identity.userId);
+      if (rating) {
+        elo = Number(rating.elo) || 1000;
+        games = Number(rating.games) || 0;
+      }
+    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const ratingRes = await fetch(
+        `${base}/rest/v1/ratings?user_id=eq.${encodeURIComponent(identity.userId)}&select=elo,games`,
+        { headers: { apikey: runtime.supabaseAnonKey, Authorization: `Bearer ${token}` } }
+      );
+      if (ratingRes.ok) {
+        const rows = await ratingRes.json();
+        if (Array.isArray(rows) && rows[0]) {
+          elo = Number(rows[0].elo) || 1000;
+          games = Number(rows[0].games) || 0;
+        }
+      }
     }
-    const rows = await admin.listOwnMatchPlayers(identity.userId);
-    res.json(summarizeStats(rows));
+
+    // --- Fetch recent matches ---
+    let recentMatches = [];
+    let matchPlayerRows = [];
+    if (admin?.getRecentMatches) {
+      matchPlayerRows = await admin.getRecentMatches(identity.userId, 10);
+      recentMatches = matchPlayerRows.map(r => ({
+        matchId: r.match_id,
+        playedAt: r.matches?.ended_at || null,
+        mode: r.matches?.mode || 'classic',
+        ranked: Boolean(r.matches?.ranked),
+        expansion: Boolean(r.matches?.expansion_cities_knights),
+        vp: r.vp != null ? Number(r.vp) : null,
+        rank: r.rank != null ? Number(r.rank) : null,
+        abandoned: Boolean(r.abandoned),
+        players: Array.isArray(r.matches?.match_players) ? r.matches.match_players.length : null
+      }));
+    } else if (admin?.listOwnMatchPlayers) {
+      matchPlayerRows = await admin.listOwnMatchPlayers(identity.userId);
+    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const matchRes = await fetch(
+        `${base}/rest/v1/match_players?user_id=eq.${encodeURIComponent(identity.userId)}&select=match_id,vp,rank,abandoned,matches(id,ended_at,started_at,mode,ranked,expansion_cities_knights,match_players(user_id))&order=matches(ended_at).desc&limit=10`,
+        { headers: { apikey: runtime.supabaseAnonKey, Authorization: `Bearer ${token}` } }
+      );
+      if (matchRes.ok) {
+        const rows = await matchRes.json();
+        matchPlayerRows = Array.isArray(rows) ? rows : [];
+        recentMatches = matchPlayerRows.map(r => ({
+          matchId: r.match_id,
+          playedAt: r.matches?.ended_at || null,
+          mode: r.matches?.mode || 'classic',
+          ranked: Boolean(r.matches?.ranked),
+          expansion: Boolean(r.matches?.expansion_cities_knights),
+          vp: r.vp != null ? Number(r.vp) : null,
+          rank: r.rank != null ? Number(r.rank) : null,
+          abandoned: Boolean(r.abandoned),
+          players: Array.isArray(r.matches?.match_players) ? r.matches.match_players.length : null
+        }));
+      }
+    }
+
+    const summary = summarizeStats(matchPlayerRows);
+    const totalMatches = games || summary.matches;
+    const wins = summary.wins ?? recentMatches.filter(m => m.rank === 1 && !m.abandoned).length;
+    const winRate = totalMatches > 0 ? (summary.winRate || Math.round((wins / totalMatches) * 10000) / 10000) : null;
+
+    res.json({
+      ...summary,
+      elo,
+      games: totalMatches,
+      matches: totalMatches,
+      wins,
+      winRate,
+      recentMatches: recentMatches.length ? recentMatches : (summary.recent || [])
+    });
   } catch (err) {
     res.status(401).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
   }
 });
+
 
 app.patch('/api/me/profile', express.json(), async (req, res) => {
   const token = extractBearerToken(req);
@@ -457,12 +565,95 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
   try {
     const identity = await resolveAccessToken(token);
     if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
-    const name = validateDisplayName(req.body?.displayName, '');
-    if (!name) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
-    const admin = getAuthRuntime().admin;
-    if (!admin?.updateDisplayName) return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
-    const profile = await admin.updateDisplayName(identity.userId, name);
-    res.json({ success: true, profile });
+
+    let rawName = undefined;
+    if (req.body?.displayName !== undefined) {
+      if (typeof req.body.displayName !== 'string' || !req.body.displayName.trim()) {
+        return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+      }
+      try {
+        rawName = validateDisplayName(req.body.displayName, '');
+      } catch {
+        return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+      }
+      if (!rawName) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+    }
+
+    // Validate avatarUrl if provided: null/empty string clears it, string must match /assets/avatars/ or https://
+    let rawAvatarUrl = undefined;
+    if (req.body?.avatarUrl !== undefined) {
+      if (req.body.avatarUrl === null || req.body.avatarUrl === '') {
+        rawAvatarUrl = null;
+      } else if (typeof req.body.avatarUrl === 'string') {
+        const trimmed = req.body.avatarUrl.trim();
+        if (isValidAvatarUrl(trimmed)) {
+          rawAvatarUrl = trimmed;
+        } else {
+          return res.status(400).json({ error: 'INVALID_AVATAR_URL' });
+        }
+      } else {
+        return res.status(400).json({ error: 'INVALID_AVATAR_URL' });
+      }
+    }
+
+    if (rawName === undefined && rawAvatarUrl === undefined) {
+      return res.status(400).json({ error: 'NO_UPDATES_PROVIDED' });
+    }
+
+    const runtime = getAuthRuntime();
+    const admin = runtime.admin;
+    let profile = null;
+    const updates = {};
+    if (rawName !== undefined) updates.displayName = rawName;
+    if (rawAvatarUrl !== undefined) updates.avatarUrl = rawAvatarUrl;
+
+    if (admin?.updateProfile) {
+      profile = await admin.updateProfile(identity.userId, updates);
+    }
+    if (!profile && admin?.upsertProfile) {
+      profile = await admin.upsertProfile(identity.userId, rawName || identity.displayName || 'Player');
+      if (profile && rawAvatarUrl !== undefined && admin?.updateProfile) {
+        profile = await admin.updateProfile(identity.userId, { avatarUrl: rawAvatarUrl });
+      }
+    } else if (!profile && runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const patchBody = { id: identity.userId };
+      if (rawName !== undefined) patchBody.display_name = rawName;
+      if (rawAvatarUrl !== undefined) patchBody.avatar_url = rawAvatarUrl;
+      // Use POST with resolution=merge-duplicates for a true upsert (insert or update on id conflict)
+      const upsertRes = await fetch(`${base}/rest/v1/profiles?on_conflict=id`, {
+        method: 'POST',
+        headers: {
+          apikey: runtime.supabaseAnonKey,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation,resolution=merge-duplicates'
+        },
+        body: JSON.stringify(patchBody)
+      });
+      if (!upsertRes.ok) {
+        if (upsertRes.status === 409) {
+          return res.status(409).json({ error: 'DISPLAY_NAME_TAKEN' });
+        }
+        const errText = await upsertRes.text();
+        return res.status(upsertRes.status).json({ error: 'PROFILE_UPDATE_FAILED', details: errText });
+      }
+      const rows = await upsertRes.json();
+      profile = Array.isArray(rows) && rows[0] ? rows[0] : { id: identity.userId, display_name: rawName };
+    }
+
+    if (!profile && !admin && !runtime.supabaseUrl) {
+      return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    }
+
+    clearTokenCache(token);
+    res.json({
+      profile: {
+        id: profile?.id || identity.userId,
+        display_name: profile?.display_name || rawName || identity.displayName,
+        avatar_url: profile?.avatar_url ?? (rawAvatarUrl !== undefined ? rawAvatarUrl : null)
+      }
+    });
   } catch (err) {
     const status = err.message === 'INVALID_PLAYER_NAME' ? 400 : 401;
     res.status(status).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
@@ -765,7 +956,8 @@ io.on('connection', (socket) => {
           name: hostName,
           socketId: socket.id,
           reconnectTokenHash: session.reconnectTokenHash,
-          userId: identity.userId
+          userId: identity.userId,
+          avatar: sanitizeAvatarUrl(data?.avatar)
         },
         {
           name: data.roomName,
@@ -821,7 +1013,8 @@ io.on('connection', (socket) => {
         reconnectToken: data.reconnectToken,
         reconnectTokenHash: session.reconnectTokenHash,
         allowLegacyId: false,
-        userId: identity.userId
+        userId: identity.userId,
+        avatar: sanitizeAvatarUrl(data?.avatar)
       });
 
       if (result.error) {
@@ -975,6 +1168,32 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       socket.emit('action_error', { error: err.message });
+    }
+  });
+
+  socket.on('set_avatar', (data, callback) => {
+    try {
+      const avatar = data?.avatar;
+      let validAvatar = null;
+      if (avatar !== null && avatar !== undefined && avatar !== '') {
+        if (!isValidAvatarUrl(avatar)) {
+          if (callback) callback({ success: false, error: 'INVALID_AVATAR_URL' });
+          return;
+        }
+        validAvatar = avatar.trim();
+      }
+      const code = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      const ok = Boolean(code) && roomManager.setPlayerAvatar(code, currentPlayerId, validAvatar);
+      if (ok) {
+        const room = roomManager.getRoom(code);
+        roomManager.broadcastLobbyState(room);
+        if (callback) callback({ success: true });
+      } else {
+        if (callback) callback({ success: false, error: 'FAILED_TO_SET_AVATAR' });
+      }
+    } catch (err) {
+      if (callback) callback({ success: false, error: err.message });
+      else socket.emit('action_error', { error: err.message });
     }
   });
 
@@ -1461,12 +1680,99 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // .env is optional
+  }
+  const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
   });
+
+  const handleSignal = (signal) => {
+    gracefulShutdown(server, io).catch(err => {
+      console.error(`Error during graceful shutdown on ${signal}:`, err);
+      process.exit(1);
+    });
+  };
+
+  process.on('SIGTERM', () => handleSignal('SIGTERM'));
+  process.on('SIGINT', () => handleSignal('SIGINT'));
+}
+
+export function _resetShutdownStateForTests() {
+  isShuttingDown = false;
+}
+
+export async function gracefulShutdown(serverObj, ioObj, options = {}) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('Initiating graceful shutdown...');
+
+  ioObj.emit('server_announcement', {
+    type: 'SERVER_RESTARTING',
+    message: 'Server is restarting for updates. Please rejoin shortly.'
+  });
+
+  const agentExitPromises = [];
+  for (const [roomCode, agents] of spawnedAgents.entries()) {
+    for (const child of agents) {
+      if (child && typeof child.kill === 'function' && !child.killed) {
+        agentExitPromises.push(new Promise((resolve) => {
+          child.on('exit', resolve);
+          child.on('error', resolve);
+          try {
+            child.kill('SIGTERM');
+            setTimeout(() => {
+              if (!child.killed) {
+                try { child.kill('SIGKILL'); } catch (e) {}
+              }
+              resolve();
+            }, options.killTimeout || 2000).unref();
+          } catch (e) {
+            resolve();
+          }
+        }));
+      }
+    }
+  }
+  spawnedAgents.clear();
+  await Promise.all(agentExitPromises);
+
+  const closePromises = [];
+  closePromises.push(new Promise(resolve => {
+    ioObj.close(() => {
+      console.log('Socket.IO closed.');
+      resolve();
+    });
+  }));
+  
+  if (serverObj.listening) {
+    serverObj.closeIdleConnections?.();
+    closePromises.push(new Promise(resolve => {
+      serverObj.close(() => {
+        console.log('HTTP server closed.');
+        resolve();
+      });
+    }));
+  }
+
+  if (!options.noExit) {
+    setTimeout(() => {
+      console.error('Forcing exit after timeout');
+      process.exit(1);
+    }, 10000).unref();
+  }
+
+  await Promise.all(closePromises);
+  console.log('Graceful shutdown completed.');
+  
+  if (!options.noExit) {
+    process.exit(0);
+  }
 }
 
 export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED };

@@ -184,6 +184,15 @@ export class NetworkClient {
     this.socket.emit('set_color', { code: roomCode, color });
   }
 
+  setAvatar(avatar, code = null) {
+    const roomCode = (code || this.currentRoomCode)?.toUpperCase();
+    return new Promise((resolve) => {
+      this.socket.emit('set_avatar', { code: roomCode, avatar }, (res) => {
+        resolve(res);
+      });
+    });
+  }
+
   startGame(code = null) {
     return new Promise((resolve, reject) => {
       const roomCode = (code || this.currentRoomCode)?.toUpperCase();
