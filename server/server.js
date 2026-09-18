@@ -28,7 +28,7 @@ import {
   extractClientIp
 } from './clientIp.js';
 import { extractBearerToken } from './auth/jwt.js';
-import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
+import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache, invalidateProfile } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 import { logger, serializeError } from './logger.js';
@@ -694,6 +694,7 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
     }
 
     clearTokenCache(token);
+    invalidateProfile(identity.userId);
     res.json({
       profile: {
         id: profile?.id || identity.userId,
