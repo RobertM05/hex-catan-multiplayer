@@ -465,9 +465,10 @@ app.get('/api/me/stats', async (req, res) => {
 
     // --- Fetch recent matches ---
     let recentMatches = [];
+    let matchPlayerRows = [];
     if (admin?.getRecentMatches) {
-      const rows = await admin.getRecentMatches(identity.userId, 10);
-      recentMatches = rows.map(r => ({
+      matchPlayerRows = await admin.getRecentMatches(identity.userId, 10);
+      recentMatches = matchPlayerRows.map(r => ({
         matchId: r.match_id,
         playedAt: r.matches?.ended_at || null,
         mode: r.matches?.mode || 'classic',
@@ -478,6 +479,8 @@ app.get('/api/me/stats', async (req, res) => {
         abandoned: Boolean(r.abandoned),
         players: Array.isArray(r.matches?.match_players) ? r.matches.match_players.length : null
       }));
+    } else if (admin?.listOwnMatchPlayers) {
+      matchPlayerRows = await admin.listOwnMatchPlayers(identity.userId);
     } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
       const base = String(runtime.supabaseUrl).replace(/\/$/, '');
       const matchRes = await fetch(
@@ -486,7 +489,8 @@ app.get('/api/me/stats', async (req, res) => {
       );
       if (matchRes.ok) {
         const rows = await matchRes.json();
-        recentMatches = (Array.isArray(rows) ? rows : []).map(r => ({
+        matchPlayerRows = Array.isArray(rows) ? rows : [];
+        recentMatches = matchPlayerRows.map(r => ({
           matchId: r.match_id,
           playedAt: r.matches?.ended_at || null,
           mode: r.matches?.mode || 'classic',
@@ -500,10 +504,20 @@ app.get('/api/me/stats', async (req, res) => {
       }
     }
 
-    const wins = recentMatches.filter(m => m.rank === 1 && !m.abandoned).length;
-    const winRate = games > 0 ? Math.round((wins / games) * 10000) / 10000 : null;
+    const summary = summarizeStats(matchPlayerRows);
+    const totalMatches = games || summary.matches;
+    const wins = summary.wins ?? recentMatches.filter(m => m.rank === 1 && !m.abandoned).length;
+    const winRate = totalMatches > 0 ? (summary.winRate || Math.round((wins / totalMatches) * 10000) / 10000) : null;
 
-    res.json({ elo, games, winRate, recentMatches });
+    res.json({
+      ...summary,
+      elo,
+      games: totalMatches,
+      matches: totalMatches,
+      wins,
+      winRate,
+      recentMatches: recentMatches.length ? recentMatches : (summary.recent || [])
+    });
   } catch (err) {
     res.status(401).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
   }
