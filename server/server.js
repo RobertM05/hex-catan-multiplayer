@@ -27,7 +27,7 @@ import {
   extractClientIp
 } from './clientIp.js';
 import { extractBearerToken } from './auth/jwt.js';
-import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity } from './auth/identity.js';
+import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 
@@ -361,10 +361,6 @@ export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
     detached: false
   });
 
-  child.on('error', (err) => {
-    console.error('[BOT SPAWN ERROR]', err?.message || err);
-  });
-
   if (!spawnedAgents.has(code)) {
     spawnedAgents.set(code, []);
   }
@@ -400,7 +396,7 @@ io.use(async (socket, next) => {
       return next();
     }
     const runtime = getAuthRuntime();
-    if (!runtime.jwtSecret) {
+    if (!runtime.jwtSecret && !runtime.supabaseUrl) {
       socket.data.auth = { userId: null, displayName: null };
       return next();
     }
@@ -440,16 +436,79 @@ app.get('/api/me/stats', async (req, res) => {
   try {
     const identity = await resolveAccessToken(token);
     if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
-    const admin = getAuthRuntime().admin;
-    if (!admin?.listOwnMatchPlayers) {
-      return res.json({ matches: 0, wins: 0, averageRank: null, averageVp: null, recent: [] });
+    const runtime = getAuthRuntime();
+    const admin = runtime.admin;
+
+    // --- Fetch elo/games from ratings table ---
+    let elo = 1000;
+    let games = 0;
+    if (admin?.getRating) {
+      const rating = await admin.getRating(identity.userId);
+      if (rating) {
+        elo = Number(rating.elo) || 1000;
+        games = Number(rating.games) || 0;
+      }
+    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const ratingRes = await fetch(
+        `${base}/rest/v1/ratings?user_id=eq.${encodeURIComponent(identity.userId)}&select=elo,games`,
+        { headers: { apikey: runtime.supabaseAnonKey, Authorization: `Bearer ${token}` } }
+      );
+      if (ratingRes.ok) {
+        const rows = await ratingRes.json();
+        if (Array.isArray(rows) && rows[0]) {
+          elo = Number(rows[0].elo) || 1000;
+          games = Number(rows[0].games) || 0;
+        }
+      }
     }
-    const rows = await admin.listOwnMatchPlayers(identity.userId);
-    res.json(summarizeStats(rows));
+
+    // --- Fetch recent matches ---
+    let recentMatches = [];
+    if (admin?.getRecentMatches) {
+      const rows = await admin.getRecentMatches(identity.userId, 10);
+      recentMatches = rows.map(r => ({
+        matchId: r.match_id,
+        playedAt: r.matches?.ended_at || null,
+        mode: r.matches?.mode || 'classic',
+        ranked: Boolean(r.matches?.ranked),
+        expansion: Boolean(r.matches?.expansion_cities_knights),
+        vp: r.vp != null ? Number(r.vp) : null,
+        rank: r.rank != null ? Number(r.rank) : null,
+        abandoned: Boolean(r.abandoned),
+        players: Array.isArray(r.matches?.match_players) ? r.matches.match_players.length : null
+      }));
+    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const matchRes = await fetch(
+        `${base}/rest/v1/match_players?user_id=eq.${encodeURIComponent(identity.userId)}&select=match_id,vp,rank,abandoned,matches(id,ended_at,started_at,mode,ranked,expansion_cities_knights,match_players(user_id))&order=matches(ended_at).desc&limit=10`,
+        { headers: { apikey: runtime.supabaseAnonKey, Authorization: `Bearer ${token}` } }
+      );
+      if (matchRes.ok) {
+        const rows = await matchRes.json();
+        recentMatches = (Array.isArray(rows) ? rows : []).map(r => ({
+          matchId: r.match_id,
+          playedAt: r.matches?.ended_at || null,
+          mode: r.matches?.mode || 'classic',
+          ranked: Boolean(r.matches?.ranked),
+          expansion: Boolean(r.matches?.expansion_cities_knights),
+          vp: r.vp != null ? Number(r.vp) : null,
+          rank: r.rank != null ? Number(r.rank) : null,
+          abandoned: Boolean(r.abandoned),
+          players: Array.isArray(r.matches?.match_players) ? r.matches.match_players.length : null
+        }));
+      }
+    }
+
+    const wins = recentMatches.filter(m => m.rank === 1 && !m.abandoned).length;
+    const winRate = games > 0 ? Math.round((wins / games) * 10000) / 10000 : null;
+
+    res.json({ elo, games, winRate, recentMatches });
   } catch (err) {
     res.status(401).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
   }
 });
+
 
 app.patch('/api/me/profile', express.json(), async (req, res) => {
   const token = extractBearerToken(req);
@@ -457,12 +516,56 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
   try {
     const identity = await resolveAccessToken(token);
     if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
-    const name = validateDisplayName(req.body?.displayName, '');
-    if (!name) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
-    const admin = getAuthRuntime().admin;
-    if (!admin?.updateDisplayName) return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
-    const profile = await admin.updateDisplayName(identity.userId, name);
-    res.json({ success: true, profile });
+    const rawName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim() : '';
+    if (!rawName || rawName.length > 32) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+
+    // Validate avatarUrl if provided: must be a relative /assets/avatars/ path or an https:// URL
+    let rawAvatarUrl = null;
+    if (typeof req.body?.avatarUrl === 'string' && req.body.avatarUrl.trim()) {
+      const av = req.body.avatarUrl.trim();
+      if (av.startsWith('/assets/avatars/') || av.startsWith('https://')) {
+        rawAvatarUrl = av;
+      } else {
+        return res.status(400).json({ error: 'INVALID_AVATAR_URL' });
+      }
+    }
+
+    const runtime = getAuthRuntime();
+    const admin = runtime.admin;
+    let profile = null;
+    if (admin?.updateProfile) {
+      profile = await admin.updateProfile(identity.userId, { displayName: rawName, avatarUrl: rawAvatarUrl ?? undefined });
+    } else if (admin?.upsertProfile) {
+      profile = await admin.upsertProfile(identity.userId, rawName);
+    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+      const patchBody = { id: identity.userId, display_name: rawName };
+      if (rawAvatarUrl !== null) patchBody.avatar_url = rawAvatarUrl;
+      // Use POST with resolution=merge-duplicates for a true upsert (insert or update on id conflict)
+      const upsertRes = await fetch(`${base}/rest/v1/profiles?on_conflict=id`, {
+        method: 'POST',
+        headers: {
+          apikey: runtime.supabaseAnonKey,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation,resolution=merge-duplicates'
+        },
+        body: JSON.stringify(patchBody)
+      });
+      if (!upsertRes.ok) {
+        if (upsertRes.status === 409) {
+          return res.status(409).json({ error: 'DISPLAY_NAME_TAKEN' });
+        }
+        const errText = await upsertRes.text();
+        return res.status(upsertRes.status).json({ error: 'PROFILE_UPDATE_FAILED', details: errText });
+      }
+      const rows = await upsertRes.json();
+      profile = Array.isArray(rows) && rows[0] ? rows[0] : { id: identity.userId, display_name: rawName };
+    } else {
+      return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
+    }
+    clearTokenCache(token);
+    res.json({ profile: { id: profile.id || identity.userId, display_name: profile.display_name || rawName, avatar_url: profile.avatar_url || rawAvatarUrl } });
   } catch (err) {
     const status = err.message === 'INVALID_PLAYER_NAME' ? 400 : 401;
     res.status(status).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
@@ -765,7 +868,8 @@ io.on('connection', (socket) => {
           name: hostName,
           socketId: socket.id,
           reconnectTokenHash: session.reconnectTokenHash,
-          userId: identity.userId
+          userId: identity.userId,
+          avatar: data.avatar || null
         },
         {
           name: data.roomName,
@@ -821,7 +925,8 @@ io.on('connection', (socket) => {
         reconnectToken: data.reconnectToken,
         reconnectTokenHash: session.reconnectTokenHash,
         allowLegacyId: false,
-        userId: identity.userId
+        userId: identity.userId,
+        avatar: data.avatar || null
       });
 
       if (result.error) {
@@ -978,6 +1083,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('set_avatar', (data, callback) => {
+    try {
+      const code = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
+      const ok = Boolean(code) && roomManager.setPlayerAvatar(code, currentPlayerId, data?.avatar);
+      if (ok) {
+        const room = roomManager.getRoom(code);
+        roomManager.broadcastLobbyState(room);
+        if (callback) callback({ success: true });
+      } else {
+        if (callback) callback({ success: false });
+      }
+    } catch (err) {
+      if (callback) callback({ success: false, error: err.message });
+      else socket.emit('action_error', { error: err.message });
+    }
+  });
+
   socket.on('start_game', (data, callback) => {
     try {
       const roomCode = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
@@ -1032,7 +1154,6 @@ io.on('connection', (socket) => {
         timestamp: Date.now()
       };
       room.chatMessages.push(chatMsg);
-      if (room.chatMessages.length > 200) room.chatMessages.shift();
       recordTrafficEvent({
         type: 'CHAT_MESSAGE',
         roomCode: currentRoomCode,
@@ -1075,11 +1196,6 @@ io.on('connection', (socket) => {
       actionFn = actionFnOrCallback;
       callback = maybeCallback;
       payload = maybePayload || null;
-    }
-
-    if (payload !== null && payload !== undefined && typeof payload !== 'object') {
-      if (typeof callback === 'function') callback({ success: false, error: 'INVALID_PAYLOAD' });
-      return;
     }
 
     if (!socketRateLimiter.consume(actionLimitKey(socket.id), RATE_LIMITS.gameAction)) {
@@ -1235,11 +1351,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('build_road', (data, cb) => {
-    handleGameAction('build_road', data?.code, (engine) => engine.buildRoad(currentPlayerId, data?.edgeId), cb, data);
+    handleGameAction('build_road', data.code, (engine) => engine.buildRoad(currentPlayerId, data.edgeId), cb, data);
   });
 
   socket.on('build_settlement', (data, cb) => {
-    handleGameAction('build_settlement', data?.code, (engine) => engine.buildSettlement(currentPlayerId, data?.vertexId), cb, data);
+    handleGameAction('build_settlement', data.code, (engine) => engine.buildSettlement(currentPlayerId, data.vertexId), cb, data);
   });
 
   socket.on('build_city', (data, cb) => {
@@ -1291,35 +1407,35 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chase_robber', (data, cb) => {
-    handleGameAction('chase_robber', data?.code, (engine) => engine.chaseRobber(currentPlayerId, data?.vertexId, data?.hexId, data?.targetPlayerId), cb, data);
+    handleGameAction('chase_robber', data.code, (engine) => engine.chaseRobber(currentPlayerId, data.vertexId, data.hexId, data.targetPlayerId), cb, data);
   });
 
   socket.on('downgrade_city', (data, cb) => {
-    handleGameAction('downgrade_city', data?.code, (engine) => engine.downgradeCity(currentPlayerId, data?.vertexId), cb, data);
+    handleGameAction('downgrade_city', data.code, (engine) => engine.downgradeCity(currentPlayerId, data.vertexId), cb, data);
   });
 
   socket.on('choose_barbarian_reward', (data, cb) => {
-    handleGameAction('choose_barbarian_reward', data?.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data?.deck), cb, data);
+    handleGameAction('choose_barbarian_reward', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb, data);
   });
 
   socket.on('claim_barbarian_progress_card', (data, cb) => {
-    handleGameAction('claim_barbarian_progress_card', data?.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data?.deck), cb, data);
+    handleGameAction('claim_barbarian_progress_card', data.code, (engine) => engine.chooseBarbarianReward(currentPlayerId, data.deck), cb, data);
   });
 
   socket.on('buy_dev_card', (data, cb) => {
-    handleGameAction('buy_dev_card', data?.code, (engine) => engine.buyDevCard(currentPlayerId), cb, data);
+    handleGameAction('buy_dev_card', data.code, (engine) => engine.buyDevCard(currentPlayerId), cb, data);
   });
 
   socket.on('play_dev_card', (data, cb) => {
-    handleGameAction('play_dev_card', data?.code, (engine) => engine.playDevCard(currentPlayerId, data?.cardId, data?.options), cb, data);
+    handleGameAction('play_dev_card', data.code, (engine) => engine.playDevCard(currentPlayerId, data.cardId, data.options), cb, data);
   });
 
   socket.on('play_progress_card', (data, cb) => {
-    handleGameAction('play_progress_card', data?.code, (engine) => engine.playProgressCard(currentPlayerId, data?.cardId, data?.options), cb, data);
+    handleGameAction('play_progress_card', data.code, (engine) => engine.playProgressCard(currentPlayerId, data.cardId, data.options), cb, data);
   });
 
   socket.on('respond_progress_choice', (data, cb) => {
-    handleGameAction('respond_progress_choice', data?.code, (engine) => engine.respondProgressChoice(currentPlayerId, {
+    handleGameAction('respond_progress_choice', data.code, (engine) => engine.respondProgressChoice(currentPlayerId, {
       cards: data?.cards,
       commodity: data?.commodity
     }), cb, data);
@@ -1338,17 +1454,17 @@ io.on('connection', (socket) => {
   });
 
   socket.on('discard_progress_card', (data, cb) => {
-    handleGameAction('discard_progress_card', data?.code, (engine) => engine.discardProgressCard(currentPlayerId, data?.cardId), cb, data);
+    handleGameAction('discard_progress_card', data.code, (engine) => engine.discardProgressCard(currentPlayerId, data.cardId), cb, data);
   });
 
   socket.on('bank_trade', (data, cb) => {
-    handleGameAction('bank_trade', data?.code, (engine) => engine.tradeWithBank(currentPlayerId, data?.give, data?.receive, data?.ratio), cb, data);
+    handleGameAction('bank_trade', data.code, (engine) => engine.tradeWithBank(currentPlayerId, data.give, data.receive, data.ratio), cb, data);
   });
 
   socket.on('propose_trade', (data, cb) => {
-    handleGameAction('propose_trade', data?.code, (engine) => {
-      const trade = engine.proposeTrade(currentPlayerId, data?.give, data?.want);
-      const room = roomManager.getRoom(currentRoomCode || data?.code);
+    handleGameAction('propose_trade', data.code, (engine) => {
+      const trade = engine.proposeTrade(currentPlayerId, data.give, data.want);
+      const room = roomManager.getRoom(currentRoomCode || data.code);
       if (room) {
         roomManager.evaluateBotsTrade(room);
       }
@@ -1357,13 +1473,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('respond_trade', (data, cb) => {
-    handleGameAction('respond_trade', data?.code, (engine) => {
-      const res = engine.respondToTrade(currentPlayerId, data?.accept);
-      const room = roomManager.getRoom(currentRoomCode || data?.code);
+    handleGameAction('respond_trade', data.code, (engine) => {
+      const res = engine.respondToTrade(currentPlayerId, data.accept);
+      const room = roomManager.getRoom(currentRoomCode || data.code);
       if (room && engine.activeTrade) {
         const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
         if (proposer && proposer.isBot) {
-          if (data?.accept) {
+          if (data.accept) {
             roomManager.resolveBotTrade(room, currentPlayerId);
           } else {
             roomManager.checkBotTradeDeclines(room);
@@ -1375,11 +1491,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('confirm_trade', (data, cb) => {
-    handleGameAction('confirm_trade', data?.code, (engine) => engine.confirmTrade(currentPlayerId, data?.targetPlayerId), cb, data);
+    handleGameAction('confirm_trade', data.code, (engine) => engine.confirmTrade(currentPlayerId, data.targetPlayerId), cb, data);
   });
 
   socket.on('cancel_trade', (data, cb) => {
-    handleGameAction('cancel_trade', data?.code, (engine) => engine.cancelTrade(currentPlayerId), cb, data);
+    handleGameAction('cancel_trade', data.code, (engine) => engine.cancelTrade(currentPlayerId), cb, data);
   });
 
   socket.on('leave_room', (data, cb) => {
@@ -1407,7 +1523,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_turn', (data, cb) => {
-    handleGameAction('end_turn', data?.code, (engine) => engine.endTurn(currentPlayerId), cb, data);
+    handleGameAction('end_turn', data.code, (engine) => engine.endTurn(currentPlayerId), cb, data);
   });
 
   socket.on('disconnect', (reason) => {
@@ -1461,8 +1577,13 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // .env is optional
+  }
+  const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
