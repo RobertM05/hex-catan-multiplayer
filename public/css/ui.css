@@ -3044,6 +3044,21 @@ input[type="number"] {
   margin-bottom: 8px;
 }
 
+.victory-avatar-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0 14px;
+}
+
+.victory-winner-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--gold-primary);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+}
+
 .victory-message {
   font-size: 18px;
   margin: 12px 0;
