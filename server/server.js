@@ -9,7 +9,6 @@ import http from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fork } from 'child_process';
 import { RoomManager, sanitizePlayerForClient, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
 import {
   SlidingWindowLimiter,
@@ -398,36 +397,46 @@ app.use((req, res, next) => {
 
 export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
   const code = roomCode.toUpperCase();
-  const scriptPath = path.join(__dirname, '..', 'scripts', 'aiAgentClient.js');
-  const addr = server.address();
-  const port = (addr && typeof addr === 'object' && addr.port) ? addr.port : (process.env.PORT || 3000);
-  const child = fork(scriptPath, [
-    '--server', `http://localhost:${port}`,
-    '--room', code,
-    '--name', agentName,
-    '--spawned-agent'
-  ], {
-    detached: false
-  });
+  const room = roomManager.getRoom(code);
+  if (!room) return null;
 
-  child.on('error', (err) => {
-    console.error('[BOT SPAWN ERROR]', err?.message || err);
-  });
+  const botPlayer = roomManager.addBot(code);
+  if (botPlayer && agentName && agentName !== 'AI-Agent') {
+    try {
+      const validated = validateDisplayName(agentName, botPlayer.name);
+      botPlayer.name = validated;
+      const enginePlayer = room.engine?.players?.find(p => p.id === botPlayer.id);
+      if (enginePlayer) enginePlayer.name = validated;
+    } catch {}
+  }
+  roomManager.releaseAgentSpawn(code);
+  roomManager.broadcastLobbyState(room);
+
+  const mockHandle = {
+    pid: 999999,
+    botId: botPlayer?.id,
+    name: botPlayer?.name,
+    killed: false,
+    kill(signal = 'SIGTERM') {
+      this.killed = true;
+      if (botPlayer?.id) {
+        roomManager.removePlayerOrBot(code, botPlayer.id);
+        roomManager.broadcastLobbyState(room);
+      }
+    },
+    on(event, handler) {
+      if (event === 'exit') {
+        this.exitHandler = handler;
+      }
+    }
+  };
 
   if (!spawnedAgents.has(code)) {
     spawnedAgents.set(code, []);
   }
-  spawnedAgents.get(code).push(child);
+  spawnedAgents.get(code).push(mockHandle);
 
-  child.on('exit', () => {
-    roomManager.releaseAgentSpawn(code);
-    const list = spawnedAgents.get(code) || [];
-    const filtered = list.filter(c => c !== child);
-    if (filtered.length > 0) spawnedAgents.set(code, filtered);
-    else spawnedAgents.delete(code);
-  });
-
-  return child;
+  return mockHandle;
 }
 
 app.use(express.json());
