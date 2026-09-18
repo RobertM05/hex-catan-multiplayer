@@ -9,7 +9,6 @@ import http from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fork } from 'child_process';
 import { RoomManager, sanitizePlayerForClient, validateChatMessage, validateDisplayName } from './game/RoomManager.js';
 import {
   SlidingWindowLimiter,
@@ -28,11 +27,11 @@ import {
   extractClientIp
 } from './clientIp.js';
 import { extractBearerToken } from './auth/jwt.js';
-import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
+import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache, invalidateProfile } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 import { logger, serializeError } from './logger.js';
-import { sendEmail, buildPasswordResetEmail } from './email.js';
+import { initRedisAdapter, closeRedisClients } from './redis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -399,36 +398,46 @@ app.use((req, res, next) => {
 
 export function spawnAgentProcess(roomCode, agentName = 'AI-Agent') {
   const code = roomCode.toUpperCase();
-  const scriptPath = path.join(__dirname, '..', 'scripts', 'aiAgentClient.js');
-  const addr = server.address();
-  const port = (addr && typeof addr === 'object' && addr.port) ? addr.port : (process.env.PORT || 3000);
-  const child = fork(scriptPath, [
-    '--server', `http://localhost:${port}`,
-    '--room', code,
-    '--name', agentName,
-    '--spawned-agent'
-  ], {
-    detached: false
-  });
+  const room = roomManager.getRoom(code);
+  if (!room) return null;
 
-  child.on('error', (err) => {
-    console.error('[BOT SPAWN ERROR]', err?.message || err);
-  });
+  const botPlayer = roomManager.addBot(code);
+  if (botPlayer && agentName && agentName !== 'AI-Agent') {
+    try {
+      const validated = validateDisplayName(agentName, botPlayer.name);
+      botPlayer.name = validated;
+      const enginePlayer = room.engine?.players?.find(p => p.id === botPlayer.id);
+      if (enginePlayer) enginePlayer.name = validated;
+    } catch {}
+  }
+  roomManager.releaseAgentSpawn(code);
+  roomManager.broadcastLobbyState(room);
+
+  const mockHandle = {
+    pid: 999999,
+    botId: botPlayer?.id,
+    name: botPlayer?.name,
+    killed: false,
+    kill(signal = 'SIGTERM') {
+      this.killed = true;
+      if (botPlayer?.id) {
+        roomManager.removePlayerOrBot(code, botPlayer.id);
+        roomManager.broadcastLobbyState(room);
+      }
+    },
+    on(event, handler) {
+      if (event === 'exit') {
+        this.exitHandler = handler;
+      }
+    }
+  };
 
   if (!spawnedAgents.has(code)) {
     spawnedAgents.set(code, []);
   }
-  spawnedAgents.get(code).push(child);
+  spawnedAgents.get(code).push(mockHandle);
 
-  child.on('exit', () => {
-    roomManager.releaseAgentSpawn(code);
-    const list = spawnedAgents.get(code) || [];
-    const filtered = list.filter(c => c !== child);
-    if (filtered.length > 0) spawnedAgents.set(code, filtered);
-    else spawnedAgents.delete(code);
-  });
-
-  return child;
+  return mockHandle;
 }
 
 app.use(express.json());
@@ -482,80 +491,6 @@ app.get(['/health', '/api/health'], (req, res) => {
 
 app.get('/api/auth/config', (req, res) => {
   res.json(publicAuthConfig());
-});
-
-/**
- * POST /api/auth/forgot-password
- * Accepts { email } and sends a password-reset link via Resend.
- * Uses the Supabase Admin API to generate a one-time recovery link,
- * then delivers it through Resend (not Supabase's built-in mailer).
- */
-app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
-  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-  if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
-    return res.status(400).json({ error: 'INVALID_EMAIL' });
-  }
-
-  // Always respond 200 to avoid email enumeration
-  res.json({ ok: true });
-
-  try {
-    const runtime = getAuthRuntime();
-    if (!runtime.supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE) {
-      logger.warn('[forgot-password] Supabase service role not configured — cannot generate reset link');
-      return;
-    }
-    if (!process.env.RESEND_API_KEY) {
-      logger.warn('[forgot-password] RESEND_API_KEY not set — email will not be sent');
-      return;
-    }
-
-    const base = String(runtime.supabaseUrl).replace(/\/$/, '');
-    const adminRes = await fetch(`${base}/auth/v1/admin/users`, {
-      method: 'GET',
-      headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE}`,
-      }
-    });
-    // Generate a recovery link using Supabase Admin API
-    const linkRes = await fetch(`${base}/auth/v1/admin/generate_link`, {
-      method: 'POST',
-      headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        type: 'recovery',
-        email,
-        options: {
-          redirect_to: `${process.env.PUBLIC_URL || 'https://peer-interventions-upcoming-demo.trycloudflare.com'}/reset-password`
-        }
-      })
-    });
-
-    if (!linkRes.ok) {
-      // User not found or other Supabase error — silently drop (no enumeration)
-      const body = await linkRes.text();
-      logger.warn('[forgot-password] Supabase generate_link failed:', body);
-      return;
-    }
-
-    const linkData = await linkRes.json();
-    const resetLink = linkData?.action_link;
-    if (!resetLink) {
-      logger.warn('[forgot-password] No action_link in Supabase response');
-      return;
-    }
-
-    const { subject, html, text } = buildPasswordResetEmail(resetLink);
-    await sendEmail({ to: email, subject, html, text });
-    logger.info(`[forgot-password] Reset email sent to ${email}`);
-  } catch (err) {
-    // Fire-and-forget — response already sent
-    logger.error('[forgot-password] Error sending reset email:', serializeError(err));
-  }
 });
 
 app.get('/api/me/stats', async (req, res) => {
@@ -769,6 +704,7 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
     }
 
     clearTokenCache(token);
+    invalidateProfile(identity.userId);
     res.json({
       profile: {
         id: profile?.id || identity.userId,
@@ -1963,6 +1899,9 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   });
 
   const PORT = process.env.PORT || 3000;
+  if (process.env.REDIS_URL) {
+    await initRedisAdapter({ io, limiter: socketRateLimiter });
+  }
   server.listen(PORT, () => {
     logger.info({ port: PORT, trustProxy: describeTrustProxySetting(TRUST_PROXY_SETTING) }, `Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
@@ -2045,6 +1984,7 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 
   await Promise.all(closePromises);
+  await closeRedisClients();
   console.log('Graceful shutdown completed.');
   
   if (!options.noExit) {
@@ -2052,4 +1992,4 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 }
 
-export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger };
+export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger, initRedisAdapter, closeRedisClients };

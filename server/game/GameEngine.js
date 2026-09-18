@@ -5,6 +5,8 @@
 
 import { HexGrid, RESOURCE_TYPES } from './HexGrid.js';
 import { BoardManager } from './BoardManager.js';
+import { TradeManager } from './TradeManager.js';
+import { CitiesKnightsModule } from './CitiesKnightsModule.js';
 
 export const GAME_MODES = {
   BASE: 'base',
@@ -222,11 +224,15 @@ export class GameEngine {
     this.turnNumber = 1;
     this.phase = GAME_PHASES.LOBBY;
     this.board = new BoardManager();
+    this.tradeManager = new TradeManager(this);
 
     this.dice = [1, 1];
     this.eventDie = null;
     this.hasRolledDice = false;
     this.devCardPlayedThisTurn = false;
+
+    // Cities & Knights expansion module (ARCH-03)
+    this.ckModule = this.mode === GAME_MODES.CITIES_KNIGHTS ? new CitiesKnightsModule(this) : null;
 
     // Cities & Knights shared state (serialized even in base mode as empty/defaults)
     this.barbarianPosition = 0;
@@ -359,7 +365,9 @@ export class GameEngine {
     this.players.splice(index, 1);
 
     // If removed player was active trade initiator or accepted, clean up
-    if (this.activeTrade) {
+    if (this.tradeManager) {
+      this.tradeManager.handlePlayerRemoval(playerId);
+    } else if (this.activeTrade) {
       if (this.activeTrade.fromPlayerId === playerId) {
         this.activeTrade = null;
       } else {
@@ -776,31 +784,12 @@ export class GameEngine {
     return (player?.cityImprovements?.politics || 0) >= IMPROVEMENT_PERK_LEVEL;
   }
 
+  getBankTradeRatio(player, resource, board = this.board) {
+    return this.tradeManager.getBankTradeRatio(player, resource, board);
+  }
+
   getBestBankTradeRatio(player, giveRes) {
-    let bestRatio = 4;
-    if (player.merchantFleetResource && player.merchantFleetResource === giveRes) {
-      bestRatio = 2;
-    } else if (this.hasTradingHouse(player) && COMMODITY_VALUES.includes(giveRes)) {
-      bestRatio = 2;
-    } else if (this.merchantHolder === player.id && this.merchantHexId) {
-      const hex = this.grid.hexes.get(this.merchantHexId);
-      if (hex && hex.resource === giveRes) bestRatio = 2;
-    }
-    if (bestRatio > 2) {
-      for (const vKey of (player.settlementsBuilt || []).concat(player.citiesBuilt || [])) {
-        const v = this.grid.vertices.get(vKey);
-        if (v && v.harbor) {
-          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-            bestRatio = 2;
-            break;
-          }
-          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-            bestRatio = Math.min(bestRatio, 3);
-          }
-        }
-      }
-    }
-    return bestRatio;
+    return this.tradeManager.getBankTradeRatio(player, giveRes, this.board);
   }
 
   getBestBankRatio(player, giveRes) {
@@ -853,6 +842,7 @@ export class GameEngine {
   }
 
   initProgressCardDecks() {
+    if (this.ckModule) return this.ckModule.initProgressCardDecks();
     this.progressDecks = { trade: [], politics: [], science: [] };
     for (const [deck, cards] of Object.entries(PROGRESS_CARD_DECKS)) {
       for (const card of cards) {
@@ -865,11 +855,13 @@ export class GameEngine {
   }
 
   countUnplayedProgressCards(player) {
-    return (player.progressCards || []).filter(c => !c.played).length;
+    if (this.ckModule) return this.ckModule.countUnplayedProgressCards(player);
+    return (player?.progressCards || []).filter(c => !c.played).length;
   }
 
   getActiveKnightStrength(player) {
-    return (player.knightsPlaced || []).reduce((sum, k) => sum + (k.active ? k.strength : 0), 0);
+    if (this.ckModule) return this.ckModule.getActiveKnightStrength(player);
+    return (player?.knightsPlaced || []).reduce((sum, k) => sum + (k.active ? k.strength : 0), 0);
   }
 
   /* =========================================================
@@ -1008,7 +1000,9 @@ export class GameEngine {
 
     if (this.isCitiesKnights()) {
       this.eventDie = EVENT_DIE_FACES[Math.floor(Math.random() * EVENT_DIE_FACES.length)];
-      if (this.eventDie === 'barbarian') {
+      if (this.ckModule) {
+        this.ckModule.onDiceRoll(d1, d2, this.eventDie);
+      } else if (this.eventDie === 'barbarian') {
         this.barbarianPosition = Math.min(BARBARIAN_TRACK_MAX, this.barbarianPosition + 1);
         this.logEvent({
           type: 'BARBARIAN_ADVANCED',
@@ -1280,6 +1274,7 @@ export class GameEngine {
   }
 
   distributeProgressCardDraws(track, redDie) {
+    if (this.ckModule) return this.ckModule.distributeProgressCardDraws(track, redDie);
     const eligible = this.getProgressCardEligiblePlayers(track, redDie);
     this.pendingProgressDraws = eligible.map(p => {
       const drawn = this.drawProgressCard(p, track);
@@ -1295,6 +1290,7 @@ export class GameEngine {
   }
 
   drawProgressCard(player, track) {
+    if (this.ckModule) return this.ckModule.drawProgressCard(player, track);
     const deck = this.progressDecks?.[track];
     if (!deck || deck.length === 0) return null;
     const card = deck.pop();
@@ -1318,6 +1314,7 @@ export class GameEngine {
   }
 
   discardProgressCard(playerId, cardId) {
+    if (this.ckModule) return this.ckModule.discardProgressCard(playerId, cardId);
     const player = this.players.find(p => p.id === playerId);
     if (!player) throw new Error('PLAYER_NOT_FOUND');
     if (!this.pendingProgressDiscard.has(playerId)) throw new Error('NO_PROGRESS_DISCARD_NEEDED');
@@ -1737,6 +1734,10 @@ export class GameEngine {
     this.recalculateVictoryPoints();
     this.checkVictory();
 
+    if (this.ckModule) {
+      this.ckModule.onBuildingUpgraded(player, vertexId, 'city');
+    }
+
     this.logEvent({
       type: 'BUILD_CITY',
       messageKey: 'LOG_BUILT_CITY',
@@ -1779,6 +1780,7 @@ export class GameEngine {
 
   improveCityTrack(playerId, track) {
     if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.improveCityTrack(playerId, track);
     const player = this.assertBuildTurn(playerId);
     if (!IMPROVEMENT_TRACKS[track]) throw new Error('INVALID_IMPROVEMENT_TRACK');
     if (!player.citiesBuilt.length) throw new Error('NEED_CITY_TO_IMPROVE');
@@ -1850,6 +1852,8 @@ export class GameEngine {
   }
 
   chooseMetropolis(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chooseMetropolis(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_CHOOSE_METROPOLIS) throw new Error('NOT_IN_METROPOLIS_PHASE');
     if (!this.pendingMetropolisChoice || this.pendingMetropolisChoice.playerId !== playerId) {
       throw new Error('NOT_YOUR_CHOICE');
@@ -2021,7 +2025,15 @@ export class GameEngine {
     return this.listKnightRelocations(playerId, fromVertexId, extraAllow)[0] || null;
   }
 
+  recruitKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.recruitKnight(playerId, vertexId);
+    return this.placeKnight(playerId, vertexId);
+  }
+
   placeKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.placeKnight(playerId, vertexId);
     const player = this.assertCkAction(playerId);
     const vertex = this.grid.vertices.get(vertexId);
     if (!vertex) throw new Error('INVALID_VERTEX');
@@ -2053,6 +2065,8 @@ export class GameEngine {
   }
 
   activateKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.activateKnight(playerId, vertexId);
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2073,6 +2087,8 @@ export class GameEngine {
   }
 
   promoteKnight(playerId, vertexId, options = {}) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.promoteKnight(playerId, vertexId, options);
     const player = this.assertCkAction(playerId);
     const knight = this.getKnightRecord(player, vertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2101,6 +2117,8 @@ export class GameEngine {
   }
 
   moveKnight(playerId, fromVertexId, toVertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.moveKnight(playerId, fromVertexId, toVertexId);
     const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     const knight = this.getKnightRecord(player, fromVertexId);
     if (!knight) throw new Error('KNIGHT_NOT_FOUND');
@@ -2147,6 +2165,7 @@ export class GameEngine {
   }
 
   displaceKnight(victimKnight, fromVertexId, attackerFromId) {
+    if (this.ckModule) return this.ckModule.displaceKnight(victimKnight, fromVertexId, attackerFromId);
     const owner = this.players.find(p => p.id === victimKnight.playerId);
     const vacated = this.grid.vertices.get(fromVertexId);
     if (vacated && vacated.knight === victimKnight) vacated.knight = null;
@@ -2174,6 +2193,8 @@ export class GameEngine {
   }
 
   relocateDisplacedKnight(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.relocateDisplacedKnight(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_CHOOSE_KNIGHT_RELOCATE) throw new Error('NOT_IN_KNIGHT_RELOCATE_PHASE');
     const pending = this.pendingKnightRelocation;
     if (!pending || pending.playerId !== playerId) throw new Error('NOT_YOUR_CHOICE');
@@ -2400,6 +2421,8 @@ export class GameEngine {
   }
 
   chaseRobber(playerId, vertexId, hexId, targetPlayerId = null) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chaseRobber(playerId, vertexId, hexId, targetPlayerId);
     const player = this.assertCkAction(playerId, { allowSpecialBuilding: false });
     if (!this.isRobberInPlay()) throw new Error('ROBBER_NOT_IN_PLAY');
     const knight = this.getKnightRecord(player, vertexId);
@@ -2436,6 +2459,8 @@ export class GameEngine {
   }
 
   resolveBarbarianAttack() {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.resolveBarbarianAttack();
     this.phase = GAME_PHASES.TURN_BARBARIAN_RESOLVE;
     const totalCities = this.players.reduce((sum, p) => sum + p.citiesBuilt.length, 0);
     const strengths = this.players.map(p => ({
@@ -2516,6 +2541,7 @@ export class GameEngine {
   }
 
   continueAfterBarbarian() {
+    if (this.ckModule) return this.ckModule.continueAfterBarbarian();
     if (this.pendingProductionRoll != null) {
       this.resolveDiceProduction(this.pendingProductionRoll);
       this.pendingProductionRoll = null;
@@ -2530,6 +2556,8 @@ export class GameEngine {
   }
 
   downgradeCity(playerId, vertexId) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.downgradeCity(playerId, vertexId);
     if (this.phase !== GAME_PHASES.TURN_BARBARIAN_DOWNGRADE) throw new Error('NOT_IN_BARBARIAN_DOWNGRADE');
     if (!this.pendingBarbarianDowngrades.has(playerId)) throw new Error('NO_DOWNGRADE_NEEDED');
     const player = this.players.find(p => p.id === playerId);
@@ -2575,6 +2603,8 @@ export class GameEngine {
   }
 
   chooseBarbarianReward(playerId, deck) {
+    if (!this.isCitiesKnights()) throw new Error('NOT_CITIES_KNIGHTS_MODE');
+    if (this.ckModule) return this.ckModule.chooseBarbarianReward(playerId, deck);
     if (this.phase !== GAME_PHASES.TURN_BARBARIAN_REWARD) {
       throw new Error('NOT_IN_BARBARIAN_REWARD_PHASE');
     }
@@ -3224,169 +3254,48 @@ export class GameEngine {
    * TRADING
    * ========================================================= */
 
-  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-
-    if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
-      throw new Error('INVALID_RESOURCE');
-    }
-    if (giveRes === receiveRes) {
-      throw new Error('CANNOT_TRADE_SAME_RESOURCE');
-    }
-
-    const bestRatio = this.getBestBankTradeRatio(player, giveRes);
-
-    if (ratio < bestRatio) throw new Error('INVALID_TRADE_RATIO');
-    if (this.getPlayerCardCount(player, giveRes) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');
-
-    this.adjustPlayerCard(player, giveRes, -bestRatio);
-    this.adjustPlayerCard(player, receiveRes, 1);
-
-    this.logEvent({
-      type: 'BANK_TRADE',
-      messageKey: 'LOG_BANK_TRADE',
-      args: { playerName: player.name, give: giveRes, receive: receiveRes, ratio: bestRatio }
-    });
-
-    return { give: giveRes, receive: receiveRes, ratio: bestRatio };
+  get activeTrade() {
+    return this.tradeManager ? this.tradeManager.activeTrade : null;
   }
 
-  proposeTrade(playerId, give, want) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-    if (!give || !want || typeof give !== 'object' || typeof want !== 'object') {
-      throw new Error('INVALID_TRADE_FORMAT');
+  set activeTrade(trade) {
+    if (this.tradeManager) {
+      this.tradeManager.activeTrade = trade;
     }
+  }
 
-    let totalGive = 0;
-    for (const [res, amount] of Object.entries(give)) {
-      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
-      if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      if (this.getPlayerCardCount(player, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES_TO_GIVE');
-      totalGive += amount;
+  get lastTradeEvent() {
+    return this.tradeManager ? this.tradeManager.lastTradeEvent : null;
+  }
+
+  set lastTradeEvent(event) {
+    if (this.tradeManager) {
+      this.tradeManager.lastTradeEvent = event;
     }
+  }
 
-    let totalWant = 0;
-    for (const [res, amount] of Object.entries(want)) {
-      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
-      if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      totalWant += amount;
-    }
+  executeBankTrade(player, give, receive, ratio = 4, engine = this) {
+    return this.tradeManager.executeBankTrade(player, give, receive, ratio, engine);
+  }
 
-    if (totalGive <= 0 || totalWant <= 0) {
-      throw new Error('TRADE_MUST_OFFER_AND_REQUEST_RESOURCES');
-    }
+  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
+    return this.tradeManager.executeBankTrade(playerId, giveRes, receiveRes, ratio, this);
+  }
 
-    for (const res of Object.keys(give)) {
-      if (give[res] > 0 && want[res] > 0) {
-        throw new Error('CANNOT_TRADE_SAME_RESOURCE');
-      }
-    }
-
-    this.activeTrade = {
-      fromPlayerId: playerId,
-      give,
-      want,
-      acceptedBy: new Set(),
-      declinedBy: new Set()
-    };
-
-    this.logEvent({
-      type: 'TRADE_PROPOSED',
-      messageKey: 'LOG_TRADE_PROPOSED',
-      args: { playerName: player.name, give, want }
-    });
-
-    return this.activeTrade;
+  proposeTrade(player, give, want, targetPlayerId = null) {
+    return this.tradeManager.proposeTrade(player, give, want, targetPlayerId);
   }
 
   respondToTrade(playerId, accept) {
-    if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
-    if (this.activeTrade.fromPlayerId === playerId) throw new Error('CANNOT_RESPOND_TO_OWN_TRADE');
-
-    const responder = this.players.find(p => p.id === playerId);
-    if (!responder) throw new Error('PLAYER_NOT_FOUND');
-    if (accept) {
-      // Check responder has what the current player wants
-      for (const [res, amount] of Object.entries(this.activeTrade.want)) {
-        if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
-      }
-      this.activeTrade.acceptedBy.add(playerId);
-      if (this.activeTrade.declinedBy) this.activeTrade.declinedBy.delete(playerId);
-      return { trade: this.activeTrade, accepted: true, playerId };
-    } else {
-      this.activeTrade.acceptedBy.delete(playerId);
-      if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
-      this.activeTrade.declinedBy.add(playerId);
-
-      const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
-      this.lastTradeEvent = {
-        id: `trade_declined_${Date.now()}`,
-        type: 'declined',
-        playerId,
-        playerName: responder.name,
-        fromPlayerId: this.activeTrade.fromPlayerId
-      };
-      this.logEvent({
-        type: 'TRADE_DECLINED',
-        messageKey: 'LOG_TRADE_DECLINED',
-        args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
-      });
-      return { trade: this.activeTrade, accepted: false, playerId, declined: true };
-    }
+    return this.tradeManager.respondToTrade(playerId, accept);
   }
 
-  confirmTrade(playerId, targetPlayerId) {
-    if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
-    if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (!this.activeTrade.acceptedBy.has(targetPlayerId)) throw new Error('PLAYER_DID_NOT_ACCEPT');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-
-    const initiator = this.players.find(p => p.id === playerId);
-    const partner = this.players.find(p => p.id === targetPlayerId);
-    if (!initiator || !partner) throw new Error('PLAYER_NOT_FOUND');
-
-    // Final checks
-    for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      if (this.getPlayerCardCount(initiator, res) < amt) throw new Error('INITIATOR_MISSING_RESOURCES');
-    }
-    for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      if (this.getPlayerCardCount(partner, res) < amt) throw new Error('PARTNER_MISSING_RESOURCES');
-    }
-
-    // Execute exchange
-    for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      this.adjustPlayerCard(initiator, res, -amt);
-      this.adjustPlayerCard(partner, res, amt);
-    }
-    for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      this.adjustPlayerCard(partner, res, -amt);
-      this.adjustPlayerCard(initiator, res, amt);
-    }
-
-    const tradeRecord = { ...this.activeTrade, partnerId: targetPlayerId };
-    this.activeTrade = null;
-
-    this.logEvent({
-      type: 'TRADE_COMPLETED',
-      messageKey: 'LOG_TRADE_COMPLETED',
-      args: { initiator: initiator.name, partner: partner.name }
-    });
-
-    return tradeRecord;
+  confirmTrade(proposerId, targetId, engine = this) {
+    return this.tradeManager.confirmTrade(proposerId, targetId, engine);
   }
 
-  cancelTrade(playerId) {
-    if (!this.activeTrade) return false;
-    if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
-    this.activeTrade = null;
-    return true;
+  cancelTrade(playerId = null) {
+    return this.tradeManager.cancelTrade(playerId);
   }
 
   /* =========================================================
@@ -3402,7 +3311,9 @@ export class GameEngine {
     if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
     if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
 
-    if (this.isCitiesKnights()) {
+    if (this.ckModule) {
+      this.ckModule.onTurnEnd(player);
+    } else if (this.isCitiesKnights()) {
       if (this.pendingProgressDiscard?.has(playerId) || this.countUnplayedProgressCards(player) > PROGRESS_CARD_HAND_LIMIT) {
         if (this.pendingProgressDiscard) {
           this.pendingProgressDiscard.add(playerId);
@@ -3961,11 +3872,11 @@ export class GameEngine {
       pendingProgressDraws: this.getProgressDrawsForPlayer(playerId),
       pendingAqueductClaims: Array.from(this.pendingAqueductClaims || []),
       pendingDeserter: this.getPendingDeserterForClient(),
-      activeTrade: this.activeTrade ? {
+      activeTrade: this.tradeManager ? this.tradeManager.serializeActiveTrade() : (this.activeTrade ? {
         ...this.activeTrade,
         acceptedBy: Array.from(this.activeTrade.acceptedBy),
         declinedBy: Array.from(this.activeTrade.declinedBy || [])
-      } : null,
+      } : null),
       lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,
       longestRoadHolder: this.longestRoadHolder,
@@ -4018,3 +3929,6 @@ export class GameEngine {
     };
   }
 }
+
+export { CitiesKnightsModule };
+

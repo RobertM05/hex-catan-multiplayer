@@ -5,6 +5,7 @@
 
 import { GameEngine, GAME_PHASES, GAME_MODES, normalizeGameMode, DISCARD_TIMEOUT_MS, ROBBER_TIMEOUT_MS, CARD_CHOICE_TIMEOUT_MS } from './GameEngine.js';
 import { BotAI } from './BotAI.js';
+import { InProcessBotRunner } from './BotRunner.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { persistFinishedMatch } from '../auth/matchStore.js';
 
@@ -78,6 +79,7 @@ export class RoomManager {
     this.staleRoomMaxAgeMs = options.staleRoomMaxAgeMs ?? STALE_ROOM_MAX_AGE_MS;
     const cleanupMs = options.staleCleanupIntervalMs ?? STALE_ROOM_CLEANUP_INTERVAL_MS;
     this.staleCleanupInterval = null;
+    this.botRunner = options.botRunner || new InProcessBotRunner();
     if (cleanupMs > 0) {
       this.staleCleanupInterval = setInterval(() => this.cleanupStaleRooms(), cleanupMs);
       if (typeof this.staleCleanupInterval.unref === 'function') {
@@ -406,32 +408,15 @@ export class RoomManager {
   }
 
   scheduleBotAction(room, delayMs, playerId, callback) {
-    if (!room.botActionTimers) room.botActionTimers = new Map();
-    const timer = setTimeout(() => {
-      room.botActionTimers.delete(timer);
-      if (!room.isStarted) return;
-      if (!isBotActionAllowed(room, playerId)) return;
-      callback();
-    }, delayMs);
-    if (typeof timer.unref === 'function') timer.unref();
-    room.botActionTimers.set(timer, playerId);
-    return timer;
+    return this.botRunner.scheduleAction(room, delayMs, playerId, callback);
   }
 
   clearBotActionTimersForPlayer(room, playerId) {
-    if (!room?.botActionTimers) return;
-    for (const [timer, pid] of room.botActionTimers) {
-      if (pid === playerId) {
-        clearTimeout(timer);
-        room.botActionTimers.delete(timer);
-      }
-    }
+    this.botRunner.clearTimersForPlayer(room, playerId);
   }
 
   clearAllBotActionTimers(room) {
-    if (!room?.botActionTimers) return;
-    for (const timer of room.botActionTimers.keys()) clearTimeout(timer);
-    room.botActionTimers.clear();
+    this.botRunner.clearAllTimers(room);
   }
 
   // A socket may act as playerId only while it owns the live human seat.

@@ -1,5 +1,6 @@
 /**
  * aiAgentClient.js
+ * @deprecated For in-server bots, use server/game/BotRunner.js (InProcessBotRunner).
  * Autonomous AI Agent player client for Hex Catan Multiplayer.
  * Connects over Socket.IO to any live server instance, joins a room,
  * and plays full games autonomously through all phases.
