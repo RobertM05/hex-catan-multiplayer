@@ -5,6 +5,7 @@
 
 import { HexGrid, RESOURCE_TYPES } from './HexGrid.js';
 import { BoardManager } from './BoardManager.js';
+import { TradeManager } from './TradeManager.js';
 
 export const GAME_MODES = {
   BASE: 'base',
@@ -222,6 +223,7 @@ export class GameEngine {
     this.turnNumber = 1;
     this.phase = GAME_PHASES.LOBBY;
     this.board = new BoardManager();
+    this.tradeManager = new TradeManager(this);
 
     this.dice = [1, 1];
     this.eventDie = null;
@@ -359,7 +361,9 @@ export class GameEngine {
     this.players.splice(index, 1);
 
     // If removed player was active trade initiator or accepted, clean up
-    if (this.activeTrade) {
+    if (this.tradeManager) {
+      this.tradeManager.handlePlayerRemoval(playerId);
+    } else if (this.activeTrade) {
       if (this.activeTrade.fromPlayerId === playerId) {
         this.activeTrade = null;
       } else {
@@ -776,31 +780,12 @@ export class GameEngine {
     return (player?.cityImprovements?.politics || 0) >= IMPROVEMENT_PERK_LEVEL;
   }
 
+  getBankTradeRatio(player, resource, board = this.board) {
+    return this.tradeManager.getBankTradeRatio(player, resource, board);
+  }
+
   getBestBankTradeRatio(player, giveRes) {
-    let bestRatio = 4;
-    if (player.merchantFleetResource && player.merchantFleetResource === giveRes) {
-      bestRatio = 2;
-    } else if (this.hasTradingHouse(player) && COMMODITY_VALUES.includes(giveRes)) {
-      bestRatio = 2;
-    } else if (this.merchantHolder === player.id && this.merchantHexId) {
-      const hex = this.grid.hexes.get(this.merchantHexId);
-      if (hex && hex.resource === giveRes) bestRatio = 2;
-    }
-    if (bestRatio > 2) {
-      for (const vKey of (player.settlementsBuilt || []).concat(player.citiesBuilt || [])) {
-        const v = this.grid.vertices.get(vKey);
-        if (v && v.harbor) {
-          if (v.harbor.type === giveRes && v.harbor.ratio === 2) {
-            bestRatio = 2;
-            break;
-          }
-          if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-            bestRatio = Math.min(bestRatio, 3);
-          }
-        }
-      }
-    }
-    return bestRatio;
+    return this.tradeManager.getBankTradeRatio(player, giveRes, this.board);
   }
 
   getBestBankRatio(player, giveRes) {
@@ -3224,169 +3209,48 @@ export class GameEngine {
    * TRADING
    * ========================================================= */
 
-  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-
-    if (!this.isTradableType(giveRes) || !this.isTradableType(receiveRes)) {
-      throw new Error('INVALID_RESOURCE');
-    }
-    if (giveRes === receiveRes) {
-      throw new Error('CANNOT_TRADE_SAME_RESOURCE');
-    }
-
-    const bestRatio = this.getBestBankTradeRatio(player, giveRes);
-
-    if (ratio < bestRatio) throw new Error('INVALID_TRADE_RATIO');
-    if (this.getPlayerCardCount(player, giveRes) < bestRatio) throw new Error('NOT_ENOUGH_RESOURCES');
-
-    this.adjustPlayerCard(player, giveRes, -bestRatio);
-    this.adjustPlayerCard(player, receiveRes, 1);
-
-    this.logEvent({
-      type: 'BANK_TRADE',
-      messageKey: 'LOG_BANK_TRADE',
-      args: { playerName: player.name, give: giveRes, receive: receiveRes, ratio: bestRatio }
-    });
-
-    return { give: giveRes, receive: receiveRes, ratio: bestRatio };
+  get activeTrade() {
+    return this.tradeManager ? this.tradeManager.activeTrade : null;
   }
 
-  proposeTrade(playerId, give, want) {
-    const player = this.getCurrentPlayer();
-    if (player.id !== playerId) throw new Error('NOT_YOUR_TURN');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-    if (!give || !want || typeof give !== 'object' || typeof want !== 'object') {
-      throw new Error('INVALID_TRADE_FORMAT');
+  set activeTrade(trade) {
+    if (this.tradeManager) {
+      this.tradeManager.activeTrade = trade;
     }
+  }
 
-    let totalGive = 0;
-    for (const [res, amount] of Object.entries(give)) {
-      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
-      if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      if (this.getPlayerCardCount(player, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES_TO_GIVE');
-      totalGive += amount;
+  get lastTradeEvent() {
+    return this.tradeManager ? this.tradeManager.lastTradeEvent : null;
+  }
+
+  set lastTradeEvent(event) {
+    if (this.tradeManager) {
+      this.tradeManager.lastTradeEvent = event;
     }
+  }
 
-    let totalWant = 0;
-    for (const [res, amount] of Object.entries(want)) {
-      if (!this.isTradableType(res)) throw new Error(`INVALID_RESOURCE_${res}`);
-      if (!Number.isInteger(amount) || amount < 0) throw new Error('AMOUNT_MUST_BE_NON_NEGATIVE_INTEGER');
-      totalWant += amount;
-    }
+  executeBankTrade(player, give, receive, ratio = 4, engine = this) {
+    return this.tradeManager.executeBankTrade(player, give, receive, ratio, engine);
+  }
 
-    if (totalGive <= 0 || totalWant <= 0) {
-      throw new Error('TRADE_MUST_OFFER_AND_REQUEST_RESOURCES');
-    }
+  tradeWithBank(playerId, giveRes, receiveRes, ratio = 4) {
+    return this.tradeManager.executeBankTrade(playerId, giveRes, receiveRes, ratio, this);
+  }
 
-    for (const res of Object.keys(give)) {
-      if (give[res] > 0 && want[res] > 0) {
-        throw new Error('CANNOT_TRADE_SAME_RESOURCE');
-      }
-    }
-
-    this.activeTrade = {
-      fromPlayerId: playerId,
-      give,
-      want,
-      acceptedBy: new Set(),
-      declinedBy: new Set()
-    };
-
-    this.logEvent({
-      type: 'TRADE_PROPOSED',
-      messageKey: 'LOG_TRADE_PROPOSED',
-      args: { playerName: player.name, give, want }
-    });
-
-    return this.activeTrade;
+  proposeTrade(player, give, want, targetPlayerId = null) {
+    return this.tradeManager.proposeTrade(player, give, want, targetPlayerId);
   }
 
   respondToTrade(playerId, accept) {
-    if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
-    if (this.activeTrade.fromPlayerId === playerId) throw new Error('CANNOT_RESPOND_TO_OWN_TRADE');
-
-    const responder = this.players.find(p => p.id === playerId);
-    if (!responder) throw new Error('PLAYER_NOT_FOUND');
-    if (accept) {
-      // Check responder has what the current player wants
-      for (const [res, amount] of Object.entries(this.activeTrade.want)) {
-        if (this.getPlayerCardCount(responder, res) < amount) throw new Error('NOT_ENOUGH_RESOURCES');
-      }
-      this.activeTrade.acceptedBy.add(playerId);
-      if (this.activeTrade.declinedBy) this.activeTrade.declinedBy.delete(playerId);
-      return { trade: this.activeTrade, accepted: true, playerId };
-    } else {
-      this.activeTrade.acceptedBy.delete(playerId);
-      if (!this.activeTrade.declinedBy) this.activeTrade.declinedBy = new Set();
-      this.activeTrade.declinedBy.add(playerId);
-
-      const fromPlayer = this.players.find(p => p.id === this.activeTrade.fromPlayerId);
-      this.lastTradeEvent = {
-        id: `trade_declined_${Date.now()}`,
-        type: 'declined',
-        playerId,
-        playerName: responder.name,
-        fromPlayerId: this.activeTrade.fromPlayerId
-      };
-      this.logEvent({
-        type: 'TRADE_DECLINED',
-        messageKey: 'LOG_TRADE_DECLINED',
-        args: { playerName: responder.name, initiator: fromPlayer?.name || 'Player' }
-      });
-      return { trade: this.activeTrade, accepted: false, playerId, declined: true };
-    }
+    return this.tradeManager.respondToTrade(playerId, accept);
   }
 
-  confirmTrade(playerId, targetPlayerId) {
-    if (!this.activeTrade) throw new Error('NO_ACTIVE_TRADE');
-    if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
-    if (this.phase === GAME_PHASES.TURN_SPECIAL_BUILDING) throw new Error('TRADE_BLOCKED_DURING_SPECIAL_BUILDING');
-    if (!this.activeTrade.acceptedBy.has(targetPlayerId)) throw new Error('PLAYER_DID_NOT_ACCEPT');
-    if (this.phase !== GAME_PHASES.TURN_ACTION) throw new Error('NOT_IN_ACTION_PHASE');
-
-    const initiator = this.players.find(p => p.id === playerId);
-    const partner = this.players.find(p => p.id === targetPlayerId);
-    if (!initiator || !partner) throw new Error('PLAYER_NOT_FOUND');
-
-    // Final checks
-    for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      if (this.getPlayerCardCount(initiator, res) < amt) throw new Error('INITIATOR_MISSING_RESOURCES');
-    }
-    for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      if (this.getPlayerCardCount(partner, res) < amt) throw new Error('PARTNER_MISSING_RESOURCES');
-    }
-
-    // Execute exchange
-    for (const [res, amt] of Object.entries(this.activeTrade.give)) {
-      this.adjustPlayerCard(initiator, res, -amt);
-      this.adjustPlayerCard(partner, res, amt);
-    }
-    for (const [res, amt] of Object.entries(this.activeTrade.want)) {
-      this.adjustPlayerCard(partner, res, -amt);
-      this.adjustPlayerCard(initiator, res, amt);
-    }
-
-    const tradeRecord = { ...this.activeTrade, partnerId: targetPlayerId };
-    this.activeTrade = null;
-
-    this.logEvent({
-      type: 'TRADE_COMPLETED',
-      messageKey: 'LOG_TRADE_COMPLETED',
-      args: { initiator: initiator.name, partner: partner.name }
-    });
-
-    return tradeRecord;
+  confirmTrade(proposerId, targetId, engine = this) {
+    return this.tradeManager.confirmTrade(proposerId, targetId, engine);
   }
 
-  cancelTrade(playerId) {
-    if (!this.activeTrade) return false;
-    if (this.activeTrade.fromPlayerId !== playerId) throw new Error('NOT_YOUR_TRADE');
-    this.activeTrade = null;
-    return true;
+  cancelTrade(playerId = null) {
+    return this.tradeManager.cancelTrade(playerId);
   }
 
   /* =========================================================
@@ -3961,11 +3825,11 @@ export class GameEngine {
       pendingProgressDraws: this.getProgressDrawsForPlayer(playerId),
       pendingAqueductClaims: Array.from(this.pendingAqueductClaims || []),
       pendingDeserter: this.getPendingDeserterForClient(),
-      activeTrade: this.activeTrade ? {
+      activeTrade: this.tradeManager ? this.tradeManager.serializeActiveTrade() : (this.activeTrade ? {
         ...this.activeTrade,
         acceptedBy: Array.from(this.activeTrade.acceptedBy),
         declinedBy: Array.from(this.activeTrade.declinedBy || [])
-      } : null,
+      } : null),
       lastTradeEvent: this.lastTradeEvent || null,
       freeRoadsRemaining: this.freeRoadsRemaining,
       longestRoadHolder: this.longestRoadHolder,
