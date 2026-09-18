@@ -30,6 +30,7 @@ import { extractBearerToken } from './auth/jwt.js';
 import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
+import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1686,8 +1687,31 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   } catch {
     // .env is optional
   }
+
+  if (process.env.SENTRY_DSN) {
+    try {
+      const Sentry = await import('@sentry/node');
+      Sentry.init({ dsn: process.env.SENTRY_DSN });
+      logger.info('Sentry error tracing initialized');
+    } catch (err) {
+      logger.warn({ err: err?.message }, 'SENTRY_DSN configured but @sentry/node could not be loaded');
+    }
+  }
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ err: reason }, 'Unhandled Promise Rejection');
+  });
+
+  process.on('uncaughtException', (err) => {
+    logger.error({ err }, 'Uncaught Exception');
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  });
+
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
+    logger.info({ port: PORT, trustProxy: describeTrustProxySetting(TRUST_PROXY_SETTING) }, `Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
   });
@@ -1775,4 +1799,4 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 }
 
-export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED };
+export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger };
