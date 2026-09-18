@@ -109,6 +109,7 @@ export class CatanApp {
       showToast: (msg, isErr) => this.showToast(msg, isErr),
       showView: (viewId) => this.showView(viewId),
       syncRulesModal: (mode) => this.syncRulesModal(mode),
+      syncAuthChrome: (viewId) => this.syncAuthChrome(viewId),
       onLeaveRoom: () => this.leaveMatchOrLobby(),
       onGameStarted: () => this.showView('view-game'),
       getMyPlayerId: () => this.myPlayerId,

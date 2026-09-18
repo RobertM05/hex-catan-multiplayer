@@ -28,6 +28,7 @@ export class LobbyView {
     this.showToast = options.showToast || ((msg, isErr) => console.log(msg));
     this.showView = options.showView || ((viewId) => {});
     this.syncRulesModal = options.syncRulesModal || ((mode) => {});
+    this.syncAuthChrome = options.syncAuthChrome || (() => {});
     this.onHostRoom = options.onHostRoom || null;
     this.onJoinRoom = options.onJoinRoom || null;
     this.onStartGame = options.onStartGame || null;
@@ -130,31 +131,46 @@ export class LobbyView {
       }
     };
 
+    const openAuth = () => {
+      showAuthStep('email');
+      authModal?.classList.add('active');
+    };
+
+    const closeAuth = () => {
+      authModal?.classList.remove('active');
+    };
+
+    document.getElementById('btn-header-sign-in')?.addEventListener('click', openAuth);
+    document.getElementById('btn-auth-modal')?.addEventListener('click', openAuth);
+    document.getElementById('btn-auth-trigger')?.addEventListener('click', openAuth);
+    document.getElementById('btn-profile-guest-signin')?.addEventListener('click', openAuth);
+
+    document.getElementById('header-user-profile')?.addEventListener('click', () => {
+      this.openProfilePage('overview');
+    });
+
+    document.getElementById('btn-close-auth-modal')?.addEventListener('click', closeAuth);
+    document.getElementById('btn-close-auth')?.addEventListener('click', closeAuth);
+
+    authModal?.addEventListener('click', (e) => {
+      if (e.target.id === 'auth-modal') closeAuth();
+    });
+
     document.querySelectorAll('.btn-auth-back-to-email').forEach(btn => {
       btn.addEventListener('click', () => showAuthStep('email'));
     });
+    document.getElementById('btn-auth-change-email')?.addEventListener('click', () => showAuthStep('email'));
+    document.getElementById('btn-auth-change-email-reg')?.addEventListener('click', () => showAuthStep('email'));
 
-    document.getElementById('btn-auth-modal')?.addEventListener('click', () => {
-      showAuthStep('email');
-      authModal?.classList.add('active');
-    });
-
-    document.getElementById('btn-auth-trigger')?.addEventListener('click', () => {
-      showAuthStep('email');
-      authModal?.classList.add('active');
-    });
-
-    document.getElementById('btn-close-auth')?.addEventListener('click', () => {
-      authModal?.classList.remove('active');
-    });
-
-    document.getElementById('btn-google-auth')?.addEventListener('click', async () => {
+    const handleGoogleAuth = async () => {
       try {
-        await this.auth.signInWithOAuth('google');
+        await this.auth.signInWithGoogle();
       } catch (err) {
         this.showToast(err.message, true);
       }
-    });
+    };
+    document.getElementById('btn-sign-in-google')?.addEventListener('click', handleGoogleAuth);
+    document.getElementById('btn-google-auth')?.addEventListener('click', handleGoogleAuth);
 
     document.getElementById('form-auth-email')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -166,7 +182,7 @@ export class LobbyView {
         return;
       }
       this.authState.email = email;
-      const btn = document.getElementById('btn-auth-email-submit');
+      const btn = document.getElementById('btn-auth-continue') || document.getElementById('btn-auth-email-submit');
       const originalText = btn ? btn.textContent : 'Continue';
       if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
       try {
