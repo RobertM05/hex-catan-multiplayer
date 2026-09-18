@@ -2452,7 +2452,7 @@ export class CatanApp {
       try {
         const submitBtn = document.getElementById('btn-submit-discard');
         if (submitBtn) submitBtn.disabled = true;
-        await network.sendAction('discard_cards', { discarded });
+        await network.sendAction('discard_cards', { cards: discarded });
         modal.classList.remove('active');
       } catch (err) {
         this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
@@ -2744,8 +2744,8 @@ export class CatanApp {
   openRobberTargetModal(hexId, options = {}) {
     const chaseFrom = options.chaseFrom || null;
     const sendMove = (targetPlayerId) => chaseFrom
-      ? network.sendAction('chase_robber', { vertexId: chaseFrom, hexId, targetPlayerId })
-      : network.sendAction('move_robber', { hexId, targetPlayerId });
+      ? network.sendAction('chase_robber', { vertexId: chaseFrom, hexId, victimPlayerId: targetPlayerId })
+      : network.sendAction('move_robber', { hexId, victimPlayerId: targetPlayerId });
     const modal = document.getElementById('robber-target-modal');
     const container = document.getElementById('robber-targets-list');
     container.innerHTML = '';

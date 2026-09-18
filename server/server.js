@@ -20,6 +20,7 @@ import {
   actionLimitKey
 } from './game/rateLimiter.js';
 import { GAME_PHASES } from './game/GameEngine.js';
+import { validateActionPayload } from './game/actionSchemas.js';
 import {
   TRUST_PROXY_SETTING,
   describeTrustProxySetting,
@@ -233,8 +234,24 @@ export function formatEventStory(e) {
           return `💬 ${p} responded to trade offer`;
         case 'confirm_trade':
           return `✅ ${p} completed trade with ${e.targetName || 'partner'}`;
+        case 'accept_trade':
+          return `🤝 ${p} accepted trade offer`;
+        case 'reject_trade':
+          return `❌ ${p} rejected trade offer`;
         case 'cancel_trade':
           return `❌ ${p} cancelled trade offer`;
+        case 'play_knight':
+          return `⚔️ ${p} played Knight`;
+        case 'play_year_of_plenty':
+          return `🌾 ${p} played Year of Plenty`;
+        case 'play_monopoly':
+          return `💰 ${p} played Monopoly on ${capitalizeWord(e.resource || 'resource')}`;
+        case 'play_road_building':
+          return `🛣️ ${p} played Road Building`;
+        case 'buy_city_improvement':
+          return `📈 ${p} upgraded City Improvement: ${capitalizeWord(e.track || 'Track')}`;
+        case 'move_pirate':
+          return `🏴‍☠️ ${p} moved Pirate to Hex #${e.hexId ?? '?'}`;
         case 'end_turn':
           return `⌛ ${p} ended turn (Turn ${e.turn ?? '?'})`;
         default:
@@ -1297,8 +1314,14 @@ io.on('connection', (socket) => {
       payload = maybePayload || null;
     }
 
-    if (payload !== null && payload !== undefined && typeof payload !== 'object') {
-      if (typeof callback === 'function') callback({ success: false, error: 'INVALID_PAYLOAD' });
+    const validation = validateActionPayload(actionName, payload);
+    if (!validation.valid) {
+      console.warn(`[${new Date().toLocaleTimeString()}] [ACTION REJECTED] "${actionName}": INVALID_PAYLOAD`, validation.errors);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'INVALID_PAYLOAD', details: validation.errors });
+      } else {
+        socket.emit('action_error', { error: 'INVALID_PAYLOAD', details: validation.errors });
+      }
       return;
     }
 
@@ -1446,12 +1469,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('discard_cards', (data, cb) => {
-    const discardedCards = data?.discarded || { ...(data?.resources || {}), ...(data?.commodities || {}) };
+    const discardedCards = data?.cards || data?.discarded || { ...(data?.resources || {}), ...(data?.commodities || {}) };
     handleGameAction('discard_cards', data?.code, (engine) => engine.discardCards(currentPlayerId, discardedCards), cb, data);
   });
 
   socket.on('move_robber', (data, cb) => {
-    handleGameAction('move_robber', data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, data?.targetPlayerId), cb, data);
+    const victim = data?.victimPlayerId !== undefined ? data.victimPlayerId : data?.targetPlayerId;
+    handleGameAction('move_robber', data?.code, (engine) => engine.moveRobber(currentPlayerId, data?.hexId, victim), cb, data);
   });
 
   socket.on('build_road', (data, cb) => {
@@ -1511,7 +1535,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chase_robber', (data, cb) => {
-    handleGameAction('chase_robber', data?.code, (engine) => engine.chaseRobber(currentPlayerId, data?.vertexId, data?.hexId, data?.targetPlayerId), cb, data);
+    const victim = data?.victimPlayerId !== undefined ? data.victimPlayerId : data?.targetPlayerId;
+    handleGameAction('chase_robber', data?.code, (engine) => engine.chaseRobber(currentPlayerId, data?.vertexId, data?.hexId, victim), cb, data);
   });
 
   socket.on('downgrade_city', (data, cb) => {
@@ -1600,6 +1625,88 @@ io.on('connection', (socket) => {
 
   socket.on('cancel_trade', (data, cb) => {
     handleGameAction('cancel_trade', data?.code, (engine) => engine.cancelTrade(currentPlayerId), cb, data);
+  });
+
+  socket.on('accept_trade', (data, cb) => {
+    handleGameAction('accept_trade', data?.code, (engine) => {
+      const res = engine.respondToTrade(currentPlayerId, true);
+      const room = roomManager.getRoom(currentRoomCode || data?.code);
+      if (room && engine.activeTrade) {
+        const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+        if (proposer && proposer.isBot) {
+          roomManager.resolveBotTrade(room, currentPlayerId);
+        }
+      }
+      return res;
+    }, cb, data);
+  });
+
+  socket.on('reject_trade', (data, cb) => {
+    handleGameAction('reject_trade', data?.code, (engine) => {
+      const res = engine.respondToTrade(currentPlayerId, false);
+      const room = roomManager.getRoom(currentRoomCode || data?.code);
+      if (room && engine.activeTrade) {
+        const proposer = engine.players.find(p => p.id === engine.activeTrade.fromPlayerId);
+        if (proposer && proposer.isBot) {
+          roomManager.checkBotTradeDeclines(room);
+        }
+      }
+      return res;
+    }, cb, data);
+  });
+
+  socket.on('play_knight', (data, cb) => {
+    handleGameAction('play_knight', data?.code, (engine) => {
+      const res = engine.playDevCard(currentPlayerId, 'knight');
+      if (data?.hexId !== undefined) {
+        engine.moveRobber(currentPlayerId, data.hexId, data?.victimPlayerId);
+      }
+      return res;
+    }, cb, data);
+  });
+
+  socket.on('play_year_of_plenty', (data, cb) => {
+    handleGameAction('play_year_of_plenty', data?.code, (engine) => {
+      let res1, res2;
+      if (Array.isArray(data?.resources)) {
+        [res1, res2] = data.resources;
+      } else if (data?.resources && typeof data.resources === 'object') {
+        const picks = [];
+        for (const [r, count] of Object.entries(data.resources)) {
+          for (let i = 0; i < count; i++) picks.push(r);
+        }
+        [res1, res2] = picks;
+      }
+      return engine.playDevCard(currentPlayerId, 'year_of_plenty', { res1, res2 });
+    }, cb, data);
+  });
+
+  socket.on('play_monopoly', (data, cb) => {
+    handleGameAction('play_monopoly', data?.code, (engine) => {
+      return engine.playDevCard(currentPlayerId, 'monopoly', { resource: data?.resource?.toLowerCase() });
+    }, cb, data);
+  });
+
+  socket.on('play_road_building', (data, cb) => {
+    handleGameAction('play_road_building', data?.code, (engine) => {
+      return engine.playDevCard(currentPlayerId, 'road_building', { edges: data?.edges });
+    }, cb, data);
+  });
+
+  socket.on('buy_city_improvement', (data, cb) => {
+    handleGameAction('buy_city_improvement', data?.code, (engine) => {
+      const track = (data?.category || '').toLowerCase();
+      return engine.improveCityTrack(currentPlayerId, track);
+    }, cb, data);
+  });
+
+  socket.on('move_pirate', (data, cb) => {
+    handleGameAction('move_pirate', data?.code, (engine) => {
+      if (typeof engine.movePirate === 'function') {
+        return engine.movePirate(currentPlayerId, data?.hexId, data?.victimPlayerId);
+      }
+      return engine.moveRobber(currentPlayerId, data?.hexId, data?.victimPlayerId);
+    }, cb, data);
   });
 
   socket.on('leave_room', (data, cb) => {
