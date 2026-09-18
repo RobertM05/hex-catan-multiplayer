@@ -48,7 +48,40 @@ export class BoardRenderer {
     this.pointers = new Map();
     this.pinchStart = null;
 
+    // Background caching (UI-01)
+    this.backgroundDirty = true;
+    this.backgroundDrawCount = 0;
+    this.cachedHexTokens = null;
+    this.lastGrid = null;
+
     this.initSVG();
+  }
+
+  invalidateBackground() {
+    this.backgroundDirty = true;
+    this.backgroundDrawCount++;
+  }
+
+  hasGridTokensChanged(gridData) {
+    if (!this.cachedHexTokens || !gridData?.hexes) {
+      this.cacheGridTokens(gridData);
+      return true;
+    }
+    for (const [id, hex] of Object.entries(gridData.hexes)) {
+      if (this.cachedHexTokens[id] !== hex.token) {
+        this.cacheGridTokens(gridData);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  cacheGridTokens(gridData) {
+    if (!gridData?.hexes) return;
+    this.cachedHexTokens = {};
+    for (const [id, hex] of Object.entries(gridData.hexes)) {
+      this.cachedHexTokens[id] = hex.token;
+    }
   }
 
   initSVG() {
@@ -256,6 +289,12 @@ export class BoardRenderer {
 
   render(gridData, interactiveAction = null, rollSum = null, players = null, longestRoadHolder = null) {
     if (!gridData) return;
+    const tokensChanged = this.hasGridTokensChanged(gridData);
+    const gridChanged = this.lastGrid !== gridData;
+    const isRobberTargeting = Boolean(this.selectedAction && (this.selectedAction.type === 'robber' || this.selectedAction.type === 'chase_robber' || this.selectedAction.type === 'progress_hex'));
+    const willBeRobberTargeting = Boolean(interactiveAction && (interactiveAction.type === 'robber' || interactiveAction.type === 'chase_robber' || interactiveAction.type === 'progress_hex'));
+    const robberInteractionToggled = isRobberTargeting !== willBeRobberTargeting;
+
     this.grid = gridData;
     this.selectedAction = interactiveAction;
     this.lastRollSum = rollSum;
@@ -264,8 +303,14 @@ export class BoardRenderer {
       this.longestRoadHolder = longestRoadHolder;
     }
 
-    this.renderHexes();
-    this.renderHarbors();
+    if (this.backgroundDirty || gridChanged || tokensChanged || robberInteractionToggled) {
+      this.renderHexes();
+      this.renderHarbors();
+      this.backgroundDirty = false;
+      this.lastGrid = gridData;
+      this.backgroundDrawCount++;
+    }
+
     this.renderEdges();
     this.renderVertices();
     this.renderKnights();
@@ -1297,3 +1342,355 @@ export class BoardRenderer {
     }
   }
 }
+
+/**
+ * High-DPI Layered Canvas Board Renderer (UI-01).
+ * Features:
+ * - High-DPI / Retina devicePixelRatio scaling for pixel-sharp vector visuals.
+ * - Offscreen background caching for static terrain (hexes, number tokens, harbors).
+ * - Instant dynamic layer compositing for 60fps hover previews, building placements, and animations.
+ */
+export class CanvasBoardRenderer {
+  constructor(container = null, options = {}) {
+    this.container = container;
+    this.options = options;
+    this.dpr = options.dpr || (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    this.width = options.width || (container && container.clientWidth) || 800;
+    this.height = options.height || (container && container.clientHeight) || 600;
+
+    this.canvas = options.canvas || null;
+    this.ctx = options.ctx || (this.canvas && this.canvas.getContext ? this.canvas.getContext('2d') : null);
+
+    this.offscreenBackgroundCanvas = options.offscreenCanvas || null;
+    this.offscreenCtx = options.offscreenCtx || (this.offscreenBackgroundCanvas && this.offscreenBackgroundCanvas.getContext ? this.offscreenBackgroundCanvas.getContext('2d') : null);
+
+    this.viewBox = options.viewBox || { x: -400, y: -350, width: 800, height: 700 };
+    this.backgroundDirty = true;
+    this.backgroundRenderCycles = 0;
+    this.dynamicRenderCount = 0;
+
+    this.cachedHexTokens = null;
+    this.hoveredEdgeId = null;
+    this.hoveredVertexId = null;
+    this.grid = null;
+
+    this.initCanvases();
+  }
+
+  initCanvases() {
+    if (!this.canvas && typeof document !== 'undefined') {
+      this.canvas = document.createElement('canvas');
+      this.canvas.className = 'catan-board-canvas';
+      if (this.container && typeof this.container.appendChild === 'function') {
+        this.container.appendChild(this.canvas);
+      }
+      this.ctx = this.canvas.getContext ? this.canvas.getContext('2d') : null;
+    }
+
+    if (!this.offscreenBackgroundCanvas) {
+      if (typeof OffscreenCanvas !== 'undefined' && !this.options.forceDomCanvas) {
+        try {
+          this.offscreenBackgroundCanvas = new OffscreenCanvas(
+            Math.max(1, Math.round(this.width * this.dpr)),
+            Math.max(1, Math.round(this.height * this.dpr))
+          );
+        } catch (_) {
+          if (typeof document !== 'undefined') {
+            this.offscreenBackgroundCanvas = document.createElement('canvas');
+          }
+        }
+      } else if (typeof document !== 'undefined') {
+        this.offscreenBackgroundCanvas = document.createElement('canvas');
+      }
+      if (this.offscreenBackgroundCanvas && this.offscreenBackgroundCanvas.getContext) {
+        this.offscreenCtx = this.offscreenBackgroundCanvas.getContext('2d');
+      }
+    }
+
+    this.setupHighDpiCanvas(this.width, this.height);
+  }
+
+  setupHighDpiCanvas(width, height) {
+    this.width = width;
+    this.height = height;
+    const dpr = this.dpr;
+
+    if (this.canvas) {
+      this.canvas.width = Math.round(width * dpr);
+      this.canvas.height = Math.round(height * dpr);
+      if (this.canvas.style) {
+        this.canvas.style.width = `${width}px`;
+        this.canvas.style.height = `${height}px`;
+      }
+    }
+
+    if (this.offscreenBackgroundCanvas) {
+      this.offscreenBackgroundCanvas.width = Math.round(width * dpr);
+      this.offscreenBackgroundCanvas.height = Math.round(height * dpr);
+    }
+
+    if (this.ctx) {
+      if (typeof this.ctx.setTransform === 'function') {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      if (typeof this.ctx.scale === 'function') {
+        this.ctx.scale(dpr, dpr);
+      }
+    }
+
+    if (this.offscreenCtx) {
+      if (typeof this.offscreenCtx.setTransform === 'function') {
+        this.offscreenCtx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      if (typeof this.offscreenCtx.scale === 'function') {
+        this.offscreenCtx.scale(dpr, dpr);
+      }
+    }
+
+    this.invalidateBackground();
+  }
+
+  invalidateBackground() {
+    this.backgroundDirty = true;
+  }
+
+  hasGridTokensChanged(gridData) {
+    if (!this.cachedHexTokens || !gridData?.hexes) return true;
+    for (const [id, hex] of Object.entries(gridData.hexes)) {
+      if (this.cachedHexTokens[id] !== hex.token) return true;
+    }
+    return false;
+  }
+
+  getTransform() {
+    const scaleX = this.width / this.viewBox.width;
+    const scaleY = this.height / this.viewBox.height;
+    const scale = Math.min(scaleX, scaleY);
+    const transX = (this.width - this.viewBox.width * scale) / 2 - this.viewBox.x * scale;
+    const transY = (this.height - this.viewBox.height * scale) / 2 - this.viewBox.y * scale;
+    return { scale, transX, transY };
+  }
+
+  /**
+   * Layer 1 (Static): Render land hexes, number tokens, harbors to offscreen buffer.
+   */
+  renderBackground(gridData) {
+    if (!this.offscreenCtx || !gridData) return;
+    const ctx = this.offscreenCtx;
+    const { scale, transX, transY } = this.getTransform();
+
+    if (typeof ctx.save === 'function') ctx.save();
+    if (typeof ctx.clearRect === 'function') ctx.clearRect(0, 0, this.width, this.height);
+    if (typeof ctx.translate === 'function') ctx.translate(transX, transY);
+    if (typeof ctx.scale === 'function') ctx.scale(scale, scale);
+
+    const radius = gridData.hexRadius || 60;
+    const hexes = Object.values(gridData.hexes || {});
+
+    // 1. Draw Hex Tiles
+    for (const hex of hexes) {
+      const { x, y } = hex.center;
+      if (typeof ctx.beginPath === 'function') {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 180) * (30 + i * 60);
+          const px = x + radius * Math.cos(angle);
+          const py = y + radius * Math.sin(angle);
+          if (i === 0 && typeof ctx.moveTo === 'function') ctx.moveTo(px, py);
+          else if (typeof ctx.lineTo === 'function') ctx.lineTo(px, py);
+        }
+        if (typeof ctx.closePath === 'function') ctx.closePath();
+
+        ctx.fillStyle = TERRAIN_ICON_FILL[hex.resource] || '#faedcd';
+        if (typeof ctx.fill === 'function') ctx.fill();
+        ctx.strokeStyle = '#161a1d';
+        ctx.lineWidth = 3;
+        if (typeof ctx.stroke === 'function') ctx.stroke();
+      }
+
+      // 2. Number Tokens
+      if (hex.token) {
+        const isHot = hex.token === 6 || hex.token === 8;
+        if (typeof ctx.beginPath === 'function') {
+          ctx.beginPath();
+          if (typeof ctx.arc === 'function') ctx.arc(x, y + 12, 17, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff8e7';
+          if (typeof ctx.fill === 'function') ctx.fill();
+          ctx.strokeStyle = isHot ? '#d90429' : '#8b7355';
+          ctx.lineWidth = 1.5;
+          if (typeof ctx.stroke === 'function') ctx.stroke();
+        }
+
+        if (typeof ctx.fillText === 'function') {
+          ctx.fillStyle = isHot ? '#d90429' : '#2b2d42';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(hex.token), x, y + 10);
+        }
+      }
+    }
+
+    // 3. Harbors
+    const edges = Object.values(gridData.edges || {});
+    for (const edge of edges) {
+      if (edge.harbor) {
+        let badgeX = edge.midpoint.x;
+        let badgeY = edge.midpoint.y;
+        if (edge.hexes && edge.hexes.length > 0 && gridData.hexes[edge.hexes[0]]) {
+          const hex = gridData.hexes[edge.hexes[0]];
+          const dx = edge.midpoint.x - hex.center.x;
+          const dy = edge.midpoint.y - hex.center.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          badgeX += (dx / dist) * 26;
+          badgeY += (dy / dist) * 26;
+        }
+
+        // Pier lines
+        if (typeof ctx.beginPath === 'function') {
+          ctx.beginPath();
+          if (typeof ctx.moveTo === 'function') {
+            ctx.moveTo(edge.x1, edge.y1);
+            if (typeof ctx.lineTo === 'function') ctx.lineTo(badgeX, badgeY);
+            ctx.moveTo(edge.x2, edge.y2);
+            if (typeof ctx.lineTo === 'function') ctx.lineTo(badgeX, badgeY);
+          }
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 2;
+          if (typeof ctx.stroke === 'function') ctx.stroke();
+        }
+
+        // Harbor Badge
+        if (typeof ctx.fillRect === 'function') {
+          ctx.fillStyle = '#181e2b';
+          ctx.fillRect(badgeX - 23, badgeY - 11, 46, 22);
+        }
+      }
+    }
+
+    if (typeof ctx.restore === 'function') ctx.restore();
+
+    // Cache current token configuration
+    this.cachedHexTokens = {};
+    for (const [id, hex] of Object.entries(gridData.hexes || {})) {
+      this.cachedHexTokens[id] = hex.token;
+    }
+  }
+
+  /**
+   * Layer 2 (Dynamic): Render roads, buildings, knights, robber, hover highlights.
+   */
+  renderDynamic(gridData, interactiveAction, rollSum, players, longestRoadHolder) {
+    if (!this.ctx || !gridData) return;
+    const ctx = this.ctx;
+    const { scale, transX, transY } = this.getTransform();
+
+    if (typeof ctx.save === 'function') ctx.save();
+    if (typeof ctx.translate === 'function') ctx.translate(transX, transY);
+    if (typeof ctx.scale === 'function') ctx.scale(scale, scale);
+
+    // 1. Built roads
+    const edges = Object.values(gridData.edges || {});
+    for (const edge of edges) {
+      if (edge.road) {
+        if (typeof ctx.beginPath === 'function') {
+          ctx.beginPath();
+          if (typeof ctx.moveTo === 'function') ctx.moveTo(edge.x1, edge.y1);
+          if (typeof ctx.lineTo === 'function') ctx.lineTo(edge.x2, edge.y2);
+          ctx.strokeStyle = edge.road.color || '#e63946';
+          ctx.lineWidth = 8;
+          ctx.lineCap = 'round';
+          if (typeof ctx.stroke === 'function') ctx.stroke();
+        }
+      }
+    }
+
+    // 2. Road Hover Preview
+    if (this.hoveredEdgeId && gridData.edges && gridData.edges[this.hoveredEdgeId]) {
+      const edge = gridData.edges[this.hoveredEdgeId];
+      if (typeof ctx.beginPath === 'function') {
+        ctx.beginPath();
+        if (typeof ctx.moveTo === 'function') ctx.moveTo(edge.x1, edge.y1);
+        if (typeof ctx.lineTo === 'function') ctx.lineTo(edge.x2, edge.y2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 9;
+        ctx.lineCap = 'round';
+        if (typeof ctx.stroke === 'function') ctx.stroke();
+      }
+    }
+
+    // 3. Settlements / Cities / Walls
+    const vertices = Object.values(gridData.vertices || {});
+    for (const vertex of vertices) {
+      if (vertex.building) {
+        const { x, y } = vertex;
+        if (typeof ctx.beginPath === 'function') {
+          ctx.beginPath();
+          if (typeof ctx.arc === 'function') ctx.arc(x, y, vertex.building.type === 'city' ? 12 : 8, 0, Math.PI * 2);
+          ctx.fillStyle = vertex.building.color || '#ffb703';
+          if (typeof ctx.fill === 'function') ctx.fill();
+          ctx.strokeStyle = '#161a1d';
+          ctx.lineWidth = 2;
+          if (typeof ctx.stroke === 'function') ctx.stroke();
+        }
+      }
+    }
+
+    // 4. Robber
+    if (gridData.robberHexId && gridData.hexes && gridData.hexes[gridData.robberHexId]) {
+      const robberHex = gridData.hexes[gridData.robberHexId];
+      const { x, y } = robberHex.center;
+      if (typeof ctx.beginPath === 'function') {
+        ctx.beginPath();
+        if (typeof ctx.arc === 'function') ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.fillStyle = '#1e293b';
+        if (typeof ctx.fill === 'function') ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        if (typeof ctx.stroke === 'function') ctx.stroke();
+      }
+    }
+
+    if (typeof ctx.restore === 'function') ctx.restore();
+  }
+
+  /**
+   * Full frame composition.
+   */
+  render(gridData, interactiveAction = null, rollSum = null, players = null, longestRoadHolder = null) {
+    if (!gridData) return;
+    this.grid = gridData;
+
+    // Check if background needs invalidation (e.g. Inventor card swapped tokens)
+    if (this.hasGridTokensChanged(gridData)) {
+      this.invalidateBackground();
+    }
+
+    // Layer 1: Render static background if dirty
+    if (this.backgroundDirty) {
+      this.renderBackground(gridData);
+      this.backgroundDirty = false;
+      this.backgroundRenderCycles++;
+    }
+
+    // Composite layers onto main canvas
+    if (this.ctx) {
+      if (typeof this.ctx.clearRect === 'function') {
+        this.ctx.clearRect(0, 0, this.width, this.height);
+      }
+      if (this.offscreenBackgroundCanvas && typeof this.ctx.drawImage === 'function') {
+        this.ctx.drawImage(this.offscreenBackgroundCanvas, 0, 0, this.width, this.height);
+      }
+      this.renderDynamic(gridData, interactiveAction, rollSum, players, longestRoadHolder);
+    }
+    this.dynamicRenderCount++;
+  }
+
+  setHoverPreview(edgeId) {
+    this.hoveredEdgeId = edgeId;
+    if (this.grid) {
+      this.render(this.grid);
+    }
+  }
+}
+
