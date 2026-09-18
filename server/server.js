@@ -30,6 +30,7 @@ import { extractBearerToken } from './auth/jwt.js';
 import { getAuthRuntime, resolveAccessToken, resolveSocketIdentity, clearTokenCache } from './auth/identity.js';
 import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
+import { logger, serializeError } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1680,14 +1681,67 @@ io.on('connection', (socket) => {
   });
 });
 
+export function isValidSentryDsn(dsn) {
+  if (typeof dsn !== 'string') return false;
+  const trimmed = dsn.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   try {
     process.loadEnvFile();
   } catch {
     // .env is optional
   }
+
+  if (process.env.SENTRY_DSN) {
+    if (!isValidSentryDsn(process.env.SENTRY_DSN)) {
+      logger.warn({ dsn: process.env.SENTRY_DSN }, 'Invalid SENTRY_DSN provided; skipping Sentry initialization');
+    } else {
+      try {
+        const Sentry = await import('@sentry/node');
+        Sentry.init({ dsn: process.env.SENTRY_DSN });
+        logger.info('Sentry error tracing initialized');
+      } catch (err) {
+        if (err?.code === 'ERR_MODULE_NOT_FOUND') {
+          logger.warn('SENTRY_DSN configured but @sentry/node package is not installed');
+        } else {
+          logger.error({ err: serializeError(err) }, 'Failed to initialize Sentry');
+        }
+      }
+    }
+  }
+
+  process.on('unhandledRejection', (reason) => {
+    try {
+      logger.error({ err: reason }, 'Unhandled Promise Rejection');
+    } catch (loggingErr) {
+      try {
+        process.stderr.write(`FATAL: Logging unhandledRejection failed: ${loggingErr?.message || loggingErr}\nOriginal rejection: ${reason?.stack || reason}\n`);
+      } catch {}
+    }
+  });
+
+  process.on('uncaughtException', (err) => {
+    try {
+      logger.error({ err }, 'Uncaught Exception');
+    } catch (loggingErr) {
+      try {
+        process.stderr.write(`FATAL: Logging uncaughtException failed: ${loggingErr?.message || loggingErr}\nOriginal exception: ${err?.stack || err}\n`);
+      } catch {}
+    }
+    process.exit(1);
+  });
+
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
+    logger.info({ port: PORT, trustProxy: describeTrustProxySetting(TRUST_PROXY_SETTING) }, `Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
   });
@@ -1775,4 +1829,4 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
   }
 }
 
-export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED };
+export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED, logger };
