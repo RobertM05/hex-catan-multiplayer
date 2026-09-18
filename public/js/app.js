@@ -22,50 +22,14 @@ import {
 import { TurnTimerUI, playerMustDiscard } from './turnTimer.js';
 import { confetti } from './confetti.js';
 
-export function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-}
+import { LobbyView, escapeHtml } from './components/LobbyView.js';
+import { TradeModal } from './components/TradeModal.js';
+import { DevCardsModal } from './components/DevCardsModal.js';
+import { DiscardModal } from './components/DiscardModal.js';
+import { ChatLogView, redactEventLogEntryForViewer } from './components/ChatLogView.js';
+import { CitiesKnightsView } from './components/CitiesKnightsView.js';
 
-const FOW_TYPED_GAIN_LOG_TYPES = new Set(['RESOURCE_PRODUCED', 'AQUEDUCT_RESOURCE', 'BOOTSTRAP_RESOURCES']);
-const HIDDEN_GAIN_MESSAGE_KEYS = {
-  RESOURCE_PRODUCED: 'LOG_RESOURCE_PRODUCED_HIDDEN',
-  AQUEDUCT_RESOURCE: 'LOG_AQUEDUCT_RESOURCE_HIDDEN',
-  BOOTSTRAP_RESOURCES: 'LOG_BOOTSTRAP_RESOURCES_HIDDEN'
-};
-
-function countCardMap(map) {
-  if (!map || typeof map !== 'object' || Array.isArray(map)) return 0;
-  return Object.values(map).reduce((sum, n) => sum + (Number(n) || 0), 0);
-}
-
-/**
- * Client-side fog-of-war for production / aqueduct / setup gains.
- * Server already strips types; this keeps the log/toasts safe if a leaky payload arrives.
- */
-export function redactEventLogEntryForViewer(entry, viewer) {
-  if (!entry || !FOW_TYPED_GAIN_LOG_TYPES.has(entry.type)) return entry;
-  const args = entry.args && typeof entry.args === 'object' ? entry.args : {};
-  const viewerId = viewer?.id || viewer?.playerId;
-  const isOwner = Boolean(viewerId) && args.playerId === viewerId;
-  if (isOwner) return entry;
-
-  const publicArgs = {
-    playerName: args.playerName,
-    playerId: args.playerId
-  };
-  if (entry.type === 'RESOURCE_PRODUCED') {
-    publicArgs.amount = args.amount;
-  } else if (entry.type === 'AQUEDUCT_RESOURCE') {
-    publicArgs.amount = 1;
-  } else {
-    publicArgs.count = args.count != null ? args.count : countCardMap(args.resources);
-  }
-  return {
-    ...entry,
-    messageKey: HIDDEN_GAIN_MESSAGE_KEYS[entry.type] || entry.messageKey,
-    args: publicArgs
-  };
-}
+export { escapeHtml, redactEventLogEntryForViewer };
 
 export function renderVictoryStatsHtml(winner, s) {
   const turns = s?.turnNumber || 1;
@@ -136,6 +100,86 @@ export class CatanApp {
     this.seenTradeEventId = null;
     this.lastRenderedPhase = null;
     this.aqueductClaimInFlight = false;
+
+    // Component instances
+    this.lobbyView = new LobbyView({
+      container: typeof document !== 'undefined' ? document.getElementById('view-lobby') : null,
+      network,
+      auth: lobbyAuth,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      showView: (viewId) => this.showView(viewId),
+      syncRulesModal: (mode) => this.syncRulesModal(mode),
+      onLeaveRoom: () => this.leaveMatchOrLobby(),
+      onGameStarted: () => this.showView('view-game'),
+      getMyPlayerId: () => this.myPlayerId,
+      setMyPlayerId: (id) => { this.myPlayerId = id; }
+    });
+    this.lobby = this.lobbyView;
+
+    this.tradeModal = new TradeModal({
+      container: typeof document !== 'undefined' ? document.getElementById('trade-modal') : null,
+      banner: typeof document !== 'undefined' ? document.getElementById('active-trade-banner') : null,
+      network,
+      audio,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      getGameState: () => this.gameState,
+      getMyPlayerId: () => this.myPlayerId,
+      getHandCardTypes: () => this.getHandCardTypes(),
+      getCardCount: (me, type) => this.getCardCount(me, type),
+      cardLabel: (type) => this.cardLabel(type),
+      isCommodity: (type) => this.isCommodity(type)
+    });
+
+    this.devCardsModal = new DevCardsModal({
+      container: typeof document !== 'undefined' ? document.getElementById('dev-cards-modal') : null,
+      network,
+      audio,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      getGameState: () => this.gameState,
+      getMyPlayerId: () => this.myPlayerId,
+      activateBuildRoad: () => this.activateBuildRoad()
+    });
+
+    this.discardModal = new DiscardModal({
+      modal: typeof document !== 'undefined' ? document.getElementById('discard-modal') : null,
+      network,
+      audio,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      getMyPlayerId: () => this.myPlayerId,
+      getGameState: () => this.gameState,
+      getHandCardTypes: () => this.getHandCardTypes(),
+      cardLabel: (type) => this.cardLabel(type),
+      clearActiveAction: () => this.clearActiveAction()
+    });
+
+    this.chatLogView = new ChatLogView({
+      logContainer: typeof document !== 'undefined' ? document.getElementById('log-scroll') : null,
+      chatContainer: typeof document !== 'undefined' ? document.getElementById('chat-messages') : null,
+      network,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      getMyPlayerId: () => this.myPlayerId,
+      getGameState: () => this.gameState,
+      cardLabel: (type) => this.cardLabel(type)
+    });
+
+    this.ckView = new CitiesKnightsView({
+      network,
+      audio,
+      showToast: (msg, isErr) => this.showToast(msg, isErr),
+      getMyPlayerId: () => this.myPlayerId,
+      getGameState: () => this.gameState,
+      isCitiesKnights: () => this.isCitiesKnights(),
+      cardLabel: (type) => this.cardLabel(type),
+      getCardCount: (me, type) => this.getCardCount(me, type),
+      clearActiveAction: () => this.clearActiveAction(),
+      setActionEnabled: (btn, en, reason) => this.setActionEnabled(btn, en, reason),
+      notifyProgressDraws: (s) => this.notifyProgressDraws(s),
+      checkProgressDiscardState: () => this.checkProgressDiscardState(),
+      renderProgressCardHand: () => this.renderProgressCardHand(),
+      collectKnightMoveTargets: (f, s) => this.collectKnightMoveTargets(f, s),
+      getBoardRenderer: () => this.boardRenderer,
+      updateBoardHint: () => this.updateBoardHint()
+    });
 
     if (autoInit && typeof document !== 'undefined') {
       this.init();
@@ -495,744 +539,79 @@ export class CatanApp {
   }
 
   /* =========================================================
-   * LOBBY SETUP & ACTIONS
+   * LOBBY & WAITING ROOM (Delegated to LobbyView component)
    * ========================================================= */
   setupLobbyTabs() {
-    const tabs = ['host', 'join', 'public'];
-    tabs.forEach(tab => {
-      const btn = document.getElementById(`tab-btn-${tab}`);
-      if (btn) {
-        btn.addEventListener('click', () => this.switchLobbyTab(tab));
-      }
-    });
+    this.lobbyView.setupLobbyTabs();
   }
 
   switchLobbyTab(tab) {
-    document.querySelectorAll('.lobby-tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.lobby-tab-content').forEach(c => c.classList.add('is-hidden'));
-
-    const activeBtn = document.getElementById(`tab-btn-${tab}`);
-    const activeContent = document.getElementById(`tab-content-${tab}`);
-    if (activeBtn) activeBtn.classList.add('active');
-    if (activeContent) activeContent.classList.remove('is-hidden');
-
-    if (tab === 'public') {
-      this.refreshPublicRooms();
-    }
+    this.lobbyView.switchLobbyTab(tab);
   }
 
   validateAuthEmail(email) {
-    if (!email) return i18n.t('EMAIL_REQUIRED') || 'Please enter an email address.';
-    if (!email.includes('@')) {
-      return i18n.t('EMAIL_INVALID') || 'Please enter a valid email address ("@" is expected, e.g. name@example.com).';
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return i18n.t('EMAIL_INVALID') || 'Please enter a valid email address ("@" is expected, e.g. name@example.com).';
-    }
-    return null;
+    return this.lobbyView.validateAuthEmail(email);
   }
 
   validateAuthPassword(password) {
-    if (!password) return i18n.t('PASSWORD_REQUIRED') || 'Please enter your password.';
-    if (password.length < 6) {
-      return i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.';
-    }
-    return null;
+    return this.lobbyView.validateAuthPassword(password);
   }
 
   setupAuthUi() {
-    const authModal = document.getElementById('auth-modal');
-    lobbyAuth.onChange = () => this.syncAuthChrome();
-
-    const authState = { email: '', exists: false };
-
-    const showAuthStep = (step) => {
-      document.getElementById('auth-step-email')?.classList.toggle('is-hidden', step !== 'email');
-      document.getElementById('auth-step-login')?.classList.toggle('is-hidden', step !== 'login');
-      document.getElementById('auth-step-register')?.classList.toggle('is-hidden', step !== 'register');
-      if (step === 'email') {
-        setTimeout(() => document.getElementById('auth-email-input')?.focus(), 50);
-      } else if (step === 'login') {
-        const chip = document.getElementById('auth-chip-email');
-        if (chip) chip.textContent = authState.email;
-        const pass = document.getElementById('auth-login-password');
-        if (pass) pass.value = '';
-        setTimeout(() => pass?.focus(), 50);
-      } else if (step === 'register') {
-        const chip = document.getElementById('auth-chip-email-reg');
-        if (chip) chip.textContent = authState.email;
-        const pass = document.getElementById('auth-register-password');
-        if (pass) pass.value = '';
-        setTimeout(() => pass?.focus(), 50);
-      }
-    };
-
-    document.getElementById('btn-header-sign-in')?.addEventListener('click', () => {
-      showAuthStep('email');
-      authModal?.classList.add('active');
-    });
-    document.getElementById('header-user-profile')?.addEventListener('click', () => {
-      this.openProfilePage('overview');
-    });
-    document.getElementById('btn-close-auth-modal')?.addEventListener('click', () => {
-      authModal?.classList.remove('active');
-    });
-    authModal?.addEventListener('click', (e) => {
-      if (e.target.id === 'auth-modal') authModal?.classList.remove('active');
-    });
-
-    document.getElementById('btn-auth-change-email')?.addEventListener('click', () => showAuthStep('email'));
-    document.getElementById('btn-auth-change-email-reg')?.addEventListener('click', () => showAuthStep('email'));
-
-    document.getElementById('btn-sign-in-google')?.addEventListener('click', async () => {
-      try {
-        await lobbyAuth.signInWithGoogle();
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
-
-    // Step 1: Check Email
-    document.getElementById('form-auth-email')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('auth-email-input')?.value.trim();
-      const emailErr = this.validateAuthEmail(email);
-      if (emailErr) {
-        this.showToast(emailErr, true);
-        document.getElementById('auth-email-input')?.focus();
-        return;
-      }
-      authState.email = email;
-      const btn = document.getElementById('btn-auth-continue');
-      const originalText = btn ? btn.textContent : 'Continue';
-      if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
-      try {
-        const exists = await lobbyAuth.checkUserExists(email);
-        authState.exists = exists;
-        showAuthStep(exists ? 'login' : 'register');
-      } catch (err) {
-        this.showToast(err.message, true);
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = originalText; }
-      }
-    });
-
-    // Step 2A: Sign In with Password
-    document.getElementById('form-auth-login')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const password = document.getElementById('auth-login-password')?.value;
-      const passErr = this.validateAuthPassword(password);
-      if (passErr) {
-        this.showToast(passErr, true);
-        document.getElementById('auth-login-password')?.focus();
-        return;
-      }
-      try {
-        await lobbyAuth.signInWithPassword(authState.email, password);
-        network.setAccessToken(lobbyAuth.accessToken);
-        await network.reconnectWithAuth(lobbyAuth.accessToken);
-        this.syncAuthChrome();
-        this.showToast(i18n.t('SIGNED_IN_AS', { name: lobbyAuth.displayName || 'Player' }));
-        authModal?.classList.remove('active');
-      } catch (err) {
-        let msg = err.message;
-        if (/invalid login credentials/i.test(msg)) {
-          msg = i18n.t('INVALID_CREDENTIALS') || 'Invalid password. Please try again.';
-        }
-        this.showToast(msg, true);
-      }
-    });
-
-    // Step 2A Option: Send Magic Link
-    document.getElementById('btn-auth-login-magic')?.addEventListener('click', async () => {
-      try {
-        await lobbyAuth.signInWithMagicLink(authState.email);
-        this.showToast(i18n.t('MAGIC_LINK_SENT'));
-        authModal?.classList.remove('active');
-      } catch (err) {
-        let msg = err.message;
-        if (/rate limit/i.test(msg) || /over_email_send_rate_limit/i.test(msg)) {
-          msg = 'Email rate limit exceeded (max 3/hr). Please use your password to sign in.';
-        }
-        this.showToast(msg, true);
-      }
-    });
-
-    // Step 2B: Register New Account
-    document.getElementById('form-auth-register')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const password = document.getElementById('auth-register-password')?.value;
-      const passErr = this.validateAuthPassword(password);
-      if (passErr) {
-        this.showToast(passErr, true);
-        document.getElementById('auth-register-password')?.focus();
-        return;
-      }
-      try {
-        const data = await lobbyAuth.signUpWithPassword(authState.email, password);
-        if (lobbyAuth.accessToken) {
-          network.setAccessToken(lobbyAuth.accessToken);
-          await network.reconnectWithAuth(lobbyAuth.accessToken);
-          this.syncAuthChrome();
-          this.showToast(i18n.t('SIGNED_IN_AS', { name: lobbyAuth.displayName || 'Player' }));
-          authModal?.classList.remove('active');
-        } else {
-          this.showToast('Account created successfully! You can now sign in.');
-          showAuthStep('login');
-        }
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
-
-    document.getElementById('form-display-name')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('profile-display-name')?.value.trim();
-      const newPass = document.getElementById('profile-new-password')?.value;
-      if (!name) return;
-      try {
-        await lobbyAuth.saveDisplayName(name);
-        if (newPass) {
-          if (newPass.length < 6) {
-            this.showToast(i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.', true);
-            return;
-          }
-          await lobbyAuth.updatePassword(newPass);
-          const newPassInput = document.getElementById('profile-new-password');
-          if (newPassInput) newPassInput.value = '';
-          this.showToast('Profile and password updated successfully!');
-        } else {
-          this.showToast(i18n.t('PROFILE_SAVED') || 'Profile name saved.');
-        }
-        await network.reconnectWithAuth(lobbyAuth.accessToken);
-        this.syncAuthChrome();
-        authModal?.classList.remove('active');
-      } catch (err) {
-        this.showToast(i18n.t(err.message) || err.message, true);
-      }
-    });
-
-    document.getElementById('btn-sign-out')?.addEventListener('click', async () => {
-      await lobbyAuth.signOut();
-      await network.reconnectWithAuth(null);
-      this.syncAuthChrome();
-      authModal?.classList.remove('active');
-    });
-
-    document.getElementById('btn-my-stats')?.addEventListener('click', () => {
-      this.openProfilePage('history');
-    });
-
-    document.getElementById('btn-stats-back')?.addEventListener('click', () => {
-      this.showView('view-lobby');
-    });
-
-    document.getElementById('btn-profile-back')?.addEventListener('click', () => {
-      this.showView('view-lobby');
-    });
-
-    document.getElementById('btn-profile-guest-signin')?.addEventListener('click', () => {
-      showAuthStep('email');
-      authModal?.classList.add('active');
-    });
-
-    // Profile sidebar tabs (Overview, History, Friends, Account)
-    document.querySelectorAll('.profile-nav-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const tab = btn.getAttribute('data-profile-tab');
-        if (tab) this.switchProfileTab(tab);
-      });
-    });
-
-    // Profile search
-    document.getElementById('profile-search-player')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const q = e.target.value.trim();
-        if (q) this.showToast(`Search for player "${q}" (mock result: 1 player found).`);
-      }
-    });
-
-    // Profile Friends invite link
-    document.getElementById('btn-profile-invite-link')?.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(window.location.origin);
-        this.showToast('Invite link copied to clipboard!');
-      } catch {
-        this.showToast('Copy invite URL: ' + window.location.origin);
-      }
-    });
-
-    // Account settings: Update display name
-    document.getElementById('form-profile-account-name')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = document.getElementById('account-display-name')?.value.trim();
-      if (!name) return;
-      try {
-        await lobbyAuth.saveDisplayName(name);
-        await network.reconnectWithAuth(lobbyAuth.accessToken);
-        this.syncAuthChrome();
-        const headerName = document.getElementById('profile-display-name-header');
-        if (headerName) headerName.textContent = name;
-        const overviewName = document.getElementById('profile-overview-name');
-        if (overviewName) overviewName.textContent = name;
-        this.showToast(i18n.t('PROFILE_SAVED') || 'Profile name saved.');
-      } catch (err) {
-        this.showToast(i18n.t(err.message) || err.message, true);
-      }
-    });
-
-    // Account settings: Update password
-    document.getElementById('form-profile-account-password')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const newPass = document.getElementById('account-new-password')?.value;
-      if (!newPass) return;
-      if (newPass.length < 6) {
-        this.showToast(i18n.t('PASSWORD_MIN_LENGTH') || 'Password must be at least 6 characters.', true);
-        return;
-      }
-      try {
-        await lobbyAuth.updatePassword(newPass);
-        const input = document.getElementById('account-new-password');
-        if (input) input.value = '';
-        this.showToast('Password updated successfully!');
-      } catch (err) {
-        this.showToast(i18n.t(err.message) || err.message, true);
-      }
-    });
-
-    // Account settings: Sign out
-    document.getElementById('btn-account-signout')?.addEventListener('click', async () => {
-      await lobbyAuth.signOut();
-      await network.reconnectWithAuth(null);
-      this.syncAuthChrome();
-      this.showView('view-lobby');
-      this.showToast('Signed out successfully.');
-    });
-
-    this.syncAuthChrome();
+    this.lobbyView.setupAuthUi();
   }
 
   switchProfileTab(tabName) {
-    document.querySelectorAll('.profile-nav-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-profile-tab') === tabName);
-    });
-    document.querySelectorAll('.profile-tab-panel').forEach(panel => {
-      panel.classList.toggle('active', panel.id === `ptab-${tabName}`);
-    });
+    this.lobbyView.switchProfileTab(tabName);
   }
 
   updateUserAvatar(containerId, avatarUrl) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    if (avatarUrl && (avatarUrl.startsWith('/') || avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'))) {
-      container.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="Avatar" referrerpolicy="no-referrer" />`;
-    } else {
-      const iconName = avatarUrl || 'user';
-      container.innerHTML = `<span class="ico" data-icon="${iconName}"></span>`;
-      mountIcons(container);
-    }
+    this.lobbyView.updateUserAvatar(containerId, avatarUrl);
   }
 
   renderAvatarPicker() {
-    const picker = document.getElementById('profile-avatar-picker');
-    if (!picker) return;
-
-    const AVATARS = [
-      { id: '/assets/avatars/settler.jpg', name: 'Settler' },
-      { id: '/assets/avatars/monarch.jpg', name: 'Monarch' },
-      { id: '/assets/avatars/knight.jpg', name: 'Knight' },
-      { id: '/assets/avatars/merchant.jpg', name: 'Merchant' },
-      { id: '/assets/avatars/farmer.jpg', name: 'Farmer' },
-      { id: '/assets/avatars/lumberjack.jpg', name: 'Lumberjack' },
-      { id: '/assets/avatars/miner.jpg', name: 'Miner' },
-      { id: '/assets/avatars/bandit.jpg', name: 'Bandit' }
-    ];
-
-    const googlePhoto = lobbyAuth.user?.user_metadata?.avatar_url || lobbyAuth.user?.user_metadata?.picture;
-    const currentAvatar = lobbyAuth.avatarUrl;
-
-    let html = '';
-    if (googlePhoto) {
-      const isGoogleActive = currentAvatar === googlePhoto;
-      html += `
-        <button type="button" class="avatar-choice-btn ${isGoogleActive ? 'active' : ''}" data-avatar-url="${escapeHtml(googlePhoto)}" title="Google Profile Photo">
-          <img src="${escapeHtml(googlePhoto)}" alt="Google Photo" referrerpolicy="no-referrer" />
-        </button>
-      `;
-    }
-
-    AVATARS.forEach(av => {
-      const isActive = currentAvatar === av.id;
-      html += `
-        <button type="button" class="avatar-choice-btn ${isActive ? 'active' : ''}" data-avatar-url="${av.id}" title="${av.name}">
-          <img src="${av.id}" alt="${av.name}" />
-        </button>
-      `;
-    });
-
-    picker.innerHTML = html;
-
-    picker.querySelectorAll('.avatar-choice-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.getAttribute('data-avatar-url');
-        if (!url) return;
-        lobbyAuth.setCustomAvatar(url);
-        if (lobbyAuth.session) {
-          lobbyAuth.saveProfile({ avatarUrl: url }).catch(err => console.warn('[profile] Failed to persist avatar:', err));
-        }
-        network.setAvatar?.(url);
-        this.renderAvatarPicker();
-        this.syncAuthChrome();
-        this.updateUserAvatar('profile-main-avatar', lobbyAuth.avatarUrl);
-        this.updateUserAvatar('profile-hero-avatar', lobbyAuth.avatarUrl);
-        this.showToast('Avatar updated!');
-      });
-    });
+    this.lobbyView.renderAvatarPicker();
   }
 
-  async openProfilePage(activeTab = 'overview') {
-    const authed = Boolean(lobbyAuth.accessToken);
-    if (!authed) {
-      this.showToast('Please sign in to view your profile.', true);
-      const authModal = document.getElementById('auth-modal');
-      if (authModal) {
-        document.getElementById('auth-step-email')?.classList.remove('is-hidden');
-        document.getElementById('auth-step-login')?.classList.add('is-hidden');
-        document.getElementById('auth-step-register')?.classList.add('is-hidden');
-        authModal.classList.add('active');
-      }
-      this.showView('view-lobby');
-      return;
-    }
-
-    this.showView('view-profile');
-    const root = document.getElementById('view-profile');
-    if (root) mountIcons(root);
-
-    const displayName = lobbyAuth.displayName || 'Player';
-    const email = lobbyAuth.user?.email || '';
-
-    // Header & Identity
-    this.updateUserAvatar('profile-main-avatar', lobbyAuth.avatarUrl);
-    this.updateUserAvatar('profile-hero-avatar', lobbyAuth.avatarUrl);
-    const nameHeader = document.getElementById('profile-display-name-header');
-    if (nameHeader) nameHeader.textContent = displayName;
-    const overviewName = document.getElementById('profile-overview-name');
-    if (overviewName) overviewName.textContent = displayName;
-
-    // Account tab inputs & avatar picker
-    this.renderAvatarPicker();
-    const accName = document.getElementById('account-display-name');
-    if (accName) accName.value = lobbyAuth.displayName || '';
-    const accEmail = document.getElementById('account-email-display');
-    if (accEmail) accEmail.textContent = email;
-    const accStatus = document.getElementById('account-status-display');
-    if (accStatus) accStatus.textContent = 'Active Player';
-
-    // Guest banner
-    const guestBanner = document.getElementById('profile-guest-banner');
-    if (guestBanner) {
-      guestBanner.classList.add('is-hidden');
-    }
-
-    // Switch tab
-    this.switchProfileTab(activeTab);
-
-    try {
-      const stats = await lobbyAuth.fetchStats();
-      const totalGames = stats.matches || 0;
-      const wins = stats.wins || 0;
-      const winRate = stats.winRate != null ? Number(stats.winRate).toFixed(2) : (totalGames > 0 ? ((wins / totalGames) * 100).toFixed(2) : '0.00');
-      const pointGame = stats.pointsPerGame != null ? Number(stats.pointsPerGame).toFixed(2) : (stats.averageVp != null ? Number(stats.averageVp).toFixed(2) : '0.00');
-      const totalPoints = stats.totalPoints != null ? stats.totalPoints : (totalGames && stats.averageVp ? Math.round(totalGames * stats.averageVp) : 0);
-
-      const elGames = document.getElementById('cstat-total-games');
-      if (elGames) elGames.textContent = String(totalGames);
-      const elWinRate = document.getElementById('cstat-win-rate');
-      if (elWinRate) elWinRate.textContent = String(winRate);
-      const elPointGame = document.getElementById('cstat-point-game');
-      if (elPointGame) elPointGame.textContent = String(pointGame);
-      const elTotalPoints = document.getElementById('cstat-total-points');
-      if (elTotalPoints) elTotalPoints.textContent = String(totalPoints);
-      const elWins = document.getElementById('cstat-wins');
-      if (elWins) elWins.textContent = String(wins);
-      const elAvgRank = document.getElementById('cstat-avg-rank');
-      if (elAvgRank) elAvgRank.textContent = stats.averageRank != null ? String(stats.averageRank) : '—';
-
-      // History Table
-      const tbody = document.getElementById('colonist-history-tbody');
-      if (tbody) {
-        const rows = stats.recent || [];
-        if (rows.length === 0) {
-          tbody.innerHTML = `
-            <tr class="history-empty-row">
-              <td colspan="5">No games played yet. Play a match to build your history!</td>
-            </tr>
-          `;
-        } else {
-          tbody.innerHTML = rows.map((match) => {
-            const isWin = Number(match.rank) === 1;
-            const rankText = match.rankDisplay || `${match.rank || 1}/4`;
-            const opponentsList = Array.isArray(match.opponents) && match.opponents.length > 0
-              ? match.opponents.map(name => escapeHtml(name)).join(' ')
-              : escapeHtml(displayName);
-            const dateText = match.dateDisplay || (match.endedAt ? new Date(match.endedAt).toLocaleString() : '—');
-            const durationText = match.durationDisplay || '—';
-
-            return `
-              <tr>
-                <td class="cell-date">${dateText}</td>
-                <td class="cell-rank ${isWin ? 'rank-win' : ''}">${rankText}</td>
-                <td class="cell-opponents">${opponentsList}</td>
-                <td class="cell-duration">${durationText}</td>
-                <td class="cell-replay">
-                  <button type="button" class="btn-replay-icon" title="Game ${escapeHtml(match.roomCode || match.matchId || '')}">
-                    ${ico('play')}
-                  </button>
-                </td>
-              </tr>
-            `;
-          }).join('');
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to load profile stats:', err);
-    }
+  openProfilePage(activeTab = 'overview') {
+    return this.lobbyView.openProfilePage(activeTab);
   }
 
-  async openStatsPage() {
-    return this.openProfilePage('history');
+  openStatsPage() {
+    return this.lobbyView.openStatsPage();
+  }
+
+  syncAuthChrome() {
+    this.lobbyView.syncAuthChrome();
   }
 
   setupLobbyActions() {
-    // Create Room
-    document.getElementById('form-create-room').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      this.leavingMatch = false;
-      const hostName = document.getElementById('host-player-name').value.trim() || 'Commander';
-      const roomName = document.getElementById('create-room-name').value.trim() || 'Realm';
-      const maxPlayers = parseInt(document.getElementById('create-max-players').value);
-      const mode = document.getElementById('create-game-mode').value;
-      const turnDuration = parseInt(document.getElementById('create-turn-timer').value);
-      const mapSize = document.getElementById('create-map-size').value;
-
-      try {
-        const res = await network.createRoom(hostName, {
-          roomName,
-          maxPlayers,
-          mode,
-          turnDuration,
-          mapSize,
-          avatar: lobbyAuth.avatarUrl || '/assets/avatars/settler.jpg',
-          vpTarget: mode === 'cities_knights' ? 13 : 10
-        });
-        this.myPlayerId = res.playerId;
-        this.enterWaitingRoom(res.roomCode);
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
-
-    // Join Room by Code
-    document.getElementById('form-join-room').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      this.leavingMatch = false;
-      const playerName = document.getElementById('join-player-name').value.trim() || 'Player';
-      const code = document.getElementById('join-room-code').value.trim();
-      if (!code) return;
-
-      try {
-        const res = await network.joinRoom(code, playerName, {
-          avatar: lobbyAuth.avatarUrl || '/assets/avatars/settler.jpg'
-        });
-        this.myPlayerId = res.playerId;
-        if (res.isStarted) {
-          this.showView('view-game');
-        } else {
-          this.enterWaitingRoom(res.roomCode);
-        }
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
+    this.lobbyView.setupLobbyActions();
   }
 
-  async refreshPublicRooms() {
-    try {
-      const res = await fetch('/api/rooms');
-      const rooms = await res.json();
-      const container = document.getElementById('public-rooms-list');
-      container.innerHTML = '';
-
-      if (rooms.length === 0) {
-        container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 24px;">${i18n.t('NO_ROOMS_AVAILABLE')}</p>`;
-        return;
-      }
-
-      rooms.forEach(r => {
-        const card = document.createElement('div');
-        card.className = 'room-card';
-        card.innerHTML = `
-          <div>
-            <h4 style="font-size: 16px; font-weight: 700;">${escapeHtml(r.name)}</h4>
-            <span style="font-size: 12px; color: var(--text-secondary);">${i18n.t('HOST_LABEL')}: ${escapeHtml(r.hostName)} • ${r.playersCount}/${r.maxPlayers} ${i18n.t('PLAYERS_LABEL')}</span>
-          </div>
-          <button class="btn-glass btn-primary btn-join-direct" data-code="${r.code}">${i18n.t('JOIN_ROOM_BTN')}</button>
-        `;
-        card.querySelector('.btn-join-direct').addEventListener('click', () => {
-          document.getElementById('join-room-code').value = r.code;
-          this.switchLobbyTab('join');
-        });
-        container.appendChild(card);
-      });
-    } catch (err) {
-      console.error('Failed to fetch rooms:', err);
-    }
+  refreshPublicRooms() {
+    return this.lobbyView.refreshPublicRooms();
   }
 
-  /* =========================================================
-   * WAITING ROOM
-   * ========================================================= */
+  renderLobby() {
+    this.lobbyView.renderLobby();
+  }
+
   enterWaitingRoom(code) {
     this.leavingMatch = false;
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-    this.showView('view-waiting');
-    document.getElementById('display-room-code').textContent = code;
-
-    // Update URL without reload
-    const url = new URL(window.location);
-    url.searchParams.set('room', code);
-    window.history.pushState({}, '', url);
-
+    this.lobbyView.enterWaitingRoom(code);
     if (this.currentRoom && this.currentRoom.code === code) {
       this.renderWaitingRoom(this.currentRoom);
     }
   }
 
   setupWaitingRoomActions() {
-    // Copy Invite Link
-    document.getElementById('btn-share-link').addEventListener('click', () => {
-      navigator.clipboard.writeText(window.location.href);
-      this.showToast(i18n.t('LINK_COPIED'));
-    });
-
-    // Ready Check
-    document.getElementById('btn-toggle-ready').addEventListener('click', () => {
-      const me = this.currentRoom?.players?.find(p => p.id === this.myPlayerId);
-      const nextReady = !(me?.isReady);
-      network.setReady(nextReady);
-    });
-
-    // Add Bot
-    document.getElementById('btn-add-bot').addEventListener('click', async () => {
-      try {
-        await network.addBot('medium');
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
-
-    // Summon Autonomous AI Agent
-    const btnSpawnAgent = document.getElementById('btn-spawn-agent');
-    if (btnSpawnAgent) {
-      btnSpawnAgent.addEventListener('click', async () => {
-        try {
-          await network.spawnAiAgent();
-          this.showToast(i18n.t('TOAST_AGENT_SUMMONED') || 'AI Agent summoned!');
-        } catch (err) {
-          this.showToast(err.message, true);
-        }
-      });
-    }
-
-    // Start Game (Host only)
-    document.getElementById('btn-start-game').addEventListener('click', async () => {
-      try {
-        await network.startGame();
-      } catch (err) {
-        this.showToast(err.message, true);
-      }
-    });
-
-    // Leave Room
-    document.getElementById('btn-leave-waiting').addEventListener('click', () => {
-      this.leaveMatchOrLobby();
-    });
+    this.lobbyView.setupWaitingRoomActions();
   }
 
   renderWaitingRoom(lobbyData) {
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     this.currentRoom = lobbyData;
-    this.syncRulesModal(lobbyData.mode);
-    const slotsContainer = document.getElementById('waiting-slots-grid');
-    slotsContainer.innerHTML = '';
-
-    const isHost = lobbyData.hostId === this.myPlayerId;
-    document.getElementById('btn-start-game').classList.toggle('is-hidden', !isHost);
-    document.getElementById('btn-add-bot').classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
-    const btnSpawnAgent = document.getElementById('btn-spawn-agent');
-    if (btnSpawnAgent) {
-      btnSpawnAgent.classList.toggle('is-hidden', !(isHost && lobbyData.players.length < lobbyData.maxPlayers));
-    }
-
-    const me = lobbyData.players.find(p => p.id === this.myPlayerId);
-    const readyBtn = document.getElementById('btn-toggle-ready');
-    if (readyBtn && me) {
-      readyBtn.classList.toggle('btn-primary', !me.isReady);
-    }
-    const startBtn = document.getElementById('btn-start-game');
-    if (startBtn && isHost) {
-      const humansReady = lobbyData.players.filter(p => !p.isBot).every(p => p.isReady);
-      startBtn.disabled = !humansReady;
-      startBtn.title = humansReady ? '' : i18n.t('ERROR_PLAYERS_NOT_READY');
-    }
-
-    lobbyData.players.forEach(p => {
-      const card = document.createElement('div');
-      card.className = 'player-slot-card';
-      card.style.setProperty('--player-color', p.color);
-      const playerAvatar = p.avatar || '/assets/avatars/settler.jpg';
-      card.innerHTML = `
-        <div class="player-slot-header">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="${escapeHtml(playerAvatar)}" class="slot-avatar-img" style="border: 2px solid ${p.color};" alt="${escapeHtml(p.name)}" />
-            <div>
-              <div class="player-slot-name" style="display: flex; align-items: center; gap: 6px;">
-                ${escapeHtml(p.name)}
-                ${p.id === lobbyData.hostId ? '<span class="player-badge host-badge">Host</span>' : ''}
-                ${p.isBot ? '<span class="player-badge bot-badge">Bot</span>' : ''}
-              </div>
-            </div>
-          </div>
-          <span class="ready-badge ${p.isReady ? 'ready' : 'not-ready'}">
-            ${p.isReady ? i18n.t('STATUS_READY') : i18n.t('STATUS_NOT_READY')}
-          </span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 12px; color: var(--text-secondary);">${i18n.t('CHOOSE_COLOR')}</span>
-            <input type="color" value="${p.color}" class="color-picker-input" ${p.id === this.myPlayerId ? '' : 'disabled'} style="border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;">
-          </div>
-          ${isHost && p.id !== this.myPlayerId ? `<button class="btn-glass btn-danger btn-kick-player" data-id="${p.id}" style="padding: 4px 8px; font-size: 11px;">${i18n.t('KICK_PLAYER')}</button>` : ''}
-        </div>
-      `;
-
-      if (p.id === this.myPlayerId) {
-        card.querySelector('.color-picker-input').addEventListener('change', (e) => {
-          network.setColor(e.target.value);
-        });
-      }
-
-      const kickBtn = card.querySelector('.btn-kick-player');
-      if (kickBtn) {
-        kickBtn.addEventListener('click', () => {
-          if (!window.confirm(i18n.t('KICK_PLAYER') + '?')) return;
-          network.removePlayer(p.id);
-        });
-      }
-
-      slotsContainer.appendChild(card);
-    });
+    this.lobbyView.renderWaitingRoom(lobbyData);
   }
 
   /* =========================================================
@@ -1805,675 +1184,77 @@ export class CatanApp {
   }
 
   closeKnightActionMenu() {
-    const menu = document.getElementById('knight-action-menu');
-    if (menu) menu.hidden = true;
+    this.ckView.closeKnightActionMenu();
   }
 
   openKnightActionMenu(vertexId, knight, evt) {
-    const me = this.gameState.players.find(p => p.id === this.myPlayerId);
-    if (!me || knight.playerId !== this.myPlayerId) return;
-    const isMyTurn = this.gameState.players[this.gameState.currentTurnPlayerIndex]?.id === this.myPlayerId;
-    if (!isMyTurn || (this.gameState.phase !== 'TURN_ACTION' && this.gameState.phase !== 'TURN_SPECIAL_BUILDING')) return;
-
-    const wheat = me.resources?.wheat || 0;
-    const wool = me.resources?.wool || 0;
-    const ore = me.resources?.ore || 0;
-    const politics = me.cityImprovements?.politics || 0;
-    const nextRank = knight.rank === 'basic' ? 'strong' : knight.rank === 'strong' ? 'mighty' : null;
-    const politicsNeeded = nextRank === 'mighty' ? 3 : 0;
-    const vertex = this.gameState.grid.vertices[vertexId];
-    const actedThisTurn = knight.lastActionTurn === this.gameState.turnNumber;
-    const robberInPlay = !!this.gameState.barbariansHaveAttacked;
-    const canChase = robberInPlay && knight.active && vertex?.hexes?.includes(this.gameState.grid.robberHexId);
-
-    const actions = [];
-    if (!knight.active) {
-      actions.push({
-        label: i18n.t('KNIGHT_ACTIVATE'),
-        disabled: wheat < 1 || actedThisTurn,
-        run: async () => {
-          await network.sendAction('activate_knight', { vertexId });
-          audio.playBuild();
-        }
-      });
-    }
-    if (nextRank) {
-      actions.push({
-        label: i18n.t('KNIGHT_PROMOTE'),
-        disabled: wool < 1 || ore < 1 || politics < politicsNeeded || (me.knightsAvailable?.[nextRank] || 0) <= 0,
-        run: async () => {
-          await network.sendAction('promote_knight', { vertexId });
-          audio.playBuild();
-        }
-      });
-    }
-    if (knight.active && this.gameState.phase === 'TURN_ACTION') {
-      actions.push({
-        label: i18n.t('KNIGHT_MOVE'),
-        disabled: actedThisTurn,
-        run: () => this.activateMoveKnight(vertexId, knight)
-      });
-      if (robberInPlay) {
-        actions.push({
-          label: i18n.t('KNIGHT_CHASE_ROBBER'),
-          disabled: !canChase || actedThisTurn,
-          run: () => this.activateChaseRobber(vertexId)
-        });
-      }
-    }
-
-    const menu = document.getElementById('knight-action-menu');
-    if (!menu) return;
-    menu.innerHTML = actions.map((a, i) =>
-      `<button type="button" class="btn-glass knight-action-btn" data-i="${i}" ${a.disabled ? 'disabled' : ''}>${a.label}</button>`
-    ).join('');
-    menu.hidden = false;
-    const viewport = document.querySelector('.board-viewport');
-    const rect = viewport.getBoundingClientRect();
-    const x = evt?.clientX ? evt.clientX - rect.left : 24;
-    const y = evt?.clientY ? evt.clientY - rect.top : 24;
-    menu.style.left = `${Math.max(12, Math.min(x, rect.width - 240))}px`;
-    menu.style.top = `${Math.max(12, Math.min(y, rect.height - 180))}px`;
-    menu.querySelectorAll('.knight-action-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const action = actions[Number(btn.dataset.i)];
-        this.closeKnightActionMenu();
-        if (!action || action.disabled) return;
-        try {
-          await action.run();
-        } catch (err) {
-          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-        }
-      });
+    this.ckView.openKnightActionMenu(vertexId, knight, evt, {
+      activateMoveKnight: (v, k) => this.activateMoveKnight(v, k),
+      activateChaseRobber: (v) => this.activateChaseRobber(v)
     });
   }
 
-  async confirmAndMoveKnight(fromVertexId, toVertexId) {
-    const dest = this.gameState.grid.vertices[toVertexId];
-    if (dest?.knight && dest.knight.playerId !== this.myPlayerId) {
-      const ok = window.confirm(i18n.t('KNIGHT_DISPLACE_CONFIRM'));
-      if (!ok) return;
-    }
-    try {
-      const res = await network.sendAction('move_knight', { fromVertexId, toVertexId });
-      audio.playBuild();
-      if (res?.displaced?.pending) {
-        this.showToast(i18n.t('KNIGHT_DISPLACE_WAIT'));
-      } else if (res?.displaced?.removed) {
-        this.showToast(i18n.t('KNIGHT_DISPLACED_REMOVED'));
-      } else if (res?.displaced?.vertexId) {
-        this.showToast(i18n.t('KNIGHT_DISPLACED_MOVED'));
-      }
-      this.clearActiveAction();
-    } catch (err) {
-      this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-    }
+  confirmAndMoveKnight(fromVertexId, toVertexId) {
+    return this.ckView.confirmAndMoveKnight(fromVertexId, toVertexId);
   }
 
   setupCkUi() {
-    const panel = document.getElementById('city-improvements-panel');
-    panel?.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-improve-track]');
-      if (!btn || btn.disabled) return;
-      try {
-        await network.sendAction('improve_city', { track: btn.getAttribute('data-improve-track') });
-        audio.playBuild();
-      } catch (err) {
-        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-      }
-    });
-
-    document.getElementById('btn-close-barbarian')?.addEventListener('click', () => {
-      document.getElementById('barbarian-modal')?.classList.remove('active');
-    });
-
-    document.getElementById('btn-toggle-improvements')?.addEventListener('click', () => {
-      document.getElementById('city-improvements-panel')?.classList.toggle('collapsed');
-    });
-
-    const aqueductModal = document.getElementById('aqueduct-modal');
-    aqueductModal?.querySelectorAll('.res-choice-btn').forEach(btn => {
-      btn.addEventListener('click', () => this.claimAqueductChoice(btn.dataset.res));
-    });
+    this.ckView.setupCkUi();
   }
 
-  async claimAqueductChoice(resource) {
-    if (!resource || this.aqueductClaimInFlight) return;
-    this.aqueductClaimInFlight = true;
-    try {
-      await network.sendAction('claim_aqueduct_resource', { resource });
-      audio.playBuild();
-      document.getElementById('aqueduct-modal')?.classList.remove('active');
-    } catch (err) {
-      this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-    } finally {
-      this.aqueductClaimInFlight = false;
-    }
+  claimAqueductChoice(resource) {
+    return this.ckView.claimAqueductChoice(resource);
   }
 
   checkAqueductChooser() {
-    const modal = document.getElementById('aqueduct-modal');
-    if (!modal || !this.gameState) return;
-    const pending = this.gameState.pendingAqueductClaims || [];
-    const needsChoice = this.isCitiesKnights() && pending.includes(this.myPlayerId);
-    if (!needsChoice) {
-      modal.classList.remove('active');
-      return;
-    }
-    modal.classList.add('active');
+    this.ckView.checkAqueductChooser();
   }
 
-  renderCkHud(s, me, isActionPhase) {
-    document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
-    this.renderEventDie(s);
-    this.renderBarbarianTrack(s);
-    this.renderImprovementPanel(me, isActionPhase);
-    this.renderBarbarianOverlay(s, me);
-    this.renderWallSupplyAndButton(s, me, isActionPhase);
-    this.renderProgressCardHand();
-    this.notifyProgressDraws(s);
-    this.checkProgressDiscardState();
-    this.checkAqueductChooser();
-    this.renderKnightSupply(me, isActionPhase);
+  renderCkHud(s, me, isActionPhase, notTurnReason) {
+    this.ckView.renderCkHud(s, me, isActionPhase, notTurnReason);
   }
 
   renderWallSupplyAndButton(s, me, isActionPhase, notTurnReason) {
-    const wallCount = document.getElementById('wall-supply-count');
-    if (wallCount) wallCount.textContent = String(me?.cityWalls ?? 0);
-
-    const wallBtn = document.getElementById('btn-build-city-wall');
-    if (!wallBtn) return;
-
-    if (!this.isCitiesKnights()) {
-      this.setActionEnabled(wallBtn, false, notTurnReason || 'REASON_WRONG_PHASE');
-      return;
-    }
-
-    const { allowed, reasonKey } = canBuildWall(me, this.isCitiesKnights(), isActionPhase, s?.grid);
-    this.setActionEnabled(wallBtn, allowed, reasonKey || notTurnReason);
-
-    if (!allowed && this.selectedAction && this.selectedAction.type === 'wall') {
-      this.clearActiveAction();
-    }
+    this.ckView.renderWallSupplyAndButton(s, me, isActionPhase, notTurnReason);
   }
 
   renderKnightSupply(me, isActionPhase) {
-    const el = document.getElementById('knight-supply');
-    const btn = document.getElementById('btn-place-knight');
-    if (!el) return;
-    if (!this.isCitiesKnights() || !me) {
-      el.textContent = '';
-      return;
-    }
-    const a = me.knightsAvailable || { basic: 0, strong: 0, mighty: 0 };
-    el.textContent = i18n.t('KNIGHT_SUPPLY', {
-      basic: a.basic ?? 0,
-      strong: a.strong ?? 0,
-      mighty: a.mighty ?? 0
-    });
-    if (btn) {
-      const canPlace = isActionPhase && (a.basic || 0) > 0 && (me.resources?.ore || 0) >= 1 && (me.resources?.wool || 0) >= 1;
-      btn.disabled = !canPlace;
-      btn.title = i18n.t('PLACE_KNIGHT_COST');
-    }
+    this.ckView.renderKnightSupply(me, isActionPhase);
   }
 
   renderBankSupply(bank, isCk) {
-    const container = document.getElementById('bank-pills-container');
-    if (!container || !bank) return;
-
-    let html = '';
-    // Resources (using exact same vector SVG icons as hexes and player cards)
-    for (const [res, count] of Object.entries(bank.resources || {})) {
-      html += `<div class="bank-pill bank-res-${res}" title="${i18n.t(`RES_${res.toUpperCase()}`)}: ${count} in bank">
-        <span class="bank-pill-icon">${ico(res)}</span>
-        <span class="bank-pill-label">${this.cardLabel(res)}</span>
-        <span class="bank-pill-count">${count}</span>
-      </div>`;
-    }
-
-    // Commodities (if C&K)
-    if (isCk && bank.commodities) {
-      for (const [com, count] of Object.entries(bank.commodities)) {
-        html += `<div class="bank-pill bank-com-${com}" title="${i18n.t(`COMM_${com.toUpperCase()}`)}: ${count} in bank">
-          <span class="bank-pill-icon">${ico(com)}</span>
-          <span class="bank-pill-label">${this.cardLabel(com)}</span>
-          <span class="bank-pill-count">${count}</span>
-        </div>`;
-      }
-    }
-
-    // Decks
-    if (isCk && bank.decks) {
-      if (bank.decks.trade !== undefined) {
-        html += `<div class="bank-pill bank-deck-trade" title="Trade Progress Deck: ${bank.decks.trade} cards remaining">
-          <span class="bank-pill-icon">${ico('bookOpen')}</span>
-          <span class="bank-pill-label">Trade</span>
-          <span class="bank-pill-count">${bank.decks.trade}</span>
-        </div>`;
-      }
-      if (bank.decks.politics !== undefined) {
-        html += `<div class="bank-pill bank-deck-politics" title="Politics Progress Deck: ${bank.decks.politics} cards remaining">
-          <span class="bank-pill-icon">${ico('city')}</span>
-          <span class="bank-pill-label">Politics</span>
-          <span class="bank-pill-count">${bank.decks.politics}</span>
-        </div>`;
-      }
-      if (bank.decks.science !== undefined) {
-        html += `<div class="bank-pill bank-deck-science" title="Science Progress Deck: ${bank.decks.science} cards remaining">
-          <span class="bank-pill-icon">${ico('refresh')}</span>
-          <span class="bank-pill-label">Science</span>
-          <span class="bank-pill-count">${bank.decks.science}</span>
-        </div>`;
-      }
-    } else if (bank.decks?.devCards !== undefined) {
-      html += `<div class="bank-pill bank-deck-dev" title="Development Deck: ${bank.decks.devCards} cards remaining">
-        <span class="bank-pill-icon">${ico('cards')}</span>
-        <span class="bank-pill-label">Dev Cards</span>
-        <span class="bank-pill-count">${bank.decks.devCards}</span>
-      </div>`;
-    }
-
-    container.innerHTML = html;
+    this.ckView.renderBankSupply(bank, isCk);
   }
 
   renderKnightsOverview(overview) {
-    const summaryBtn = document.getElementById('btn-open-knights-modal');
-    const summaryText = document.getElementById('defense-summary-text');
-    if (!overview || !this.isCitiesKnights()) {
-      if (summaryBtn) summaryBtn.style.display = 'none';
-      return;
-    }
-    if (summaryBtn) summaryBtn.style.display = 'inline-flex';
-
-    if (summaryText) {
-      const statusLabel = overview.isDefenseReady ? i18n.t('DEFENSE_STATUS_SAFE') : i18n.t('DEFENSE_STATUS_DANGER');
-      summaryText.textContent = `⚔️ ${overview.totalActiveStrength} / 🏰 ${overview.totalCities} (${statusLabel}) · ⛵ ${overview.barbarianPosition}/7`;
-    }
-
-    if (summaryBtn) {
-      summaryBtn.classList.toggle('safe', overview.isDefenseReady);
-      summaryBtn.classList.toggle('danger', !overview.isDefenseReady);
-    }
-
-    const modal = document.getElementById('knights-overview-modal');
-    if (modal && modal.classList.contains('active')) {
-      this.populateKnightsModal(overview);
-    }
+    this.ckView.renderKnightsOverview(overview);
   }
 
   populateKnightsModal(overview) {
-    const banner = document.getElementById('knights-defense-status-banner');
-    const container = document.getElementById('knights-players-table-container');
-    if (!banner || !container) return;
-
-    const isReady = overview.isDefenseReady;
-    const margin = overview.defenseMargin;
-    const percent = Math.min(100, Math.round((overview.barbarianPosition / 7) * 100));
-
-    banner.innerHTML = `
-      <div class="knights-defense-headline ${isReady ? 'safe' : 'danger'}">
-        <span>${isReady ? '🛡️' : '⚠️'}</span>
-        <span>${isReady
-        ? i18n.t('DEFENSE_BANNER_SAFE', { active: overview.totalActiveStrength, cities: overview.totalCities, margin })
-        : i18n.t('DEFENSE_BANNER_DANGER', { active: overview.totalActiveStrength, cities: overview.totalCities, shortfall: Math.abs(margin) })}</span>
-      </div>
-      <div class="knights-defense-track-row">
-        <span>Barbarian Fleet: <strong>${overview.barbarianPosition} / 7</strong></span>
-        <div class="knights-barbarian-progress-bar">
-          <div class="knights-barbarian-progress-fill" style="width: ${percent}%;"></div>
-        </div>
-        <span>${overview.barbarianPosition >= 7 ? '⚔️ ATTACKING!' : `${7 - overview.barbarianPosition} steps away`}</span>
-      </div>
-    `;
-
-    let html = '<div class="knights-players-grid">';
-    for (const p of overview.players || []) {
-      html += `
-        <div class="knights-player-card">
-          <div class="knights-player-card-header">
-            <span style="display: flex; align-items: center; gap: 6px;">
-              <span style="width: 10px; height: 10px; border-radius: 50%; background: ${p.color}; display: inline-block;"></span>
-              <span>${escapeHtml(p.name)}</span>
-            </span>
-            <span style="color: ${p.activeStrength > 0 ? '#4ade80' : 'var(--text-secondary)'};">
-              ⚔️ ${p.activeStrength} str
-            </span>
-          </div>
-          <div class="knights-player-rank-list">
-            <div class="knights-player-rank-row">
-              <span class="knights-rank-badge">Basic (⚔1):</span>
-              <span>${p.ranks.basic.active} active · ${p.ranks.basic.inactive} inactive</span>
-            </div>
-            <div class="knights-player-rank-row">
-              <span class="knights-rank-badge">Strong (⚔2):</span>
-              <span>${p.ranks.strong.active} active · ${p.ranks.strong.inactive} inactive</span>
-            </div>
-            <div class="knights-player-rank-row">
-              <span class="knights-rank-badge">Mighty (⚔3):</span>
-              <span>${p.ranks.mighty.active} active · ${p.ranks.mighty.inactive} inactive</span>
-            </div>
-          </div>
-          <div class="knights-supply-row">
-            <span>Reserve Supply:</span>
-            <span>${p.availableSupply.basic}B · ${p.availableSupply.strong}S · ${p.availableSupply.mighty}M</span>
-          </div>
-        </div>
-      `;
-    }
-    html += '</div>';
-    container.innerHTML = html;
+    this.ckView.populateKnightsModal(overview);
   }
 
   renderEventDie(s) {
-    const el = document.getElementById('die-event');
-    if (!el) return;
-    el.classList.remove('event-barbarian', 'event-trade', 'event-politics', 'event-science');
-    const face = s.eventDie;
-    if (!face) {
-      el.textContent = '?';
-      return;
-    }
-    const icons = { barbarian: 'bandit', trade: 'cloth', politics: 'coin', science: 'paper' };
-    el.classList.add(`event-${face}`);
-    el.innerHTML = ico(icons[face] || 'warning');
-    el.title = i18n.t(`EVENT_DIE_${face.toUpperCase()}`) || face;
-    if (this.lastEventDie !== face) {
-      el.classList.add('event-flash');
-      setTimeout(() => el.classList.remove('event-flash'), 450);
-      this.lastEventDie = face;
-    }
+    this.ckView.renderEventDie(s);
   }
 
   renderBarbarianTrack(s) {
-    const wrap = document.getElementById('barbarian-track');
-    const pips = document.getElementById('barbarian-track-pips');
-    const countEl = document.getElementById('barbarian-track-count');
-    const shipWrapper = document.getElementById('barbarian-ship-wrapper');
-    const sublabel = document.getElementById('barbarian-sublabel');
-    if (!wrap || !pips) return;
-    const pos = Math.max(0, Math.min(7, s.barbarianPosition || 0));
-    wrap.classList.toggle('barbarian-warning', pos >= 5);
-    wrap.classList.toggle('barbarian-danger', pos >= 7);
-    if (countEl) countEl.textContent = `${pos}/7`;
-
-    if (shipWrapper) {
-      const pct = (pos / 7) * 100;
-      shipWrapper.style.left = `calc(${pct}% - ${Math.round(pct * 0.32)}px)`;
-      shipWrapper.classList.toggle('ship-warning', pos >= 5);
-      shipWrapper.classList.toggle('ship-danger', pos >= 7);
-    }
-
-    if (sublabel) {
-      if (pos === 0) {
-        sublabel.textContent = i18n.t('BARBARIAN_POS_0') || 'Distant Waters — Catan is Safe';
-      } else if (pos < 5) {
-        sublabel.textContent = i18n.t('BARBARIAN_POS_APPROACH', { step: pos, remain: 7 - pos }) || `Barbarians sailing to Catan (${7 - pos} steps away)`;
-      } else if (pos < 7) {
-        sublabel.textContent = i18n.t('BARBARIAN_POS_WARNING', { step: pos }) || `⚠️ WARNING: Invasion imminent! (${7 - pos} step left)`;
-      } else {
-        sublabel.textContent = i18n.t('BARBARIAN_POS_ATTACK') || '⚔️ Barbarian Attack in Progress!';
-      }
-    }
-
-    pips.innerHTML = '';
-    for (let i = 0; i <= 7; i++) {
-      const pip = document.createElement('div');
-      pip.className = 'barbarian-waypoint';
-      pip.dataset.step = i;
-      if (i < pos) pip.classList.add('passed');
-      if (i === pos) pip.classList.add('current');
-      if (i === 7) pip.classList.add('catan-shore');
-      pip.title = i === 0 ? 'Distant Waters (Start)' : i === 7 ? 'Catan Shore (Invasion)' : `Step ${i} of 7`;
-      pips.appendChild(pip);
-    }
-
-    if (this.boardRenderer && typeof this.boardRenderer.renderBarbarianShip === 'function') {
-      this.boardRenderer.renderBarbarianShip(pos, this.isCitiesKnights());
-    }
+    this.ckView.renderBarbarianTrack(s);
   }
 
   renderImprovementPanel(me, isActionPhase) {
-    if (!me) return;
-    const tracks = {
-      trade: 'cloth',
-      politics: 'coin',
-      science: 'paper'
-    };
-    const perkKeys = {
-      trade: 'TRACK_PERK_TRADE',
-      politics: 'TRACK_PERK_POLITICS',
-      science: 'TRACK_PERK_SCIENCE'
-    };
-    const hasCities = (me.citiesBuilt || []).length > 0;
-    for (const [track, commodity] of Object.entries(tracks)) {
-      const level = me.cityImprovements?.[track] || 0;
-      const cost = Math.min(level + 1, 5);
-      const have = this.getCardCount(me, commodity);
-      const canAfford = hasCities && isActionPhase && level < 5 && have >= cost;
-      const perkUnlocked = level >= 3;
-      const levelEl = document.getElementById(`improve-level-${track}`);
-      const fillEl = document.getElementById(`improve-fill-${track}`);
-      const costEl = document.getElementById(`improve-cost-${track}`);
-      const perkEl = document.getElementById(`improve-perk-${track}`);
-      const btn = document.getElementById(`btn-improve-${track}`);
-      const row = document.querySelector(`.improvement-track[data-track="${track}"]`);
-      if (levelEl) levelEl.textContent = `${level}/5`;
-      if (fillEl) fillEl.style.width = `${(level / 5) * 100}%`;
-      if (costEl) costEl.textContent = level >= 5 ? '—' : String(cost);
-      if (perkEl) perkEl.textContent = i18n.t(perkKeys[track]);
-      if (btn) btn.disabled = !canAfford;
-      row?.classList.toggle('track-ready', canAfford);
-      row?.classList.toggle('track-metro', level >= 4);
-      row?.classList.toggle('track-perk-on', perkUnlocked);
-    }
+    this.ckView.renderImprovementPanel(me, isActionPhase);
   }
 
   renderBarbarianOverlay(s, me) {
-    const modal = document.getElementById('barbarian-modal');
-    const body = document.getElementById('barbarian-modal-body');
-    const list = document.getElementById('barbarian-downgrade-list');
-    const closeBtn = document.getElementById('btn-close-barbarian');
-    if (!modal || !body || !list) return;
-
-    const pending = s.pendingBarbarianDowngrades || [];
-    const pendingRewards = s.pendingBarbarianTieDraws || [];
-    const result = s.lastBarbarianResult;
-    const mustDowngrade = s.phase === 'TURN_BARBARIAN_DOWNGRADE' && me && pending.includes(me.id);
-    const mustChooseReward = s.phase === 'TURN_BARBARIAN_REWARD' && me && pendingRewards.includes(me.id);
-
-    if (!result && !mustDowngrade && !mustChooseReward) {
-      modal.classList.remove('active');
-      return;
-    }
-
-    const invasionId = result?.id || (result ? `${result.outcome}-${result.totalActiveKnights}-${result.totalCities}` : null);
-    if (!mustDowngrade && !mustChooseReward && invasionId && this.dismissedBarbarianInvasionId === invasionId) {
-      modal.classList.remove('active');
-      return;
-    }
-
-    if (result?.outcome === 'victory') {
-      const defender = s.players.find(p => p.id === result.defenderOfCatan);
-      body.textContent = defender
-        ? i18n.t('BARBARIAN_VICTORY_BODY', { name: defender.name, knights: result.totalActiveKnights, cities: result.totalCities })
-        : i18n.t('BARBARIAN_VICTORY_TIE_BODY', { knights: result.totalActiveKnights, cities: result.totalCities });
-    } else {
-      body.textContent = i18n.t('BARBARIAN_DEFEAT_BODY', {
-        knights: result?.totalActiveKnights ?? '—',
-        cities: result?.totalCities ?? '—'
-      });
-    }
-
-    list.innerHTML = '';
-    if (mustDowngrade) {
-      if (closeBtn) closeBtn.style.display = 'none';
-      (me.citiesBuilt || []).filter((vid) => s.grid?.vertices?.[vid]?.building?.type === 'city').forEach((vid) => {
-        const vertex = s.grid?.vertices?.[vid];
-        const hexes = (vertex?.hexes || []).map((hid) => s.grid?.hexes?.[hid]?.resource).filter(Boolean);
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn-glass barbarian-city-btn';
-        btn.textContent = i18n.t('BARBARIAN_DOWNGRADE_CITY', { hexes: hexes.map((r) => this.cardLabel(r)).join(', ') || vid });
-        if (vertex?.building?.hasWall) {
-          btn.title = i18n.t('BARBARIAN_WALL_NOTE');
-          btn.textContent += ' 🛡️';
-        }
-        btn.addEventListener('click', async () => {
-          try {
-            await network.sendAction('downgrade_city', { vertexId: vid });
-            if (invasionId) this.dismissedBarbarianInvasionId = invasionId;
-            modal.classList.remove('active');
-          } catch (err) {
-            this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-          }
-        });
-        list.appendChild(btn);
-      });
-    } else if (mustChooseReward) {
-      if (closeBtn) closeBtn.style.display = 'none';
-      const promptTitle = document.createElement('div');
-      promptTitle.className = 'barbarian-reward-title';
-      promptTitle.style.fontWeight = 'bold';
-      promptTitle.style.marginBottom = '10px';
-      promptTitle.textContent = i18n.t('BARBARIAN_CHOOSE_REWARD');
-      list.appendChild(promptTitle);
-
-      const decks = [
-        { id: 'trade', label: i18n.t('BARBARIAN_CHOOSE_DECK_TRADE'), icon: '📜' },
-        { id: 'politics', label: i18n.t('BARBARIAN_CHOOSE_DECK_POLITICS'), icon: '🏛️' },
-        { id: 'science', label: i18n.t('BARBARIAN_CHOOSE_DECK_SCIENCE'), icon: '🧪' }
-      ];
-
-      decks.forEach((deck) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn-glass barbarian-reward-btn';
-        btn.style.margin = '4px';
-        btn.textContent = `${deck.icon} ${deck.label}`;
-        btn.addEventListener('click', async () => {
-          try {
-            await network.sendAction('choose_barbarian_reward', { deck: deck.id });
-            if (invasionId) this.dismissedBarbarianInvasionId = invasionId;
-            modal.classList.remove('active');
-          } catch (err) {
-            this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-          }
-        });
-        list.appendChild(btn);
-      });
-    } else {
-      if (closeBtn) {
-        closeBtn.style.display = '';
-        if (!this.barbarianCloseBound) {
-          this.barbarianCloseBound = true;
-          closeBtn.addEventListener('click', () => {
-            const curResult = this.gameState?.lastBarbarianResult;
-            const curId = curResult?.id || (curResult ? `${curResult.outcome}-${curResult.totalActiveKnights}-${curResult.totalCities}` : null);
-            if (curId) this.dismissedBarbarianInvasionId = curId;
-            modal.classList.remove('active');
-          });
-        }
-      }
-    }
-
-    modal.classList.add('active');
+    this.ckView.renderBarbarianOverlay(s, me);
   }
 
   /* =========================================================
    * ROBBER & DISCARD MODALS
    * ========================================================= */
   setupDiscardModal() {
-    const modal = document.getElementById('discard-modal');
-    const form = document.getElementById('discard-form');
-
-    const updateDiscardSum = () => {
-      const currentCount = this.getHandCardTypes().reduce((sum, res) => {
-        const inp = document.getElementById(`discard-${res}`);
-        return sum + (parseInt(inp?.value, 10) || 0);
-      }, 0);
-      const currentCountEl = document.getElementById('discard-current-count');
-      if (currentCountEl) currentCountEl.textContent = currentCount;
-
-      const neededCount = parseInt(document.getElementById('discard-needed-count')?.textContent, 10) || 0;
-      const submitBtn = document.getElementById('btn-submit-discard');
-      if (submitBtn) {
-        submitBtn.disabled = (currentCount !== neededCount);
-        if (currentCount === neededCount) {
-          submitBtn.style.opacity = '1';
-          submitBtn.style.cursor = 'pointer';
-        } else {
-          submitBtn.style.opacity = '0.5';
-          submitBtn.style.cursor = 'not-allowed';
-        }
-      }
-    };
-
-    modal.addEventListener('click', (e) => {
-      const btn = e.target.closest('.btn-stepper');
-      if (!btn) return;
-      const targetId = btn.dataset.target;
-      const input = document.getElementById(targetId);
-      if (!input) return;
-
-      let currentVal = parseInt(input.value, 10) || 0;
-      const maxVal = parseInt(input.max, 10) || 0;
-
-      const totalSelected = this.getHandCardTypes().reduce((sum, res) => {
-        const inp = document.getElementById(`discard-${res}`);
-        return sum + (parseInt(inp?.value, 10) || 0);
-      }, 0);
-      const neededCount = parseInt(document.getElementById('discard-needed-count')?.textContent, 10) || 0;
-
-      if (btn.classList.contains('btn-stepper-inc')) {
-        if (currentVal < maxVal && totalSelected < neededCount) {
-          input.value = currentVal + 1;
-        }
-      } else if (btn.classList.contains('btn-stepper-dec')) {
-        if (currentVal > 0) {
-          input.value = currentVal - 1;
-        }
-      }
-      updateDiscardSum();
-    });
-
-    const btnCloseRobber = document.getElementById('btn-close-robber-target');
-    if (btnCloseRobber) {
-      btnCloseRobber.addEventListener('click', () => {
-        document.getElementById('robber-target-modal').classList.remove('active');
-      });
-    }
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-      const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      if (!me) return;
-
-      const discarded = {};
-      for (const type of this.getHandCardTypes()) {
-        discarded[type] = parseInt(document.getElementById(`discard-${type}`).value, 10) || 0;
-      }
-
-      const sumDiscarded = Object.values(discarded).reduce((a, b) => a + b, 0);
-      const neededCount = parseInt(document.getElementById('discard-needed-count')?.textContent, 10) || 0;
-      if (sumDiscarded !== neededCount) {
-        this.showToast(i18n.t('ERROR_MUST_DISCARD_EXACT_AMOUNT') || `Select exactly ${neededCount} cards.`, true);
-        return;
-      }
-
-      try {
-        const submitBtn = document.getElementById('btn-submit-discard');
-        if (submitBtn) submitBtn.disabled = true;
-        await network.sendAction('discard_cards', { cards: discarded });
-        modal.classList.remove('active');
-      } catch (err) {
-        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-        const submitBtn = document.getElementById('btn-submit-discard');
-        if (submitBtn) submitBtn.disabled = false;
-      }
-    });
+    this.discardModal.setupDiscardModal();
   }
 
   syncPhaseTimer(tickData = null) {
@@ -2509,122 +1290,15 @@ export class CatanApp {
   }
 
   checkDiscardState() {
-    const modal = document.getElementById('discard-modal');
-    if (!modal || !this.gameState) return;
-
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-
-    if (this.gameState.phase === 'TURN_DISCARD' && this.gameState.pendingDiscards && this.gameState.pendingDiscards.includes(this.myPlayerId)) {
-      // Find me, or find any player in pendingDiscards that has detailed resource keys
-      let me = this.gameState.players.find(p => p.id === this.myPlayerId);
-      if (!me || (me.resources && typeof me.resources.wood !== 'number')) {
-        const candidate = this.gameState.players.find(p => this.gameState.pendingDiscards.includes(p.id) && p.resources && typeof p.resources.wood === 'number');
-        if (candidate) me = candidate;
-      }
-      if (!me) return;
-
-      const handTypes = this.getHandCardTypes();
-      const resCounts = {};
-      for (const type of handTypes) {
-        if (['cloth', 'coin', 'paper'].includes(type)) {
-          resCounts[type] = (me.commodities && typeof me.commodities[type] === 'number') ? me.commodities[type] : 0;
-        } else {
-          resCounts[type] = (me.resources && typeof me.resources[type] === 'number') ? me.resources[type] : 0;
-        }
-      }
-
-      const total = Object.values(resCounts).reduce((a, b) => a + b, 0);
-      const needed = Math.floor(total / 2);
-      const wallsBuilt = (me.citiesBuilt || []).filter((vid) => this.gameState.grid?.vertices?.[vid]?.building?.hasWall).length;
-      const threshold = typeof me.discardThreshold === 'number' ? me.discardThreshold : (7 + wallsBuilt * 2);
-
-      const neededCountEl = document.getElementById('discard-needed-count');
-      if (neededCountEl) neededCountEl.textContent = needed;
-      const thresholdHint = document.getElementById('discard-threshold-hint');
-      const isSaboteur = this.gameState.discardCause === 'saboteur';
-      const titleEl = document.querySelector('#discard-modal .modal-title');
-      const instructionEl = document.querySelector('#discard-modal .modal-lede');
-      if (titleEl) titleEl.textContent = i18n.t(isSaboteur ? 'DISCARD_TITLE_SABOTEUR' : 'DISCARD_TITLE');
-      if (instructionEl) instructionEl.textContent = i18n.t(isSaboteur ? 'DISCARD_INSTRUCTION_SABOTEUR' : 'DISCARD_INSTRUCTION');
-      if (thresholdHint) {
-        thresholdHint.textContent = isSaboteur
-          ? i18n.t('DISCARD_SABOTEUR_HINT', { needed })
-          : i18n.t('DISCARD_THRESHOLD_HINT', { needed, threshold, walls: wallsBuilt });
-      }
-
-      const isAlreadyActive = modal.classList.contains('active');
-
-      document.body.classList.toggle('mode-cities-knights', this.isCitiesKnights());
-
-      handTypes.forEach(res => {
-        const inp = document.getElementById(`discard-${res}`);
-        const count = resCounts[res];
-        if (inp) {
-          inp.max = count;
-          if (!isAlreadyActive) {
-            inp.value = 0;
-          } else {
-            const cur = parseInt(inp.value, 10) || 0;
-            inp.value = Math.min(cur, count);
-          }
-        }
-        const availSpan = document.getElementById(`discard-avail-${res}`);
-        if (availSpan) {
-          availSpan.textContent = `(${count})`;
-        }
-      });
-
-      const currentCount = handTypes.reduce((sum, res) => {
-        const inp = document.getElementById(`discard-${res}`);
-        return sum + (parseInt(inp?.value, 10) || 0);
-      }, 0);
-      const currentCountEl = document.getElementById('discard-current-count');
-      if (currentCountEl) currentCountEl.textContent = currentCount;
-
-      const submitBtn = document.getElementById('btn-submit-discard');
-      if (submitBtn) {
-        submitBtn.disabled = (currentCount !== needed);
-        if (currentCount === needed) {
-          submitBtn.style.opacity = '1';
-          submitBtn.style.cursor = 'pointer';
-        } else {
-          submitBtn.style.opacity = '0.5';
-          submitBtn.style.cursor = 'not-allowed';
-        }
-      }
-
-      modal.classList.add('active');
-      this.startDiscardCountdown();
-    } else {
-      modal.classList.remove('active');
-      this.stopDiscardCountdown();
-    }
+    this.discardModal.checkDiscardState();
   }
 
   startDiscardCountdown() {
-    this.stopDiscardCountdown();
-    const el = document.getElementById('discard-timer-display');
-    if (!el) return;
-
-    const tick = () => {
-      const deadline = this.gameState?.discardDeadline;
-      if (!deadline) {
-        el.textContent = '';
-        return;
-      }
-      const secs = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      el.textContent = `${secs}s`;
-      el.style.color = secs <= 10 ? '#ef4444' : 'var(--gold-primary)';
-    };
-    tick();
-    this.discardTimerInterval = setInterval(tick, 500);
+    this.discardModal.startDiscardCountdown();
   }
 
   stopDiscardCountdown() {
-    if (this.discardTimerInterval) {
-      clearInterval(this.discardTimerInterval);
-      this.discardTimerInterval = null;
-    }
+    this.discardModal.stopDiscardCountdown();
   }
 
   setupProgressChoiceModal() {
@@ -2756,617 +1430,30 @@ export class CatanApp {
   }
 
   openRobberTargetModal(hexId, options = {}) {
-    const chaseFrom = options.chaseFrom || null;
-    const sendMove = (targetPlayerId) => chaseFrom
-      ? network.sendAction('chase_robber', { vertexId: chaseFrom, hexId, victimPlayerId: targetPlayerId })
-      : network.sendAction('move_robber', { hexId, victimPlayerId: targetPlayerId });
-    const modal = document.getElementById('robber-target-modal');
-    const container = document.getElementById('robber-targets-list');
-    container.innerHTML = '';
-
-    const getCardCount = (p) => {
-      if (!p || !p.resources) return 0;
-      if (typeof p.resources.total === 'number') return p.resources.total;
-      return Object.values(p.resources).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
-    };
-
-    // Find opponents adjacent to hexId
-    const adjacentOpponentIds = new Set();
-    for (const vKey of Object.keys(this.gameState.grid.vertices)) {
-      const v = this.gameState.grid.vertices[vKey];
-      if (v.hexes.includes(hexId) && v.building && v.building.playerId !== this.myPlayerId) {
-        adjacentOpponentIds.add(v.building.playerId);
-      }
-    }
-
-    if (adjacentOpponentIds.size === 0) {
-      sendMove(null);
-      this.showToast(i18n.t('ROBBER_MOVED_NO_TARGETS') || 'Robber moved. No adjacent opponents to rob.');
-      audio.playRobber();
-      if (chaseFrom) this.clearActiveAction();
-      return;
-    }
-
-    const opponentsList = [];
-    adjacentOpponentIds.forEach(pId => {
-      const opponent = this.gameState.players.find(p => p.id === pId);
-      if (opponent) {
-        opponentsList.push({ opponent, cardCount: getCardCount(opponent) });
-      }
-    });
-
-    const eligible = opponentsList.filter(item => item.cardCount > 0);
-
-    if (eligible.length === 0) {
-      sendMove(null);
-      this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL') || 'Robber moved. Adjacent opponents have no cards to steal.');
-      audio.playRobber();
-      if (chaseFrom) this.clearActiveAction();
-      return;
-    }
-
-    eligible.forEach(({ opponent, cardCount }) => {
-      const item = document.createElement('div');
-      item.className = 'robber-target-item';
-      item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 14px; gap: 12px;';
-      item.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: ${opponent.color}; box-shadow: 0 0 6px ${opponent.color}99;"></span>
-          <div>
-            <div style="font-weight: 700; color: var(--text-primary); font-size: 14px;">${escapeHtml(opponent.name)}</div>
-            <div style="font-size: 12px; color: var(--text-secondary);">${cardCount} ${i18n.t('CARDS_LABEL')}</div>
-          </div>
-        </div>
-        <button type="button" class="btn-glass btn-primary btn-steal-card" style="padding: 8px 16px; font-size: 13px; font-weight: 700;">
-          ${i18n.t('STEAL_1_RANDOM_CARD_BTN') || i18n.t('STEAL_1_RES_BTN')}
-        </button>
-      `;
-
-      item.querySelector('.btn-steal-card').addEventListener('click', async () => {
-        modal.classList.remove('active');
-        try {
-          const res = await sendMove(opponent.id);
-          audio.playRobber();
-          if (chaseFrom) this.clearActiveAction();
-          if (res && res.stolenResource) {
-            const cardName = this.cardLabel(res.stolenResource);
-            this.showToast(i18n.t('STOLE_RANDOM_CARD_FROM', { resource: cardName, player: opponent.name }) || `You drew 1 random ${cardName} from ${opponent.name}!`, false);
-          } else {
-            this.showToast(i18n.t('ROBBER_NO_CARDS_TO_STEAL'), true);
-          }
-        } catch (err) {
-          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-        }
-      });
-      container.appendChild(item);
-    });
-
-    modal.classList.add('active');
+    this.discardModal.openRobberTargetModal(hexId, options);
   }
 
   /* =========================================================
    * TRADE MODAL (Domestic & Bank / Port)
    * ========================================================= */
   getBestBankRatio(resource) {
-    if (!this.gameState || !this.gameState.grid) return 4;
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-    let me = this.gameState.players.find(p => p.id === this.myPlayerId);
-    if (!me || (me.resources && typeof me.resources.wood !== 'number')) {
-      const candidate = this.gameState.players.find(p => p.resources && typeof p.resources.wood === 'number');
-      if (candidate) me = candidate;
-    }
-    if (!me) return 4;
-    if (me.merchantFleetResource && me.merchantFleetResource === resource) return 2;
-    if ((me.cityImprovements?.trade || 0) >= 3 && this.isCommodity(resource)) return 2;
-    if (this.gameState.merchantHolder === this.myPlayerId && this.gameState.merchantHexId) {
-      const hex = this.gameState.grid.hexes?.[this.gameState.merchantHexId];
-      if (hex && hex.resource === resource) return 2;
-    }
-    let bestRatio = 4;
-    const ownedVertices = (me.settlementsBuilt || []).concat(me.citiesBuilt || []);
-    for (const vId of ownedVertices) {
-      const v = this.gameState.grid.vertices[vId];
-      if (v && v.harbor) {
-        if (v.harbor.type === resource && v.harbor.ratio === 2) {
-          return 2;
-        }
-        if (v.harbor.type === 'generic' && v.harbor.ratio === 3) {
-          bestRatio = Math.min(bestRatio, 3);
-        }
-      }
-    }
-    return bestRatio;
+    return this.tradeModal.getBestBankRatio(resource);
   }
 
   renderBankTradeUI() {
-    const giveGrid = document.getElementById('bank-give-grid');
-    const wantGrid = document.getElementById('bank-want-grid');
-    if (!giveGrid || !wantGrid) return;
-
-    giveGrid.innerHTML = '';
-    wantGrid.innerHTML = '';
-
-    const resources = this.getHandCardTypes();
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-    let me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-    if (!me || (me.resources && typeof me.resources.wood !== 'number')) {
-      const candidate = this.gameState?.players?.find(p => p.resources && typeof p.resources.wood === 'number');
-      if (candidate) me = candidate;
-    }
-
-    // Detect and display owned harbors
-    const ownedHarbors = [];
-    const ownedVertices = (me?.settlementsBuilt || []).concat(me?.citiesBuilt || []);
-    for (const vId of ownedVertices) {
-      const v = this.gameState?.grid?.vertices?.[vId];
-      if (v && v.harbor) {
-        if (v.harbor.type === 'generic') {
-          const lbl = 'Port General (3:1)';
-          if (!ownedHarbors.includes(lbl)) ownedHarbors.push(lbl);
-        } else {
-          const resName = i18n.t(`RES_${v.harbor.type.toUpperCase()}`);
-          const lbl = `Port ${resName} (2:1)`;
-          if (!ownedHarbors.includes(lbl)) ownedHarbors.push(lbl);
-        }
-      }
-    }
-    if ((me?.cityImprovements?.trade || 0) >= 3) {
-      const house = i18n.t('BANK_TRADING_HOUSE');
-      if (!ownedHarbors.includes(house)) ownedHarbors.push(house);
-    }
-    const harborsStatusEl = document.getElementById('bank-harbors-status');
-    if (harborsStatusEl) {
-      harborsStatusEl.textContent = ownedHarbors.length > 0
-        ? `${i18n.t('BANK_HARBORS_OWNED', { harbors: ownedHarbors.join(', ') })}`
-        : i18n.t('BANK_NO_HARBORS');
-    }
-
-    // Default auto-select give resource if none selected
-    if (!this.bankTrade.give) {
-      const firstAffordable = resources.find(r => {
-        const ratio = this.getBestBankRatio(r);
-        const have = this.getCardCount(me, r);
-        return have >= ratio;
-      });
-      this.bankTrade.give = firstAffordable || 'wood';
-    }
-
-    // Ensure receive resource is not the same as give
-    if (this.bankTrade.receive === this.bankTrade.give) {
-      this.bankTrade.receive = null;
-    }
-    if (!this.bankTrade.receive) {
-      const alternative = resources.find(r => r !== this.bankTrade.give);
-      if (alternative) this.bankTrade.receive = alternative;
-    }
-
-    // Render Give Grid - always allow user to select any resource to trade
-    resources.forEach(res => {
-      const ratio = this.getBestBankRatio(res);
-      const have = this.getCardCount(me, res);
-      const canAfford = have >= ratio;
-      const isSelected = this.bankTrade.give === res;
-
-      let ratioClass = '';
-      let ratioTag = `${ratio}:1 Bank`;
-      if (ratio === 2 && me?.merchantFleetResource === res) {
-        ratioClass = 'harbor-special';
-        ratioTag = i18n.t('BANK_FLEET_RATIO_TAG');
-      } else if (ratio === 2 && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(res)) {
-        ratioClass = 'harbor-special';
-        ratioTag = i18n.t('BANK_TRADING_HOUSE');
-      } else if (ratio === 2) {
-        ratioClass = 'harbor-special';
-        ratioTag = `2:1 Port`;
-      } else if (ratio === 3) {
-        ratioClass = 'harbor-generic';
-        ratioTag = `3:1 Port`;
-      }
-
-      const card = document.createElement('div');
-      card.className = `bank-res-card res-${res} ${isSelected ? 'selected' : ''} ${canAfford ? 'can-afford' : 'insufficient'}`;
-      card.innerHTML = `
-        <span class="bank-res-icon">${ico(res)}</span>
-        <span class="bank-res-name">${this.cardLabel(res)}</span>
-        <span class="bank-res-have" style="${canAfford ? 'color: #34d399; font-weight: 700;' : 'color: #f87171;'}">${i18n.t('BANK_CARDS_HAVE', { count: have })} / ${ratio}</span>
-        <span class="bank-res-ratio ${ratioClass}">${ratioTag}</span>
-      `;
-
-      card.addEventListener('click', () => {
-        this.bankTrade.give = res;
-        if (this.bankTrade.receive === res) this.bankTrade.receive = null;
-        this.renderBankTradeUI();
-      });
-      giveGrid.appendChild(card);
-    });
-
-    // Render Want Grid
-    resources.forEach(res => {
-      const isSelected = this.bankTrade.receive === res;
-      const isGiveRes = this.bankTrade.give === res;
-
-      const card = document.createElement('div');
-      card.className = `bank-res-card res-${res} ${isSelected ? 'selected' : ''} ${isGiveRes ? 'disabled' : ''}`;
-      card.innerHTML = `
-        <span class="bank-res-icon">${ico(res)}</span>
-        <span class="bank-res-name">${this.cardLabel(res)}</span>
-        <span class="bank-res-have">+1 card</span>
-      `;
-
-      if (!isGiveRes) {
-        card.addEventListener('click', () => {
-          this.bankTrade.receive = res;
-          this.renderBankTradeUI();
-        });
-      }
-      wantGrid.appendChild(card);
-    });
-
-    // Update Exchange Indicator Banner & Submit Button
-    const ratioTextEl = document.getElementById('bank-ratio-text');
-    const ratioDescEl = document.getElementById('bank-ratio-desc');
-    const giveSummaryEl = document.getElementById('bank-give-summary');
-    const wantSummaryEl = document.getElementById('bank-want-summary');
-    const submitBtn = document.getElementById('btn-submit-bank-trade');
-
-    if (this.bankTrade.give && this.bankTrade.receive) {
-      const ratio = this.getBestBankRatio(this.bankTrade.give);
-      const have = this.getCardCount(me, this.bankTrade.give);
-      const canAfford = have >= ratio;
-      const giveName = this.cardLabel(this.bankTrade.give);
-      const recName = this.cardLabel(this.bankTrade.receive);
-
-      if (ratioTextEl) ratioTextEl.textContent = i18n.t('BANK_RATE_VALUE', { ratio });
-      if (ratioDescEl) {
-        if (ratio === 2 && me?.merchantFleetResource === this.bankTrade.give) {
-          ratioDescEl.textContent = i18n.t('BANK_FLEET_APPLIED_2', { res: giveName });
-        } else if (ratio === 2 && (me?.cityImprovements?.trade || 0) >= 3 && this.isCommodity(this.bankTrade.give)) {
-          ratioDescEl.textContent = i18n.t('BANK_TRADING_HOUSE_APPLIED');
-        } else if (ratio === 2) {
-          ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_2', { res: giveName });
-        } else if (ratio === 3) {
-          ratioDescEl.textContent = i18n.t('BANK_PORT_APPLIED_3');
-        } else {
-          ratioDescEl.textContent = i18n.t('BANK_STANDARD_RATIO');
-        }
-      }
-
-      if (giveSummaryEl) {
-        giveSummaryEl.innerHTML = `${ratio}x ${giveName} <span style="font-size: 11px; opacity: 0.85;">${i18n.t('AVAILABLE_IN_HAND', { count: have })}</span>`;
-      }
-      if (wantSummaryEl) wantSummaryEl.textContent = `1x ${recName}`;
-
-      if (submitBtn) {
-        if (canAfford) {
-          submitBtn.disabled = false;
-          submitBtn.style.opacity = '1';
-          submitBtn.style.cursor = 'pointer';
-          submitBtn.textContent = `${i18n.t('ACTION_TRADE_BANK')}: ${ratio} ${giveName} ➔ 1 ${recName}`;
-        } else {
-          submitBtn.disabled = true;
-          submitBtn.style.opacity = '0.6';
-          submitBtn.style.cursor = 'not-allowed';
-          submitBtn.textContent = `${i18n.t('ERROR_NOT_ENOUGH_RESOURCES')} (${have}/${ratio} ${giveName})`;
-        }
-      }
-    } else {
-      if (giveSummaryEl) giveSummaryEl.textContent = i18n.t('SELECT_GIVE');
-      if (wantSummaryEl) wantSummaryEl.textContent = i18n.t('SELECT_RECEIVE');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.style.opacity = '0.6';
-        submitBtn.style.cursor = 'not-allowed';
-        submitBtn.textContent = i18n.t('BANK_SELECT_RESOURCES');
-      }
-    }
+    return this.tradeModal.renderBankTradeUI();
   }
 
   setupTradeModals() {
-    const tradeModal = document.getElementById('trade-modal');
-    const tabPlayer = document.getElementById('tab-trade-player');
-    const tabBank = document.getElementById('tab-trade-bank');
-    const sectionPlayer = document.getElementById('trade-player-section');
-    const sectionBank = document.getElementById('trade-bank-section');
-
-    this.bankTrade = { give: null, receive: null };
-
-    const resetTradeSteppers = () => {
-      this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-      const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      this.getHandCardTypes().forEach(res => {
-        // Reset Give
-        const giveInput = document.getElementById(`trade-give-${res}`);
-        const giveVal = document.getElementById(`val-trade-give-${res}`);
-        const availSpan = document.getElementById(`trade-avail-${res}`);
-        if (giveInput) giveInput.value = '0';
-        if (giveVal) giveVal.textContent = '0';
-        if (availSpan) {
-          availSpan.textContent = `(${this.getCardCount(me, res)})`;
-        }
-        // Reset Want
-        const wantInput = document.getElementById(`trade-want-${res}`);
-        const wantVal = document.getElementById(`val-trade-want-${res}`);
-        if (wantInput) wantInput.value = '0';
-        if (wantVal) wantVal.textContent = '0';
-      });
-    };
-
-    // Open Trade Modal
-    document.getElementById('btn-open-trade').addEventListener('click', () => {
-      resetTradeSteppers();
-      this.renderBankTradeUI();
-      const isMyTurn = this.gameState && this.gameState.currentPlayerId === this.myPlayerId;
-      const isActionPhase = this.gameState && this.gameState.phase === 'TURN_ACTION';
-      const canTrade = isMyTurn && isActionPhase;
-      const proposeBtn = document.getElementById('btn-submit-propose-trade');
-      if (proposeBtn) {
-        proposeBtn.disabled = !canTrade;
-        proposeBtn.textContent = canTrade ? i18n.t('PROPOSE_TRADE_BTN') : i18n.t('TRADE_ONLY_ON_YOUR_TURN');
-      }
-      if (tabPlayer && tabBank && sectionPlayer && sectionBank) {
-        tabPlayer.classList.add('active');
-        tabBank.classList.remove('active');
-        sectionPlayer.classList.remove('is-hidden');
-        sectionBank.classList.add('is-hidden');
-      }
-      tradeModal.classList.add('active');
-    });
-
-    // Close / Cancel Trade Modal (X button and all Cancel buttons)
-    document.querySelectorAll('.btn-close-trade-modal, #btn-close-trade').forEach(btn => {
-      btn.addEventListener('click', () => {
-        tradeModal.classList.remove('active');
-      });
-    });
-
-    // Segmented tab switching
-    if (tabPlayer && tabBank && sectionPlayer && sectionBank) {
-      tabPlayer.addEventListener('click', () => {
-        tabPlayer.classList.add('active');
-        tabBank.classList.remove('active');
-        sectionPlayer.classList.remove('is-hidden');
-        sectionBank.classList.add('is-hidden');
-      });
-
-      tabBank.addEventListener('click', () => {
-        tabBank.classList.add('active');
-        tabPlayer.classList.remove('active');
-        sectionBank.classList.remove('is-hidden');
-        sectionPlayer.classList.add('is-hidden');
-        this.renderBankTradeUI();
-      });
-    }
-
-    // Resource Stepper buttons [-] and [+]
-    document.querySelectorAll('.btn-stepper').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.dataset.target;
-        const input = document.getElementById(targetId);
-        const valSpan = document.getElementById(`val-${targetId}`);
-        if (!input || !valSpan) return;
-
-        let curVal = parseInt(input.value) || 0;
-        const isAdd = btn.classList.contains('btn-stepper-add');
-
-        if (isAdd) {
-          if (targetId.startsWith('trade-give-')) {
-            const resType = targetId.replace('trade-give-', '');
-            const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-            const maxAvail = this.getCardCount(me, resType);
-            if (curVal >= maxAvail) {
-              this.showToast(i18n.t('ERROR_NOT_ENOUGH_RESOURCES'), true);
-              return;
-            }
-          }
-          curVal++;
-        } else {
-          if (curVal > 0) curVal--;
-        }
-
-        input.value = curVal;
-        valSpan.textContent = curVal;
-      });
-    });
-
-    // Propose Trade
-    document.getElementById('form-propose-trade').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const isMyTurn = this.gameState && this.gameState.currentPlayerId === this.myPlayerId;
-      const isActionPhase = this.gameState && this.gameState.phase === 'TURN_ACTION';
-      if (!isMyTurn || !isActionPhase) {
-        this.showToast(i18n.t('ERROR_NOT_YOUR_TURN'), true);
-        return;
-      }
-      const give = {};
-      const want = {};
-      for (const res of this.getHandCardTypes()) {
-        give[res] = parseInt(document.getElementById(`trade-give-${res}`)?.value, 10) || 0;
-        want[res] = parseInt(document.getElementById(`trade-want-${res}`)?.value, 10) || 0;
-      }
-
-      const totalGive = Object.values(give).reduce((a, b) => a + b, 0);
-      const totalWant = Object.values(want).reduce((a, b) => a + b, 0);
-      if (totalGive === 0 && totalWant === 0) {
-        this.showToast(i18n.t('TRADE_INVALID_SELECTION'), true);
-        return;
-      }
-
-      try {
-        await network.sendAction('propose_trade', { give, want });
-        audio.playTrade();
-        tradeModal.classList.remove('active');
-      } catch (err) {
-        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-      }
-    });
-
-    // Bank Trade (Colonist style visual card selection)
-    document.getElementById('form-bank-trade').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!this.bankTrade.give || !this.bankTrade.receive) {
-        this.showToast(i18n.t('BANK_SELECT_RESOURCES'), true);
-        return;
-      }
-      const give = this.bankTrade.give;
-      const receive = this.bankTrade.receive;
-      if (give === receive) {
-        this.showToast(i18n.t('TRADE_SAME_BANK_RESOURCE'), true);
-        return;
-      }
-
-      const ratio = this.getBestBankRatio(give);
-      const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      if (me && this.getCardCount(me, give) < ratio) {
-        this.showToast(i18n.t('ERROR_NOT_ENOUGH_RESOURCES'), true);
-        return;
-      }
-
-      try {
-        await network.sendAction('bank_trade', { give, receive, ratio });
-        audio.playTrade();
-        tradeModal.classList.remove('active');
-        const giveName = i18n.t(`RES_${give.toUpperCase()}`);
-        const recName = i18n.t(`RES_${receive.toUpperCase()}`);
-        this.showToast(i18n.t('BANK_TRADE_SUCCESS', { ratio, give: giveName, receive: recName }), false);
-      } catch (err) {
-        this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-      }
-    });
+    return this.tradeModal.setupTradeModals();
   }
 
   setupDevCardsModal() {
-    const modal = document.getElementById('dev-cards-modal');
-    document.getElementById('btn-open-dev-cards').addEventListener('click', () => {
-      this.renderDevCardsList();
-      modal.classList.add('active');
-    });
-    document.getElementById('btn-close-dev-cards').addEventListener('click', () => {
-      modal.classList.remove('active');
-    });
-    const closeX = document.getElementById('btn-close-dev-cards-x');
-    if (closeX) {
-      closeX.addEventListener('click', () => modal.classList.remove('active'));
-    }
-
-    // Monopoly & Year of Plenty dialog close listeners
-    const closeMonopoly = document.getElementById('btn-close-monopoly');
-    if (closeMonopoly) {
-      closeMonopoly.addEventListener('click', () => {
-        document.getElementById('monopoly-modal').classList.remove('active');
-      });
-    }
-    const closeYop = document.getElementById('btn-close-yop');
-    if (closeYop) {
-      closeYop.addEventListener('click', () => {
-        document.getElementById('year-of-plenty-modal').classList.remove('active');
-      });
-    }
+    return this.devCardsModal.setupDevCardsModal();
   }
 
   renderDevCardsList() {
-    const container = document.getElementById('dev-cards-list');
-    container.innerHTML = '';
-    if (!this.gameState) return;
-
-    const me = this.gameState.players.find(p => p.id === this.myPlayerId);
-    const unplayedCards = me && Array.isArray(me.devCards) ? me.devCards.filter(c => !c.played) : [];
-    if (!me || unplayedCards.length === 0) {
-      container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 24px 0;">${i18n.t('NO_DEV_CARDS_IN_HAND')}</p>`;
-      return;
-    }
-
-    unplayedCards.forEach(card => {
-      const cardEl = document.createElement('div');
-      cardEl.className = 'room-card';
-      const cardName = i18n.t(`CARD_${card.type.toUpperCase()}`);
-      const cardDesc = i18n.t(`CARD_${card.type.toUpperCase()}_DESC`);
-      const isBoughtThisTurn = card.boughtTurn === this.gameState.turnNumber;
-
-      let actionMarkup = '';
-      if (card.type === 'victory_point') {
-        actionMarkup = `<span class="dev-card-vp-badge">${i18n.t('VP_COUNTED_AUTO')}</span>`;
-      } else if (isBoughtThisTurn) {
-        actionMarkup = `<span class="dev-card-rule-badge">${i18n.t('CANNOT_PLAY_TURN_BOUGHT')}</span>`;
-      } else {
-        actionMarkup = `<button class="btn-glass btn-primary btn-play-card" data-id="${card.id}">${i18n.t('ACTION_PLAY_CARD')}</button>`;
-      }
-
-      cardEl.innerHTML = `
-        <div style="flex: 1;">
-          <h4 style="font-size: 15px; font-weight: 700; color: var(--gold-primary);">${cardName}</h4>
-          <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">${cardDesc}</p>
-        </div>
-        <div style="display: flex; align-items: center;">
-          ${actionMarkup}
-        </div>
-      `;
-
-      const playBtn = cardEl.querySelector('.btn-play-card');
-      if (playBtn) {
-        playBtn.addEventListener('click', async () => {
-          document.getElementById('dev-cards-modal').classList.remove('active');
-
-          if (card.type === 'monopoly') {
-            const monopolyModal = document.getElementById('monopoly-modal');
-            monopolyModal.classList.add('active');
-            const btns = monopolyModal.querySelectorAll('.res-choice-btn');
-            btns.forEach(b => {
-              b.onclick = async () => {
-                const res = b.dataset.res;
-                try {
-                  await network.sendAction('play_dev_card', { cardId: card.id, options: { resource: res } });
-                  audio.playBuild();
-                  monopolyModal.classList.remove('active');
-                } catch (err) {
-                  this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-                }
-              };
-            });
-          } else if (card.type === 'year_of_plenty') {
-            const yopModal = document.getElementById('year-of-plenty-modal');
-            yopModal.classList.add('active');
-            const confirmBtn = document.getElementById('btn-confirm-yop');
-            confirmBtn.onclick = async () => {
-              const res1 = document.getElementById('yop-res-1').value;
-              const res2 = document.getElementById('yop-res-2').value;
-              try {
-                await network.sendAction('play_dev_card', { cardId: card.id, options: { res1, res2 } });
-                audio.playBuild();
-                yopModal.classList.remove('active');
-              } catch (err) {
-                this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-              }
-            };
-          } else if (card.type === 'knight') {
-            try {
-              await network.sendAction('play_dev_card', { cardId: card.id });
-              audio.playBuild();
-              this.showToast(i18n.t('KNIGHT_PLAYED_TOAST'));
-            } catch (err) {
-              this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-            }
-          } else if (card.type === 'road_building') {
-            try {
-              await network.sendAction('play_dev_card', { cardId: card.id });
-              audio.playBuild();
-              this.activateBuildRoad();
-              this.showToast(i18n.t('ROAD_BUILDING_PLAYED_TOAST'));
-            } catch (err) {
-              this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-            }
-          } else {
-            try {
-              await network.sendAction('play_dev_card', { cardId: card.id });
-              audio.playBuild();
-            } catch (err) {
-              this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-            }
-          }
-        });
-      }
-
-      container.appendChild(cardEl);
-    });
+    return this.devCardsModal.renderDevCardsList();
   }
 
   setupProgressCardUi() {
@@ -4706,254 +2793,15 @@ export class CatanApp {
   }
 
   renderLog(logs) {
-    if (!logs) return;
-    const logScroll = document.getElementById('log-scroll');
-    logScroll.innerHTML = '';
-    this.myPlayerId = network.currentPlayerId || this.myPlayerId;
-    const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-
-    // Check for newly added events since last render
-    if (logs.length > (this.lastProcessedLogCount || 0)) {
-      const newEntries = logs.slice(this.lastProcessedLogCount || 0);
-      newEntries.forEach(rawEntry => {
-        const entry = redactEventLogEntryForViewer(rawEntry, me);
-        if (entry.type === 'ROBBER_STOLE' && me && entry.args && entry.args.victimName === me.name && entry.args.robberName !== me.name) {
-          this.showToast(i18n.t('ROBBER_STOLE_FROM_YOU', { robber: entry.args.robberName }), true);
-        } else if (entry.type === 'RESOURCE_PRODUCED' && me && entry.args && entry.args.playerId === me.id && entry.args.resource) {
-          const resLocalized = i18n.t(`RES_${entry.args.resource.toUpperCase()}`);
-          const message = i18n.t('YOU_RECEIVED_RESOURCE', { amount: entry.args.amount, resource: resLocalized });
-          if (this.diceAnim) this.deferredProductionToasts.push(message);
-          else this.showToast(message);
-        } else if (entry.type === 'WEDDING_GIFT' && me && entry.args) {
-          if (entry.args.targetName === me.name) {
-            this.showToast(i18n.t('WEDDING_GIFT_GIVEN', { player: entry.args.playerName, count: entry.args.count }) || `💍 You gave ${entry.args.count} card(s) to ${entry.args.playerName} for the wedding.`, true);
-          } else if (entry.args.playerName === me.name) {
-            this.showToast(i18n.t('WEDDING_GIFT_RECEIVED', { target: entry.args.targetName, count: entry.args.count }) || `💍 You received ${entry.args.count} wedding card(s) from ${entry.args.targetName}!`);
-          }
-        } else if (entry.type === 'COMMERCIAL_HARBOR_TRADE' && me && entry.args && entry.args.playerName === me.name) {
-          this.showToast(`⚖️ Commercial Harbor: traded ${entry.args.resource} for ${entry.args.count} commodities!`);
-        }
-      });
-      this.lastProcessedLogCount = logs.length;
-    }
-
-    logs.slice().reverse().forEach(rawEntry => {
-      const entry = redactEventLogEntryForViewer(rawEntry, me);
-      const el = document.createElement('div');
-      el.className = 'log-entry';
-      const argsCopy = entry.args ? { ...entry.args } : {};
-      const localizeResToken = (val) => {
-        if (typeof val !== 'string') return val;
-        return i18n.t(`RES_${val.toUpperCase()}`);
-      };
-      if (typeof argsCopy.resource === 'string') {
-        argsCopy.resource = localizeResToken(argsCopy.resource);
-      }
-      if (typeof argsCopy.give === 'string') {
-        argsCopy.give = localizeResToken(argsCopy.give);
-      } else if (argsCopy.give && typeof argsCopy.give === 'object') {
-        argsCopy.give = Object.entries(argsCopy.give)
-          .filter(([, count]) => count > 0)
-          .map(([res, count]) => `${count} ${this.cardLabel(res)}`)
-          .join(', ');
-      }
-      if (typeof argsCopy.receive === 'string') {
-        argsCopy.receive = localizeResToken(argsCopy.receive);
-      }
-      el.textContent = i18n.t(entry.messageKey, argsCopy);
-      logScroll.appendChild(el);
-    });
+    return this.chatLogView.renderLog(logs, this.diceAnim, this.deferredProductionToasts);
   }
 
   appendChatMessage(msg) {
-    const container = document.getElementById('chat-messages');
-    const el = document.createElement('div');
-    el.style.marginBottom = '6px';
-    el.innerHTML = `
-      <span style="color: ${msg.color || '#f59e0b'}; font-weight: 700;">${escapeHtml(msg.senderName)}:</span>
-      <span style="color: var(--text-primary);">${escapeHtml(msg.text)}</span>
-    `;
-    container.appendChild(el);
-    container.scrollTop = container.scrollHeight;
+    return this.chatLogView.appendChatMessage(msg);
   }
 
   renderActiveTradeBanner(activeTrade) {
-    const banner = document.getElementById('active-trade-banner');
-    if (!banner) return;
-    if (!activeTrade) {
-      banner.classList.remove('is-visible');
-      banner.innerHTML = '';
-      this.lastTradeKey = null;
-      return;
-    }
-
-    const isMine = activeTrade.fromPlayerId === this.myPlayerId;
-    banner.classList.add('is-visible');
-
-    const from = this.gameState ? this.gameState.players.find(p => p.id === activeTrade.fromPlayerId) : null;
-    const fromName = from ? from.name : '?';
-
-    // Notify receivers with chime & toast once per new incoming offer
-    if (!isMine) {
-      const key = `${activeTrade.fromPlayerId}:${JSON.stringify(activeTrade.give)}:${JSON.stringify(activeTrade.want)}`;
-      if (key !== this.lastTradeKey) {
-        audio.playTrade();
-        this.showToast(i18n.t('TRADE_OFFER_FROM', { name: fromName }));
-        this.lastTradeKey = key;
-      }
-    } else {
-      this.lastTradeKey = null;
-    }
-
-    // Helper to render resource/commodity chips
-    const renderChips = (cardObj) => {
-      const entries = Object.entries(cardObj || {}).filter(([_, c]) => c > 0);
-      if (entries.length === 0) return `<span style="font-size: 11px; color: var(--text-muted);">-</span>`;
-      return entries.map(([r, c]) => `
-        <span class="trade-chip res-${r}">
-          ${ico(r)}
-          <span>${c} ${this.cardLabel(r)}</span>
-        </span>
-      `).join('');
-    };
-
-    const giveChips = renderChips(activeTrade.give);
-    const wantChips = renderChips(activeTrade.want);
-
-    // Build accepted-by confirm buttons for trade initiator
-    const acceptedPlayers = (activeTrade.acceptedBy || []).map(pid =>
-      this.gameState ? this.gameState.players.find(p => p.id === pid) : null
-    ).filter(Boolean);
-
-    let contentHTML = '';
-
-    if (isMine) {
-      // Initiator perspective
-      let confirmButtonsHTML = '';
-      if (acceptedPlayers.length > 0) {
-        confirmButtonsHTML = acceptedPlayers.map(p =>
-          `<button class="btn-glass btn-trade-confirm btn-confirm-trade" data-pid="${p.id}">✅ ${i18n.t('CONFIRM_WITH')} ${escapeHtml(p.name)}</button>`
-        ).join('');
-      }
-
-      contentHTML = `
-        <div class="trade-banner-body">
-          <div class="trade-banner-header">
-            <span>🤝</span>
-            <span>${i18n.t('TRADE_YOUR_OFFER')}</span>
-          </div>
-          <div class="trade-banner-exchange">
-            <div class="trade-exchange-side">
-              <span class="trade-side-label" style="color: #f87171;">${i18n.t('TRADE_GIVE_LABEL')}:</span>
-              <div class="trade-chips-list">${giveChips}</div>
-            </div>
-            <span class="trade-arrow">&rarr;</span>
-            <div class="trade-exchange-side">
-              <span class="trade-side-label" style="color: #34d399;">${i18n.t('TRADE_RECEIVE_LABEL')}:</span>
-              <div class="trade-chips-list">${wantChips}</div>
-            </div>
-          </div>
-          ${acceptedPlayers.length > 0
-          ? `<div class="trade-status-badge">✔ ${i18n.t('TRADE_PLAYERS_ACCEPTED', { names: acceptedPlayers.map(p => escapeHtml(p.name)).join(', ') })}</div>`
-          : `<div style="font-size: 11px; color: var(--text-secondary);">${i18n.t('TRADE_WAITING_PLAYERS')}</div>`
-        }
-        </div>
-        <div class="trade-banner-actions">
-          ${confirmButtonsHTML}
-          <button class="btn-glass btn-secondary btn-cancel-trade">${i18n.t('CANCEL_ACTION')}</button>
-        </div>
-      `;
-    } else {
-      // Receiver perspective
-      const hasAccepted = (activeTrade.acceptedBy || []).includes(this.myPlayerId);
-      const me = this.gameState ? this.gameState.players.find(p => p.id === this.myPlayerId) : null;
-      const canAfford = me ? Object.entries(activeTrade.want).every(([res, amt]) => this.getCardCount(me, res) >= amt) : true;
-
-      let actionButtonsHTML = '';
-      if (hasAccepted) {
-        actionButtonsHTML = `
-          <span class="trade-status-badge">✔ ${i18n.t('TRADE_YOU_ACCEPTED')}</span>
-          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('TRADE_RETRACT')}</button>
-        `;
-      } else if (canAfford) {
-        actionButtonsHTML = `
-          <button class="btn-glass btn-trade-accept btn-accept-trade">${i18n.t('ACCEPT_TRADE_BTN')}</button>
-          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
-        `;
-      } else {
-        actionButtonsHTML = `
-          <button class="btn-glass btn-trade-disabled" disabled title="${i18n.t('TRADE_NOT_ENOUGH_CARDS')}">${i18n.t('TRADE_NOT_ENOUGH_CARDS')}</button>
-          <button class="btn-glass btn-trade-decline btn-decline-trade">${i18n.t('DECLINE_TRADE_BTN')}</button>
-        `;
-      }
-
-      contentHTML = `
-        <div class="trade-banner-body">
-          <div class="trade-banner-header" style="display: flex; align-items: center; gap: 8px;">
-            <img src="${from?.avatar || '/assets/avatars/settler.jpg'}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 2px solid ${from?.color || 'var(--gold-primary)'};" alt="${escapeHtml(fromName)}" />
-            <span>${i18n.t('TRADE_OFFER_FROM', { name: fromName })}</span>
-          </div>
-          <div class="trade-banner-exchange">
-            <div class="trade-exchange-side">
-              <span class="trade-side-label" style="color: #34d399;">${i18n.t('TRADE_RECEIVE_LABEL')}:</span>
-              <div class="trade-chips-list">${giveChips}</div>
-            </div>
-            <span class="trade-arrow">&larr;</span>
-            <div class="trade-exchange-side">
-              <span class="trade-side-label" style="color: #f87171;">${i18n.t('TRADE_GIVE_LABEL')}:</span>
-              <div class="trade-chips-list">${wantChips}</div>
-            </div>
-          </div>
-        </div>
-        <div class="trade-banner-actions">
-          ${actionButtonsHTML}
-        </div>
-      `;
-    }
-
-    banner.innerHTML = contentHTML;
-
-    // Confirm trade buttons (initiator picks which accepted player to trade with)
-    banner.querySelectorAll('.btn-confirm-trade').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          await network.sendAction('confirm_trade', { targetPlayerId: btn.dataset.pid });
-        } catch (err) {
-          this.showToast(err.message, true);
-        }
-      });
-    });
-
-    const acceptBtn = banner.querySelector('.btn-accept-trade');
-    if (acceptBtn) {
-      acceptBtn.addEventListener('click', async () => {
-        try {
-          await network.sendAction('respond_trade', { accept: true });
-        } catch (err) {
-          this.showToast(err.message, true);
-        }
-      });
-    }
-
-    const declineBtn = banner.querySelector('.btn-decline-trade');
-    if (declineBtn) {
-      declineBtn.addEventListener('click', async () => {
-        try {
-          await network.sendAction('respond_trade', { accept: false });
-          banner.classList.remove('is-visible');
-          banner.innerHTML = '';
-        } catch (err) {
-          this.showToast(i18n.t(`ERROR_${err.message}`) || err.message, true);
-        }
-      });
-    }
-
-    const cancelBtn = banner.querySelector('.btn-cancel-trade');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', async () => {
-        await network.sendAction('cancel_trade');
-      });
-    }
+    return this.tradeModal.renderActiveTradeBanner(activeTrade);
   }
 
   updateHUDText() {
