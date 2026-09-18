@@ -78,6 +78,7 @@
         <button id="tab-btn-host" class="lobby-tab-btn active" data-i18n="HOST_ROOM_TAB">Host Game</button>
         <button id="tab-btn-join" class="lobby-tab-btn" data-i18n="JOIN_ROOM_TAB">Join Game</button>
         <button id="tab-btn-public" class="lobby-tab-btn" data-i18n="PUBLIC_ROOMS_TAB">Public Lobbies</button>
+        <button id="tab-btn-ranked" class="lobby-tab-btn" data-i18n="RANKED_QUEUE_TAB">Ranked 4P</button>
       </div>
 
       <!-- Host Room Form -->
@@ -166,6 +167,36 @@
       <!-- Public Rooms List -->
       <div id="tab-content-public" class="lobby-panel lobby-tab-content is-hidden">
         <div id="public-rooms-list" class="room-list"></div>
+      </div>
+
+      <!-- Ranked Queue Panel -->
+      <div id="tab-content-ranked" class="lobby-panel lobby-tab-content is-hidden">
+        <div class="ranked-queue-card">
+          <div class="ranked-queue-icon">🏆</div>
+          <h2 class="ranked-queue-title" data-i18n="RANKED_TITLE">4-Player Ranked Matchmaking</h2>
+          <p class="ranked-queue-desc" data-i18n="RANKED_DESC">
+            Compete in official 4-player matches with Elo rating. 1st & 2nd gain Elo, 3rd & 4th lose Elo. Early abandonment receives a 4th-place penalty.
+          </p>
+
+          <div id="ranked-player-badge" class="ranked-player-badge">
+            <span class="ico" data-icon="shield"></span>
+            <span id="ranked-user-elo-text">Rating: 1000 Elo</span>
+          </div>
+
+          <div id="ranked-queue-action-box">
+            <button id="btn-join-ranked-queue" type="button" class="btn-glass btn-primary btn-lg btn-ranked-find">
+              ⚔️ Find Match (4P)
+            </button>
+            <div id="ranked-queue-status-box" class="ranked-queue-status-box is-hidden">
+              <div class="spinner ranked-queue-spinner"></div>
+              <div class="ranked-queue-status-text" id="ranked-queue-status-text">Searching for players (1/4)...</div>
+              <p class="ranked-queue-subtext">Match starts automatically when 4 players are found</p>
+              <button id="btn-leave-ranked-queue" type="button" class="btn-glass btn-secondary btn-ranked-cancel">
+                Cancel Queue
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </main>

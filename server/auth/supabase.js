@@ -117,6 +117,21 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch, profi
       return Array.isArray(rows) && rows[0] ? rows[0] : null;
     },
 
+    async upsertRating(userId, { elo, games }) {
+      if (!userId) return null;
+      const rows = await rest('ratings?on_conflict=user_id', {
+        method: 'POST',
+        extraHeaders: { Prefer: 'return=representation,resolution=merge-duplicates' },
+        body: {
+          user_id: userId,
+          elo: Math.round(elo),
+          games: Number(games) || 0,
+          updated_at: new Date().toISOString()
+        }
+      });
+      return Array.isArray(rows) && rows[0] ? rows[0] : { user_id: userId, elo, games };
+    },
+
     async getRecentMatches(userId, limit = 10) {
       if (!userId) return [];
       const rows = await rest(

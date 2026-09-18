@@ -32,6 +32,8 @@ import { publicAuthConfig, summarizeStats } from './auth/supabase.js';
 import { requireAdminAuth } from './adminAuth.js';
 import { logger, serializeError } from './logger.js';
 import { initRedisAdapter, closeRedisClients } from './redis.js';
+import { RankedQueue } from './game/RankedQueue.js';
+import { applyRankedAbandonPenalty } from './auth/matchStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,7 +85,77 @@ export function killSpawnedAgentsForRoom(roomCode) {
 }
 
 const roomManager = new RoomManager(io, {
-  onRoomDestroyed: killSpawnedAgentsForRoom
+  onRoomDestroyed: killSpawnedAgentsForRoom,
+  onRankedAbandon: (room, player) => {
+    applyRankedAbandonPenalty(room, player).catch(err => {
+      console.error('[server] Error applying ranked abandon penalty:', err.message);
+    });
+  }
+});
+
+export const rankedQueue = new RankedQueue({
+  onMatchReady: (matchedPlayers) => {
+    if (!Array.isArray(matchedPlayers) || matchedPlayers.length < 4) return;
+    const host = matchedPlayers[0];
+    const session = roomManager.createPlayerSession();
+    const room = roomManager.createRoom(
+      {
+        id: session.id,
+        name: host.name,
+        socketId: host.socketId,
+        reconnectTokenHash: session.reconnectTokenHash,
+        userId: host.userId,
+        elo: host.elo,
+        avatar: host.avatar
+      },
+      {
+        name: 'Ranked Match',
+        isPrivate: true,
+        mode: 'base',
+        ranked: true,
+        turnDuration: 60
+      }
+    );
+
+    for (let i = 1; i < matchedPlayers.length; i++) {
+      const p = matchedPlayers[i];
+      const pSession = roomManager.createPlayerSession();
+      roomManager.joinRoom(room.code, {
+        id: pSession.id,
+        name: p.name,
+        socketId: p.socketId,
+        reconnectTokenHash: pSession.reconnectTokenHash,
+        userId: p.userId,
+        elo: p.elo,
+        avatar: p.avatar
+      });
+    }
+
+    // Auto-ready all players
+    for (const p of room.players) {
+      p.isReady = true;
+    }
+
+    // Start game
+    roomManager.startGame(room.code, room.players[0].id);
+
+    // Notify sockets
+    for (const p of room.players) {
+      if (p.socketId) {
+        const sock = io.sockets.sockets.get(p.socketId);
+        if (sock) {
+          sock.join(room.code);
+          sock.emit('ranked_match_found', {
+            roomCode: room.code,
+            playerId: p.id,
+            players: room.players.map(x => ({ id: x.id, name: x.name, color: x.color }))
+          });
+        }
+      }
+    }
+
+    roomManager.broadcastState(room);
+  }
 });
 
 // --- Real-time IP & Traffic Telemetry Infrastructure ---
@@ -1789,7 +1861,45 @@ io.on('connection', (socket) => {
     handleGameAction('end_turn', data?.code, (engine) => engine.endTurn(currentPlayerId), cb, data);
   });
 
+  socket.on('join_ranked_queue', async (data, callback) => {
+    try {
+      const identity = await resolveSocketIdentity(socket, data?.accessToken);
+      if (!identity.userId) {
+        throw new Error('AUTH_REQUIRED');
+      }
+      socket.data.auth = identity;
+      const admin = getAuthRuntime().admin;
+      let elo = 1000;
+      if (admin?.getRating) {
+        const r = await admin.getRating(identity.userId);
+        if (r) elo = Number(r.elo) || 1000;
+      }
+      identity.elo = elo;
+
+      const res = rankedQueue.addPlayer({
+        socketId: socket.id,
+        userId: identity.userId,
+        name: identity.displayName || 'Player',
+        elo,
+        avatar: sanitizeAvatarUrl(data?.avatar) || identity.avatarUrl || null
+      });
+
+      if (callback) callback({ success: true, ...res });
+      socket.emit('ranked_queue_status', rankedQueue.getStatus(identity.userId));
+    } catch (err) {
+      if (callback) callback({ error: err.message });
+    }
+  });
+
+  socket.on('leave_ranked_queue', (data, callback) => {
+    const userId = socket.data?.auth?.userId;
+    rankedQueue.removePlayer(userId || socket.id);
+    if (callback) callback({ success: true });
+    socket.emit('ranked_queue_status', { inQueue: false, queueSize: rankedQueue.getQueueSize(), needed: 4 });
+  });
+
   socket.on('disconnect', (reason) => {
+    rankedQueue.removePlayer(socket.id);
     const discTime = new Date().toLocaleTimeString();
     const active = trafficStats.activeSockets.get(socket.id);
     const pName = active?.playerName || null;

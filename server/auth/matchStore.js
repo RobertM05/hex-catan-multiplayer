@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getAuthRuntime } from './identity.js';
+import { calculatePlayerEloDelta, calculateAbandonPenalty } from '../game/EloRating.js';
 
 export const queue = new Map();
 let queueInterval = null;
@@ -173,6 +174,15 @@ export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
     await runtime.admin.insertMatch(payload.matchRow, payload.playerRows);
     room.matchPersisted = true;
     queue.delete(payload.matchId);
+
+    if (room.ranked) {
+      try {
+        await persistRankedMatchRatings(room, runtime);
+      } catch (err) {
+        console.error('[auth] match persist ranked ratings error:', err.message);
+      }
+    }
+
     return { skipped: false, matchId: payload.matchId };
   } catch (err) {
     task.inFlight = false;
@@ -192,4 +202,78 @@ export async function persistFinishedMatch(room, runtime = getAuthRuntime()) {
 
     return { skipped: true, reason: 'queued_for_retry', error: err.message };
   }
+}
+
+export async function applyRankedAbandonPenalty(room, abandonedPlayer, runtime = getAuthRuntime()) {
+  if (!room?.ranked) return null;
+  const userId = abandonedPlayer.frozenUserId || abandonedPlayer.userId;
+  if (!userId || abandonedPlayer.rankedPenaltyApplied) return null;
+
+  const admin = runtime.admin;
+  if (!admin?.upsertRating) return null;
+
+  const initialField = room.initialFieldRatings?.length === 4
+    ? room.initialFieldRatings
+    : room.players.map(p => Number(p.elo) || 1000);
+
+  const existingRating = admin.getRating ? await admin.getRating(userId) : null;
+  const currentElo = Number(existingRating?.elo) || Number(abandonedPlayer.elo) || 1000;
+  const currentGames = Number(existingRating?.games) || 0;
+
+  const delta = calculateAbandonPenalty(currentElo, initialField);
+  const newElo = Math.max(100, currentElo + delta);
+
+  abandonedPlayer.rankedPenaltyApplied = true;
+  abandonedPlayer.abandonPenaltyDelta = delta;
+
+  await admin.upsertRating(userId, {
+    elo: newElo,
+    games: currentGames + 1
+  });
+
+  return { userId, oldElo: currentElo, newElo, delta };
+}
+
+export async function persistRankedMatchRatings(room, runtime = getAuthRuntime()) {
+  if (!room?.ranked || room.rankedRatingsPersisted) return null;
+  const admin = runtime.admin;
+  if (!admin?.upsertRating) return null;
+
+  const initialField = room.initialFieldRatings?.length === 4
+    ? room.initialFieldRatings
+    : room.players.map(p => Number(p.elo) || 1000);
+
+  const ranks = computeFinishRanks(room.engine);
+  const results = [];
+
+  for (const { player, rank } of ranks) {
+    const lobby = room.players.find(p => p.id === player.id) || {};
+    const userId = lobby.frozenUserId || lobby.userId || player.userId;
+    if (!userId) continue;
+
+    // If player already abandoned and took penalty, skip
+    if (lobby.abandoned || lobby.rankedPenaltyApplied) continue;
+
+    const existingRating = admin.getRating ? await admin.getRating(userId) : null;
+    const currentElo = Number(existingRating?.elo) || Number(lobby.elo) || 1000;
+    const currentGames = Number(existingRating?.games) || 0;
+
+    const oppRatings = [...initialField];
+    const selfIdx = oppRatings.indexOf(currentElo);
+    if (selfIdx !== -1) oppRatings.splice(selfIdx, 1);
+    else oppRatings.pop();
+
+    const delta = calculatePlayerEloDelta(currentElo, oppRatings, rank);
+    const newElo = Math.max(100, currentElo + delta);
+
+    await admin.upsertRating(userId, {
+      elo: newElo,
+      games: currentGames + 1
+    });
+
+    results.push({ userId, oldElo: currentElo, newElo, delta, rank });
+  }
+
+  room.rankedRatingsPersisted = true;
+  return results;
 }

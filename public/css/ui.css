@@ -4339,3 +4339,58 @@ body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
     padding: 16px;
   }
 }
+
+/* Ranked Matchmaking Queue */
+.ranked-queue-card {
+  text-align: center;
+  padding: 32px 16px;
+}
+.ranked-queue-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+.ranked-queue-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold-primary);
+  margin-bottom: 8px;
+}
+.ranked-queue-desc {
+  color: var(--text-secondary);
+  max-width: 480px;
+  margin: 0 auto 20px auto;
+  font-size: 13px;
+}
+.ranked-player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 16px;
+  border-radius: 20px;
+  margin-bottom: 24px;
+}
+.btn-ranked-find {
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.ranked-queue-status-box {
+  margin-top: 20px;
+}
+.ranked-queue-spinner {
+  margin: 0 auto 12px auto;
+}
+.ranked-queue-status-text {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--gold-primary);
+}
+.ranked-queue-subtext {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.btn-ranked-cancel {
+  margin-top: 14px;
+}

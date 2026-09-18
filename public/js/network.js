@@ -21,6 +21,8 @@ export class NetworkClient {
     this.onError = null;
     this.onKicked = null;
     this.onSeatReclaimed = null;
+    this.onRankedQueueStatus = null;
+    this.onRankedMatchFound = null;
     /** Called when handshake rejects a stored JWT; caller should clear the session. */
     this.onInvalidAuth = null;
     this._clearingInvalidAuth = false;
@@ -169,6 +171,16 @@ export class NetworkClient {
           this.connectionFSM.transition(CONNECTION_EVENTS.TERMINATE, data);
         }
         if (this.onKicked) this.onKicked(data);
+      });
+
+      this.socket.on('ranked_queue_status', (data) => {
+        if (this.onRankedQueueStatus) this.onRankedQueueStatus(data);
+      });
+
+      this.socket.on('ranked_match_found', (data) => {
+        this.currentRoomCode = data?.roomCode;
+        if (data?.playerId) this.currentPlayerId = data.playerId;
+        if (this.onRankedMatchFound) this.onRankedMatchFound(data);
       });
     });
   }
@@ -420,6 +432,25 @@ export class NetworkClient {
       this.socket.emit(actionName, { code: this.currentRoomCode, ...data }, (res) => {
         if (res && res.success) resolve(res);
         else reject(new Error(res ? res.error : 'Action failed'));
+      });
+    });
+  }
+
+  joinRankedQueue(avatar = null) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) return reject(new Error('SOCKET_DISCONNECTED'));
+      this.socket.emit('join_ranked_queue', { accessToken: this.accessToken, avatar }, (res) => {
+        if (res?.error) reject(new Error(res.error));
+        else resolve(res);
+      });
+    });
+  }
+
+  leaveRankedQueue() {
+    return new Promise((resolve) => {
+      if (!this.socket) return resolve({ success: true });
+      this.socket.emit('leave_ranked_queue', {}, (res) => {
+        resolve(res);
       });
     });
   }

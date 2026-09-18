@@ -76,6 +76,12 @@ export class RoomManager {
     this.onRoomDestroyed = typeof options.onRoomDestroyed === 'function'
       ? options.onRoomDestroyed
       : null;
+    this.onRankedAbandon = typeof options.onRankedAbandon === 'function'
+      ? options.onRankedAbandon
+      : null;
+    this.onRankedGameEnd = typeof options.onRankedGameEnd === 'function'
+      ? options.onRankedGameEnd
+      : null;
     this.staleRoomMaxAgeMs = options.staleRoomMaxAgeMs ?? STALE_ROOM_MAX_AGE_MS;
     const cleanupMs = options.staleCleanupIntervalMs ?? STALE_ROOM_CLEANUP_INTERVAL_MS;
     this.staleCleanupInterval = null;
@@ -184,7 +190,8 @@ export class RoomManager {
       authFrozen: false,
       startedAt: null,
       matchId: null,
-      ranked: false,
+      ranked: Boolean(options?.ranked),
+      initialFieldRatings: [],
       matchPersisted: false,
       matchPersistStarted: false
     };
@@ -200,6 +207,7 @@ export class RoomManager {
       socketId: hostData.socketId,
       reconnectTokenHash: hostData.reconnectTokenHash || null,
       userId: hostData.userId || null,
+      elo: Number(hostData.elo) || 1000,
       avatar: hostData.avatar || null
     });
 
@@ -208,7 +216,8 @@ export class RoomManager {
       name: hostName,
       color: '#e63946',
       isBot: false,
-      userId: hostData.userId || null
+      userId: hostData.userId || null,
+      elo: Number(hostData.elo) || 1000
     });
 
     this.rooms.set(code, room);
@@ -246,18 +255,23 @@ export class RoomManager {
     const existing = room.players.find(p => this.matchesReconnectToken(p, playerData.reconnectToken)
       || (playerData.allowLegacyId !== false && (p.id === playerData.id || (p.socketId && playerData.socketId && p.socketId === playerData.socketId))));
     if (existing) {
+      if (room.ranked && existing.abandoned) {
+        return { error: 'RANKED_MATCH_ABANDONED' };
+      }
       existing.socketId = playerData.socketId;
       if (playerData.avatar !== undefined) {
         existing.avatar = playerData.avatar || null;
       }
       if (!room.isStarted && !room.authFrozen && playerData.userId) {
         existing.userId = playerData.userId;
+        existing.elo = Number(playerData.elo) || existing.elo || 1000;
         if (playerData.name) {
           existing.name = validateDisplayName(playerData.name, existing.name);
           const enginePlayer = room.engine.players.find(p => p.id === existing.id);
           if (enginePlayer) {
             enginePlayer.name = existing.name;
             enginePlayer.userId = existing.userId;
+            enginePlayer.elo = existing.elo;
           }
         }
       }
@@ -266,6 +280,13 @@ export class RoomManager {
       }
       this.touchRoom(room);
       return { room, reconnected: playerData.allowLegacyId === false, playerId: existing.id };
+    }
+
+    if (room.ranked && room.isStarted) {
+      return { error: 'CANNOT_JOIN_ACTIVE_RANKED_MATCH' };
+    }
+    if (room.ranked && !playerData.userId) {
+      return { error: 'RANKED_REQUIRES_SIGNED_IN' };
     }
 
     if (room.isStarted) {
@@ -288,6 +309,7 @@ export class RoomManager {
       socketId: playerData.socketId,
       reconnectTokenHash: playerData.reconnectTokenHash || null,
       userId: playerData.userId || null,
+      elo: Number(playerData.elo) || 1000,
       avatar: playerData.avatar || null
     };
 
@@ -297,7 +319,8 @@ export class RoomManager {
       name: playerObj.name,
       color: playerObj.color,
       isBot: false,
-      userId: playerObj.userId
+      userId: playerObj.userId,
+      elo: playerObj.elo
     });
 
     this.touchRoom(room);
@@ -307,6 +330,7 @@ export class RoomManager {
   addBot(code, difficulty = 'medium') {
     const room = this.getRoom(code);
     if (!room || room.isStarted) return null;
+    if (room.ranked) return null; // Bots forbidden in ranked matches
     if (room.players.length + (room.pendingAgentSpawns || 0) >= room.maxPlayers) return null;
 
     const botNames = ['Bot Ada', 'Bot Gauss', 'Bot Euler', 'Bot Turing', 'Bot Pascal', 'Bot Fermat'];
@@ -389,6 +413,18 @@ export class RoomManager {
     const enginePlayer = room.engine.players.find(x => x.id === playerId);
     if (enginePlayer) enginePlayer.isBot = true;
 
+    if (room.ranked) {
+      p.abandoned = true;
+      if (enginePlayer) enginePlayer.abandoned = true;
+      if (this.onRankedAbandon) {
+        try {
+          p.abandonPromise = Promise.resolve(this.onRankedAbandon(room, p));
+        } catch (err) {
+          console.error('[RoomManager] Error in onRankedAbandon:', err);
+        }
+      }
+    }
+
     this.resetTurnTimer(room);
     this.checkAndTriggerBotTurn(room);
     this.broadcastState(room);
@@ -396,6 +432,9 @@ export class RoomManager {
   }
 
   reclaimStandInBot(room, player) {
+    if (room?.ranked && player.abandoned) {
+      return false;
+    }
     player.isBot = false;
     player.isStandInBot = false;
     const enginePlayer = room.engine.players.find(x => x.id === player.id);
@@ -485,6 +524,19 @@ export class RoomManager {
     if (!room) throw new Error('ROOM_NOT_FOUND');
     if (room.hostId !== hostPlayerId) throw new Error('ONLY_HOST_CAN_START');
     if (room.players.length < 2) throw new Error('NEED_AT_LEAST_2_PLAYERS');
+
+    if (room.ranked) {
+      if (room.players.length !== 4) {
+        throw new Error('RANKED_REQUIRES_EXACTLY_4_PLAYERS');
+      }
+      if (room.players.some(p => p.isBot)) {
+        throw new Error('RANKED_CANNOT_CONTAIN_BOTS');
+      }
+      if (room.players.some(p => !p.userId)) {
+        throw new Error('RANKED_REQUIRES_SIGNED_IN_PLAYERS');
+      }
+      room.initialFieldRatings = room.players.map(p => Number(p.elo) || 1000);
+    }
 
     // Auto-ready all bots
     for (const p of room.players) {

@@ -234,6 +234,7 @@ export class CatanApp {
 
     // Setup Lobby Forms & Tabs
     this.setupLobbyTabs();
+    this.setupRankedQueueUi();
     this.setupLobbyActions();
     this.setupAuthUi();
     this.setupWaitingRoomActions();
@@ -543,6 +544,75 @@ export class CatanApp {
    * ========================================================= */
   setupLobbyTabs() {
     this.lobbyView.setupLobbyTabs();
+  }
+
+  setupRankedQueueUi() {
+    const joinBtn = document.getElementById('btn-join-ranked-queue');
+    const leaveBtn = document.getElementById('btn-leave-ranked-queue');
+    const statusBox = document.getElementById('ranked-queue-status-box');
+    const statusText = document.getElementById('ranked-queue-status-text');
+    const eloBadge = document.getElementById('ranked-user-elo-text');
+
+    const updateEloDisplay = () => {
+      if (eloBadge) {
+        if (lobbyAuth?.user) {
+          eloBadge.textContent = `Rating: ${this.myElo || 1000} Elo`;
+        } else {
+          eloBadge.textContent = i18n.t('RANKED_SIGN_IN_PROMPT') || 'Sign in required for Ranked';
+        }
+      }
+    };
+    updateEloDisplay();
+
+    joinBtn?.addEventListener('click', async () => {
+      if (!lobbyAuth?.user) {
+        this.showToast(i18n.t('RANKED_SIGN_IN_REQUIRED') || 'Please sign in to play Ranked!', true);
+        document.getElementById('auth-modal')?.classList.add('active');
+        return;
+      }
+
+      try {
+        joinBtn.classList.add('is-hidden');
+        statusBox?.classList.remove('is-hidden');
+        if (statusText) statusText.textContent = i18n.t('RANKED_SEARCHING') || 'Searching for 4 players...';
+
+        await network.joinRankedQueue(this.selectedAvatar);
+        audio.playClick();
+      } catch (err) {
+        joinBtn.classList.remove('is-hidden');
+        statusBox?.classList.add('is-hidden');
+        this.showToast(err.message, true);
+      }
+    });
+
+    leaveBtn?.addEventListener('click', async () => {
+      await network.leaveRankedQueue();
+      joinBtn?.classList.remove('is-hidden');
+      statusBox?.classList.add('is-hidden');
+    });
+
+    network.onRankedQueueStatus = (status) => {
+      if (!status) return;
+      if (status.inQueue) {
+        joinBtn?.classList.add('is-hidden');
+        statusBox?.classList.remove('is-hidden');
+        if (statusText) {
+          statusText.textContent = `Searching for players (${status.queueSize || 1}/4)...`;
+        }
+      } else {
+        joinBtn?.classList.remove('is-hidden');
+        statusBox?.classList.add('is-hidden');
+      }
+    };
+
+    network.onRankedMatchFound = (data) => {
+      audio.playStart();
+      this.showToast(i18n.t('RANKED_MATCH_FOUND') || '⚔️ Ranked Match Found! Starting game...', false);
+      joinBtn?.classList.remove('is-hidden');
+      statusBox?.classList.add('is-hidden');
+      this.currentRoom = { code: data.roomCode, ranked: true };
+      this.showView('view-game');
+    };
   }
 
   switchLobbyTab(tab) {
