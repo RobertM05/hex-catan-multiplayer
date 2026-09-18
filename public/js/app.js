@@ -4231,6 +4231,17 @@ export class CatanApp {
     network.onKicked = () => {
       this.returnToHomepage({ kicked: true });
     };
+
+    network.connectionFSM?.onStateChange((newState, prevState) => {
+      if (newState === 'DISCONNECTED_WAITING_RETRY') {
+        if (this.currentRoom || this.gameState) {
+          this.showToast(i18n.t('CONNECTION_LOST') || 'Connection lost. Reconnecting...', true);
+        }
+      } else if (newState === 'IN_GAME' && prevState === 'RECONNECTING_CLAIMING_SEAT') {
+        this.showToast(i18n.t('SEAT_RECLAIMED') || 'Reconnected to match!');
+        this.showView('view-game');
+      }
+    });
   }
 
   setActionEnabled(el, enabled, reasonKey) {
