@@ -4393,4 +4393,12 @@ body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
 }
 .btn-ranked-cancel {
   margin-top: 14px;
+}
+.auth-forgot-sent {
+  text-align: center;
+  padding: 12px 0;
+}
+.auth-forgot-sent-msg {
+  color: #86efac;
+  margin: 0;
 }
