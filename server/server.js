@@ -1399,7 +1399,7 @@ io.on('connection', (socket) => {
         edgeId: payload?.edgeId,
         hexId: payload?.hexId,
         cardId: payload?.cardId,
-        track: payload?.track,
+        track: payload?.track || payload?.category,
         resource: payload?.resource,
         give: payload?.give,
         receive: payload?.receive,
@@ -1657,7 +1657,10 @@ io.on('connection', (socket) => {
 
   socket.on('play_knight', (data, cb) => {
     handleGameAction('play_knight', data?.code, (engine) => {
-      const res = engine.playDevCard(currentPlayerId, 'knight');
+      const player = engine.getPlayer(currentPlayerId);
+      const card = player?.devCards?.find(c => (c.id === data?.cardId || c.type === 'knight') && !c.played);
+      if (!card) throw new Error('CARD_NOT_FOUND');
+      const res = engine.playDevCard(currentPlayerId, card.id);
       if (data?.hexId !== undefined) {
         engine.moveRobber(currentPlayerId, data.hexId, data?.victimPlayerId);
       }
@@ -1667,6 +1670,9 @@ io.on('connection', (socket) => {
 
   socket.on('play_year_of_plenty', (data, cb) => {
     handleGameAction('play_year_of_plenty', data?.code, (engine) => {
+      const player = engine.getPlayer(currentPlayerId);
+      const card = player?.devCards?.find(c => (c.id === data?.cardId || c.type === 'year_of_plenty') && !c.played);
+      if (!card) throw new Error('CARD_NOT_FOUND');
       let res1, res2;
       if (Array.isArray(data?.resources)) {
         [res1, res2] = data.resources;
@@ -1677,19 +1683,25 @@ io.on('connection', (socket) => {
         }
         [res1, res2] = picks;
       }
-      return engine.playDevCard(currentPlayerId, 'year_of_plenty', { res1, res2 });
+      return engine.playDevCard(currentPlayerId, card.id, { res1, res2 });
     }, cb, data);
   });
 
   socket.on('play_monopoly', (data, cb) => {
     handleGameAction('play_monopoly', data?.code, (engine) => {
-      return engine.playDevCard(currentPlayerId, 'monopoly', { resource: data?.resource?.toLowerCase() });
+      const player = engine.getPlayer(currentPlayerId);
+      const card = player?.devCards?.find(c => (c.id === data?.cardId || c.type === 'monopoly') && !c.played);
+      if (!card) throw new Error('CARD_NOT_FOUND');
+      return engine.playDevCard(currentPlayerId, card.id, { resource: data?.resource?.toLowerCase() });
     }, cb, data);
   });
 
   socket.on('play_road_building', (data, cb) => {
     handleGameAction('play_road_building', data?.code, (engine) => {
-      return engine.playDevCard(currentPlayerId, 'road_building', { edges: data?.edges });
+      const player = engine.getPlayer(currentPlayerId);
+      const card = player?.devCards?.find(c => (c.id === data?.cardId || c.type === 'road_building') && !c.played);
+      if (!card) throw new Error('CARD_NOT_FOUND');
+      return engine.playDevCard(currentPlayerId, card.id, { edges: data?.edges });
     }, cb, data);
   });
 

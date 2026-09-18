@@ -2671,7 +2671,7 @@ export class GameEngine {
     }
     if (this.devCardPlayedThisTurn) throw new Error('ALREADY_PLAYED_DEV_CARD_THIS_TURN');
 
-    const card = player.devCards.find(c => c.id === cardId && !c.played);
+    const card = player.devCards.find(c => (c.id === cardId || c.type === cardId) && !c.played);
     if (!card) throw new Error('CARD_NOT_FOUND');
 
     // Cannot play card on turn it was bought, unless it's a victory point

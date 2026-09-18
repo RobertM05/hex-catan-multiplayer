@@ -332,7 +332,7 @@ describe('ARCH-04: Strict JSON input schema validation gateway', () => {
     it('rejects discard_cards missing cards', () => {
       const res = validateActionPayload('discard_cards', { code: 'ABCDE' });
       assert.equal(res.valid, false);
-      assert.ok(res.errors.some(e => e.includes('Missing required field "cards"')));
+      assert.ok(res.errors.some(e => e.includes('At least one of "cards", "discarded"')));
     });
 
     it('rejects move_robber missing hexId', () => {
@@ -431,7 +431,7 @@ describe('ARCH-04: Strict JSON input schema validation gateway', () => {
     it('rejects boolean or object hexId in move_robber', () => {
       const r1 = validateActionPayload('move_robber', { code: 'ABCDE', hexId: true });
       assert.equal(r1.valid, false);
-      assert.ok(r1.errors.some(e => e.includes('must be a non-empty string or integer')));
+      assert.ok(r1.errors.some(e => e.includes('must be a non-empty string or non-negative integer')));
 
       const r2 = validateActionPayload('move_robber', { code: 'ABCDE', hexId: { id: 1 } });
       assert.equal(r2.valid, false);
@@ -828,6 +828,71 @@ describe('ARCH-04: Strict JSON input schema validation gateway', () => {
       assert.equal(errEvent.error, 'INVALID_PAYLOAD');
       assert.ok(Array.isArray(errEvent.details));
       assert.ok(errEvent.details.some(e => e.includes('Missing required field "vertexId"')));
+    });
+  });
+
+  describe('7. Security: Prototype pollution & injection safeguards', () => {
+    it('rejects prototype methods as action names', () => {
+      for (const protoName of ['toString', 'valueOf', 'constructor', 'hasOwnProperty', 'isPrototypeOf']) {
+        const res = validateActionPayload(protoName, {});
+        assert.equal(res.valid, false);
+        assert.ok(res.errors[0].includes(`Unknown action "${protoName}"`));
+      }
+    });
+
+    it('rejects prototype pollution keys inside options objects', () => {
+      const res1 = validateActionPayload('play_dev_card', {
+        code: 'ABCDE',
+        cardId: 'card_1',
+        options: JSON.parse('{"__proto__": {"admin": true}}')
+      });
+      assert.equal(res1.valid, false);
+      assert.ok(res1.errors.some(e => e.includes('Forbidden property')));
+
+      const res2 = validateActionPayload('play_progress_card', {
+        code: 'ABCDE',
+        cardId: 'card_2',
+        options: { constructor: {} }
+      });
+      assert.equal(res2.valid, false);
+      assert.ok(res2.errors.some(e => e.includes('Forbidden property')));
+    });
+
+    it('supports backward-compatible discard_cards payloads', () => {
+      // canonical cards
+      assert.equal(validateActionPayload('discard_cards', { code: 'ABCDE', cards: { wood: 1 } }).valid, true);
+      // legacy discarded
+      assert.equal(validateActionPayload('discard_cards', { code: 'ABCDE', discarded: { brick: 2 } }).valid, true);
+      // split resources & commodities
+      assert.equal(validateActionPayload('discard_cards', { code: 'ABCDE', resources: { ore: 1 }, commodities: { coin: 1 } }).valid, true);
+      // missing any discard property
+      const emptyDiscard = validateActionPayload('discard_cards', { code: 'ABCDE' });
+      assert.equal(emptyDiscard.valid, false);
+      assert.ok(emptyDiscard.errors.some(e => e.includes('At least one of "cards", "discarded"')));
+    });
+
+    it('rejects negative integers for hexId', () => {
+      const res = validateActionPayload('move_robber', { code: 'ABCDE', hexId: -1 });
+      assert.equal(res.valid, false);
+      assert.ok(res.errors.some(e => e.includes('must be a non-empty string or non-negative integer')));
+
+      const resZero = validateActionPayload('move_robber', { code: 'ABCDE', hexId: 0 });
+      assert.equal(resZero.valid, true);
+    });
+
+    it('enforces commodity enum on respond_progress_choice', () => {
+      const valid = validateActionPayload('respond_progress_choice', { code: 'ABCDE', commodity: 'cloth' });
+      assert.equal(valid.valid, true);
+
+      const invalid = validateActionPayload('respond_progress_choice', { code: 'ABCDE', commodity: 'gold' });
+      assert.equal(invalid.valid, false);
+      assert.ok(invalid.errors.some(e => e.includes('Invalid value "gold" for field "commodity"')));
+    });
+
+    it('supports optional cardId on dev card play schemas', () => {
+      assert.equal(validateActionPayload('play_knight', { code: 'ABCDE', cardId: 'dev_123' }).valid, true);
+      assert.equal(validateActionPayload('play_knight', { code: 'ABCDE' }).valid, true);
+      assert.equal(validateActionPayload('play_monopoly', { code: 'ABCDE', cardId: 'dev_456', resource: 'ore' }).valid, true);
     });
   });
 });

@@ -87,7 +87,10 @@ export const ACTION_SCHEMAS = {
   },
   discard_cards: {
     code: { type: 'roomCode', required: true },
-    cards: { type: 'resourceRecord', required: true }
+    cards: { type: 'resourceRecord', required: false },
+    discarded: { type: 'resourceRecord', required: false },
+    resources: { type: 'resourceRecord', required: false },
+    commodities: { type: 'resourceRecord', required: false }
   },
   move_robber: {
     code: { type: 'roomCode', required: true },
@@ -105,19 +108,23 @@ export const ACTION_SCHEMAS = {
   },
   play_knight: {
     code: { type: 'roomCode', required: true },
+    cardId: { type: 'string', required: false, nonEmpty: true },
     hexId: { type: 'hexId', required: false },
     victimPlayerId: { type: 'stringOrNull', required: false }
   },
   play_year_of_plenty: {
     code: { type: 'roomCode', required: true },
+    cardId: { type: 'string', required: false, nonEmpty: true },
     resources: { type: 'yearOfPlentyResources', required: true }
   },
   play_monopoly: {
     code: { type: 'roomCode', required: true },
+    cardId: { type: 'string', required: false, nonEmpty: true },
     resource: { type: 'string', required: true, enum: BASE_RESOURCES, caseInsensitiveEnum: true }
   },
   play_road_building: {
     code: { type: 'roomCode', required: true },
+    cardId: { type: 'string', required: false, nonEmpty: true },
     edges: { type: 'stringArray', required: true, minItems: 1, maxItems: 2 }
   },
   buy_city_improvement: {
@@ -211,7 +218,7 @@ export const ACTION_SCHEMAS = {
   respond_progress_choice: {
     code: { type: 'roomCode', required: true },
     cards: { type: 'progressChoiceCards', required: false },
-    commodity: { type: 'string', required: false }
+    commodity: { type: 'string', required: false, enum: COMMODITY_RESOURCES, caseInsensitiveEnum: true }
   },
   choose_deserter_knight: {
     code: { type: 'roomCode', required: true },
@@ -300,9 +307,9 @@ function validateField(fieldName, value, rule) {
 
     case 'hexId': {
       const isString = typeof value === 'string' && value.trim().length > 0;
-      const isInt = Number.isInteger(value);
+      const isInt = Number.isInteger(value) && value >= 0;
       if (!isString && !isInt) {
-        return `Field "${fieldName}" must be a non-empty string or integer`;
+        return `Field "${fieldName}" must be a non-empty string or non-negative integer`;
       }
       return null;
     }
@@ -421,6 +428,11 @@ function validateField(fieldName, value, rule) {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         return `Field "${fieldName}" must be an object`;
       }
+      for (const k of Object.keys(value)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
+          return `Forbidden property "${k}" in field "${fieldName}"`;
+        }
+      }
       return null;
     }
 
@@ -443,10 +455,11 @@ export function validateActionPayload(actionName, payload) {
     return { valid: false, errors: ['Action name must be a non-empty string'] };
   }
 
-  const schema = ACTION_SCHEMAS[actionName];
-  if (!schema) {
+  if (!Object.hasOwn(ACTION_SCHEMAS, actionName)) {
     return { valid: false, errors: [`Unknown action "${actionName}"`] };
   }
+
+  const schema = ACTION_SCHEMAS[actionName];
 
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { valid: false, errors: ['Payload must be a non-null object'] };
@@ -476,6 +489,13 @@ export function validateActionPayload(actionName, payload) {
     const fieldError = validateField(fieldName, value, rule);
     if (fieldError) {
       errors.push(fieldError);
+    }
+  }
+
+  if (actionName === 'discard_cards') {
+    const hasAnyCards = payload.cards !== undefined || payload.discarded !== undefined || payload.resources !== undefined || payload.commodities !== undefined;
+    if (!hasAnyCards) {
+      errors.push('At least one of "cards", "discarded", "resources", or "commodities" is required for "discard_cards"');
     }
   }
 
