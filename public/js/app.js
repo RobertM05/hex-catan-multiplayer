@@ -339,7 +339,13 @@ export class CatanApp {
 
   goToHomepageFromBrand() {
     if (this.isOnHomepage()) return;
-    this.openHomeConfirm();
+    // Only show confirmation modal when inside an active match.
+    // From the waiting room, profile page or any other sub-view, navigate home directly.
+    if (this.gameState) {
+      this.openHomeConfirm();
+    } else {
+      this.leaveMatchOrLobby();
+    }
   }
 
   openHomeConfirm() {
