@@ -7,6 +7,8 @@ function restHeaders(serviceKey) {
   };
 }
 
+import { resolveProfileWithCache, defaultProfileCache } from './profileCache.js';
+
 export function isSupabaseConfigured(env = process.env) {
   return Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
 }
@@ -26,7 +28,7 @@ export function publicAuthConfig(env = process.env) {
   };
 }
 
-export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}) {
+export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch, profileCache = defaultProfileCache } = {}) {
   if (!url || !serviceRole) return null;
   const base = String(url).replace(/\/$/, '');
 
@@ -53,8 +55,10 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}
   return {
     async getProfile(userId) {
       if (!userId) return null;
-      const rows = await rest(`profiles?id=eq.${encodeURIComponent(userId)}&select=id,display_name,ad_free,avatar_url`);
-      return Array.isArray(rows) && rows[0] ? rows[0] : null;
+      return resolveProfileWithCache(userId, async () => {
+        const rows = await rest(`profiles?id=eq.${encodeURIComponent(userId)}&select=id,display_name,ad_free,avatar_url`);
+        return Array.isArray(rows) && rows[0] ? rows[0] : null;
+      }, { cache: profileCache });
     },
 
     async updateDisplayName(userId, displayName) {
@@ -62,6 +66,7 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}
         method: 'PATCH',
         body: { display_name: displayName }
       });
+      if (profileCache) profileCache.delete(userId);
       return Array.isArray(rows) && rows[0] ? rows[0] : null;
     },
 
@@ -80,6 +85,7 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}
           body: { id: userId, ...body }
         });
       }
+      if (profileCache) profileCache.delete(userId);
       return Array.isArray(rows) && rows[0] ? rows[0] : null;
     },
 
@@ -126,6 +132,7 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}
         extraHeaders: { Prefer: 'return=representation,resolution=merge-duplicates' },
         body: { id: userId, display_name: displayName }
       });
+      if (profileCache) profileCache.delete(userId);
       return Array.isArray(rows) && rows[0] ? rows[0] : { id: userId, display_name: displayName };
     }
   };

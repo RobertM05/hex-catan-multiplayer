@@ -1,5 +1,14 @@
 import { extractBearerToken, verifyHs256Jwt } from './jwt.js';
 import { createSupabaseAdmin, isSupabaseAdminConfigured } from './supabase.js';
+import {
+  resolveProfileWithCache,
+  defaultProfileCache,
+  invalidateProfile,
+  clearProfileCache,
+  getProfileCache
+} from './profileCache.js';
+
+export { invalidateProfile, clearProfileCache, getProfileCache };
 
 let testOverrides = null;
 
@@ -94,18 +103,24 @@ export async function resolveAccessToken(token, runtime = getAuthRuntime()) {
     }
   } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
     try {
-      const base = String(runtime.supabaseUrl).replace(/\/$/, '');
-      const profileRes = await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(claims.sub)}&select=display_name`, {
-        headers: {
-          apikey: runtime.supabaseAnonKey,
-          Authorization: `Bearer ${token}`
+      const profile = await resolveProfileWithCache(claims.sub, async () => {
+        const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+        const profileRes = await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(claims.sub)}&select=display_name`, {
+          headers: {
+            apikey: runtime.supabaseAnonKey,
+            Authorization: `Bearer ${token}`
+          }
+        });
+        if (profileRes.ok) {
+          const rows = await profileRes.json();
+          if (Array.isArray(rows) && rows[0]?.display_name) {
+            return rows[0];
+          }
         }
+        return null;
       });
-      if (profileRes.ok) {
-        const rows = await profileRes.json();
-        if (Array.isArray(rows) && rows[0]?.display_name) {
-          displayName = rows[0].display_name;
-        }
+      if (profile?.display_name) {
+        displayName = profile.display_name;
       }
     } catch (err) {
       console.warn('[auth] fallback profile lookup failed:', err.message);
