@@ -308,10 +308,14 @@ export class GameEngine {
   }
 
   set grid(value) {
-    if (!this.board) {
-      this.board = new BoardManager();
+    if (value instanceof BoardManager) {
+      this.board = value;
+    } else {
+      if (!this.board) {
+        this.board = new BoardManager();
+      }
+      this.board.grid = value;
     }
-    this.board.grid = value;
   }
 
   addPlayer(player) {
@@ -539,6 +543,10 @@ export class GameEngine {
 
   canPlaceSettlement(playerId, vertexId, isSetup = false) {
     return this.board.canPlaceSettlement(playerId, vertexId, isSetup);
+  }
+
+  canPlaceCity(playerId, vertexId) {
+    return this.board.canPlaceCity(playerId, vertexId);
   }
 
   canPlaceRoad(playerId, edgeId, isSetup = false, setupSettlementVertexId = null) {

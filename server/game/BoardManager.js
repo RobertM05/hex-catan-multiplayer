@@ -24,9 +24,13 @@ export class BoardManager {
   // --- Grid Generation ---
 
   initGrid(options = {}) {
-    const mapSize = options.mapSize || (options.playerCount && options.playerCount > 4 ? 'extended' : 'standard');
+    const playerCount = options.playerCount || 4;
+    const mapSize = options.mapSize || (playerCount <= 4 ? 'standard' : playerCount <= 6 ? 'extended' : 'large');
     if (mapSize === 'extended') {
       return this.generateExtendedGrid(options);
+    }
+    if (mapSize === 'large') {
+      return this.generateLargeGrid(options);
     }
     return this.generateStandardGrid(options);
   }
@@ -51,6 +55,16 @@ export class BoardManager {
     return this.grid;
   }
 
+  generateLargeGrid(options = {}) {
+    this.grid = new HexGrid({
+      playerCount: options.playerCount || 8,
+      hexRadius: options.hexRadius || 60,
+      mapSize: 'large',
+      ...options
+    });
+    return this.grid;
+  }
+
   static generateStandardGrid(options = {}) {
     const manager = new BoardManager();
     manager.generateStandardGrid(options);
@@ -60,6 +74,12 @@ export class BoardManager {
   static generateExtendedGrid(options = {}) {
     const manager = new BoardManager();
     manager.generateExtendedGrid(options);
+    return manager;
+  }
+
+  static generateLargeGrid(options = {}) {
+    const manager = new BoardManager();
+    manager.generateLargeGrid(options);
     return manager;
   }
 
@@ -248,16 +268,31 @@ export class BoardManager {
     let vertexId;
     let options = {};
 
-    if (typeof arg1 === 'string' && (this.grid?.vertices?.has(arg1) || arg1.startsWith('v_'))) {
-      vertexId = arg1;
-      if (typeof arg2 === 'string') {
+    if (typeof arg1 === 'string' && typeof arg2 === 'string') {
+      if (this.grid?.vertices?.has(arg1) && !this.grid?.vertices?.has(arg2)) {
+        vertexId = arg1;
         options = { playerId: arg2, isSetup: Boolean(arg3) };
-      } else if (typeof arg2 === 'object' && arg2 !== null) {
-        options = arg2;
+      } else if (this.grid?.vertices?.has(arg2) && !this.grid?.vertices?.has(arg1)) {
+        vertexId = arg2;
+        options = { playerId: arg1, isSetup: Boolean(arg3) };
+      } else if (arg2.startsWith('v_') && !arg1.startsWith('v_')) {
+        vertexId = arg2;
+        options = { playerId: arg1, isSetup: Boolean(arg3) };
+      } else {
+        vertexId = arg1;
+        options = { playerId: arg2, isSetup: Boolean(arg3) };
       }
-    } else if (typeof arg2 === 'string' && (this.grid?.vertices?.has(arg2) || arg2.startsWith('v_'))) {
-      vertexId = arg2;
-      options = { playerId: arg1, isSetup: Boolean(arg3) };
+    } else if (typeof arg1 === 'string') {
+      if (this.grid?.vertices?.has(arg1) || arg1.startsWith('v_')) {
+        vertexId = arg1;
+        if (typeof arg2 === 'object' && arg2 !== null) options = arg2;
+      } else if (typeof arg2 === 'string') {
+        vertexId = arg2;
+        options = { playerId: arg1, isSetup: Boolean(arg3) };
+      } else {
+        vertexId = arg1;
+        if (typeof arg2 === 'object' && arg2 !== null) options = arg2;
+      }
     } else {
       vertexId = arg1?.vertexId || arg1;
       if (typeof arg2 === 'object' && arg2 !== null) options = arg2;
@@ -296,19 +331,26 @@ export class BoardManager {
     let vertexId;
     let playerId = null;
 
-    if (typeof arg1 === 'string' && (this.grid?.vertices?.has(arg1) || arg1.startsWith('v_'))) {
-      vertexId = arg1;
-      if (typeof arg2 === 'string') {
+    if (typeof arg1 === 'string' && typeof arg2 === 'string') {
+      if (this.grid?.vertices?.has(arg1) && !this.grid?.vertices?.has(arg2)) {
+        vertexId = arg1;
         playerId = arg2;
-      } else if (typeof arg2 === 'object' && arg2 !== null) {
-        playerId = arg2.playerId || null;
+      } else if (this.grid?.vertices?.has(arg2) && !this.grid?.vertices?.has(arg1)) {
+        vertexId = arg2;
+        playerId = arg1;
+      } else if (arg2.startsWith('v_') && !arg1.startsWith('v_')) {
+        vertexId = arg2;
+        playerId = arg1;
+      } else {
+        vertexId = arg1;
+        playerId = arg2;
       }
-    } else if (typeof arg2 === 'string' && (this.grid?.vertices?.has(arg2) || arg2.startsWith('v_'))) {
-      vertexId = arg2;
-      playerId = arg1;
+    } else if (typeof arg1 === 'string') {
+      vertexId = arg1;
+      if (typeof arg2 === 'object' && arg2 !== null) playerId = arg2.playerId || null;
     } else {
       vertexId = arg1?.vertexId || arg1;
-      if (typeof arg2 === 'object' && arg2 !== null) playerId = arg2.playerId;
+      if (typeof arg2 === 'object' && arg2 !== null) playerId = arg2.playerId || null;
     }
 
     const vertex = this.getVertex(vertexId);
@@ -329,12 +371,27 @@ export class BoardManager {
     let edgeId;
     let options = {};
 
-    if (typeof arg1 === 'string' && (this.grid?.edges?.has(arg1) || arg1.startsWith('e_'))) {
-      edgeId = arg1;
-      if (typeof arg2 === 'string') {
+    if (typeof arg1 === 'string' && typeof arg2 === 'string') {
+      if (this.grid?.edges?.has(arg1) && !this.grid?.edges?.has(arg2)) {
+        edgeId = arg1;
         options = { playerId: arg2, isSetup: Boolean(arg3), setupSettlementVertexId: arg4 || null };
-      } else if (typeof arg2 === 'object' && arg2 !== null) {
+      } else if (this.grid?.edges?.has(arg2) && !this.grid?.edges?.has(arg1)) {
+        edgeId = arg2;
+        options = { playerId: arg1, isSetup: Boolean(arg3), setupSettlementVertexId: arg4 || null };
+      } else if (arg2.startsWith('e_') && !arg1.startsWith('e_')) {
+        edgeId = arg2;
+        options = { playerId: arg1, isSetup: Boolean(arg3), setupSettlementVertexId: arg4 || null };
+      } else {
+        edgeId = arg1;
+        options = { playerId: arg2, isSetup: Boolean(arg3), setupSettlementVertexId: arg4 || null };
+      }
+    } else if (typeof arg1 === 'string' && typeof arg2 === 'object' && arg2 !== null) {
+      if (this.grid?.edges?.has(arg1) || arg1.startsWith('e_')) {
+        edgeId = arg1;
         options = arg2;
+      } else {
+        edgeId = arg2.edgeId || arg1;
+        options = { playerId: arg1, ...arg2 };
       }
     } else if (typeof arg2 === 'string' && (this.grid?.edges?.has(arg2) || arg2.startsWith('e_'))) {
       edgeId = arg2;
@@ -577,7 +634,8 @@ export class BoardManager {
   static deserialize(data) {
     const board = new BoardManager();
     if (data) {
-      const gridData = data.grid || data;
+      const raw = data.grid || data;
+      const gridData = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(JSON.stringify(raw));
       board.grid = HexGrid.fromJSON(gridData);
     }
     return board;

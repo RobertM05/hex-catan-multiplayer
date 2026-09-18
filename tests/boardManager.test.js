@@ -635,7 +635,49 @@ describe('BoardManager - GameEngine Integration & Delegation', () => {
     assert.equal(engine.grid.hexes.size, 30);
   });
 
-  it('delegates canPlaceSettlement and canPlaceRoad on GameEngine', () => {
+  it('supports large grid generation and options.mapSize large', () => {
+    const board = new BoardManager({ mapSize: 'large', playerCount: 8 });
+    assert.equal(board.mapSize, 'large');
+    assert.ok(board.hexes.size >= 40, 'Large grid should have at least 40 hexes');
+
+    const staticBoard = BoardManager.generateLargeGrid();
+    assert.equal(staticBoard.mapSize, 'large');
+  });
+
+  it('correctly disambiguates arguments when playerId starts with v_ or e_', () => {
+    const board = BoardManager.generateStandardGrid();
+    const v1 = Array.from(board.vertices.keys())[0];
+    const weirdPlayerId = 'v_tricky_user';
+
+    // (vertexId, playerId)
+    const check1 = board.canPlaceSettlement(v1, weirdPlayerId, true);
+    assert.equal(check1.ok, true);
+
+    // (playerId, vertexId)
+    const check2 = board.canPlaceSettlement(weirdPlayerId, v1, true);
+    assert.equal(check2.ok, true);
+
+    const edge1 = board.getVertex(v1).adjacentEdges[0];
+    const weirdRoadPlayerId = 'e_road_king';
+    const roadCheck1 = board.canPlaceRoad(edge1, weirdRoadPlayerId, true, v1);
+    assert.equal(roadCheck1.ok, true);
+    const roadCheck2 = board.canPlaceRoad(weirdRoadPlayerId, edge1, true, v1);
+    assert.equal(roadCheck2.ok, true);
+  });
+
+  it('ensures deserialize performs deep clone of input data', () => {
+    const original = BoardManager.generateStandardGrid();
+    const serialized = original.serialize();
+
+    const deserialized = BoardManager.deserialize(serialized);
+    const vKey = Array.from(deserialized.vertices.keys())[0];
+    deserialized.placeSettlement(vKey, { playerId: 'p1' });
+
+    // Modifying deserialized must not affect serialized source object
+    assert.equal(serialized.vertices[vKey].building, null);
+  });
+
+  it('delegates canPlaceSettlement, canPlaceCity, and canPlaceRoad on GameEngine', () => {
     const engine = new GameEngine();
     engine.addPlayer({ id: 'p1', name: 'Alice' });
     engine.addPlayer({ id: 'p2', name: 'Bob' });
@@ -648,6 +690,14 @@ describe('BoardManager - GameEngine Integration & Delegation', () => {
     const edge1 = engine.grid.vertices.get(v1).adjacentEdges[0];
     const roadCheck = engine.canPlaceRoad('p1', edge1, true, v1);
     assert.equal(roadCheck.ok, true);
+
+    engine.board.placeSettlement(v1, { playerId: 'p1' });
+    const cityCheck = engine.canPlaceCity('p1', v1);
+    assert.equal(cityCheck.ok, true);
+
+    const newBoard = BoardManager.generateStandardGrid();
+    engine.grid = newBoard;
+    assert.equal(engine.board, newBoard);
   });
 
   it('delegates calculateLongestRoad and calculatePlayerLongestRoad', () => {
