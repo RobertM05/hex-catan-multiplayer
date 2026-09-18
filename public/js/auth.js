@@ -79,27 +79,29 @@ export class LobbyAuth {
 
   async captureRedirectSession() {
     if (typeof window === 'undefined') return;
+    const search = new URLSearchParams(window.location.search);
     const hashStr = window.location.hash.replace(/^#/, '');
     const hash = new URLSearchParams(hashStr);
-    const search = new URLSearchParams(window.location.search);
 
+    const code = search.get('code') || hash.get('code');
     const accessToken = hash.get('access_token');
     const refreshToken = hash.get('refresh_token');
     const expiresIn = hash.get('expires_in');
-    const code = search.get('code') || hash.get('code');
+    const errorParam = search.get('error') || hash.get('error');
 
-    if (accessToken) {
-      this.session = {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_at: expiresIn ? Date.now() + Number(expiresIn) * 1000 : null,
-        user: parseJwtUser(accessToken)
-      };
-      this.persistSession();
-      history.replaceState(null, '', window.location.pathname + window.location.search);
+    // Log OAuth errors from Supabase/Google for easier debugging
+    if (errorParam) {
+      const desc = search.get('error_description') || hash.get('error_description') || '';
+      console.warn(`[auth] OAuth error returned: ${errorParam} — ${desc}`);
+      search.delete('error');
+      search.delete('error_description');
+      history.replaceState(null, '', window.location.pathname + (search.toString() ? `?${search}` : ''));
       return;
     }
 
+    // PKCE flow: ?code= is in the URL. The Supabase client holds the code_verifier
+    // in sessionStorage (set during signInWithOAuth). We load the client first so its
+    // storage is intact, then call exchangeCodeForSession which reads the verifier internally.
     if (code) {
       try {
         const client = await this.loadClient();
@@ -124,6 +126,19 @@ export class LobbyAuth {
         const cleanSearch = search.toString() ? `?${search.toString()}` : '';
         history.replaceState(null, '', window.location.pathname + cleanSearch);
       }
+      return;
+    }
+
+    // Implicit flow fallback: #access_token= in hash (older Supabase / magic link)
+    if (accessToken) {
+      this.session = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresIn ? Date.now() + Number(expiresIn) * 1000 : null,
+        user: parseJwtUser(accessToken)
+      };
+      this.persistSession();
+      history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }
 
@@ -156,8 +171,17 @@ export class LobbyAuth {
     if (this.client) return this.client;
     if (!this.config.enabled) return null;
     await loadSupabaseScript();
+    // persistSession: true is required for PKCE — the code_verifier is stored in
+    // sessionStorage during signInWithOAuth() and must survive the Google redirect
+    // round-trip so that exchangeCodeForSession() can complete successfully.
+    // detectSessionInUrl: true lets Supabase auto-detect ?code= or #access_token= on return.
     this.client = window.supabase.createClient(this.config.url, this.config.anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      auth: {
+        persistSession: true,
+        autoRefreshToken: false,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+      }
     });
     return this.client;
   }
@@ -185,9 +209,15 @@ export class LobbyAuth {
   async signInWithGoogle() {
     const client = await this.loadClient();
     if (!client) throw new Error('AUTH_NOT_CONFIGURED');
+    // redirectTo must be the exact origin (no trailing slash, no path).
+    // Add profile+email scopes so Google returns avatar_url in user_metadata.
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin }
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'openid email profile',
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
+      }
     });
     if (error) throw error;
   }
