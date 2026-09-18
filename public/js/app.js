@@ -379,6 +379,7 @@ export class CatanApp {
     if (kicked) this.showToast(i18n.t('YOU_WERE_KICKED'), true);
     this.refreshPublicRooms();
     i18n.updateDOM();
+    this.leavingMatch = false;
   }
 
   /* =========================================================
@@ -1001,6 +1002,7 @@ export class CatanApp {
     // Create Room
     document.getElementById('form-create-room').addEventListener('submit', async (e) => {
       e.preventDefault();
+      this.leavingMatch = false;
       const hostName = document.getElementById('host-player-name').value.trim() || 'Commander';
       const roomName = document.getElementById('create-room-name').value.trim() || 'Realm';
       const maxPlayers = parseInt(document.getElementById('create-max-players').value);
@@ -1028,6 +1030,7 @@ export class CatanApp {
     // Join Room by Code
     document.getElementById('form-join-room').addEventListener('submit', async (e) => {
       e.preventDefault();
+      this.leavingMatch = false;
       const playerName = document.getElementById('join-player-name').value.trim() || 'Player';
       const code = document.getElementById('join-room-code').value.trim();
       if (!code) return;
@@ -1085,6 +1088,7 @@ export class CatanApp {
    * WAITING ROOM
    * ========================================================= */
   enterWaitingRoom(code) {
+    this.leavingMatch = false;
     this.myPlayerId = network.currentPlayerId || this.myPlayerId;
     this.showView('view-waiting');
     document.getElementById('display-room-code').textContent = code;
@@ -1093,6 +1097,10 @@ export class CatanApp {
     const url = new URL(window.location);
     url.searchParams.set('room', code);
     window.history.pushState({}, '', url);
+
+    if (this.currentRoom && this.currentRoom.code === code) {
+      this.renderWaitingRoom(this.currentRoom);
+    }
   }
 
   setupWaitingRoomActions() {

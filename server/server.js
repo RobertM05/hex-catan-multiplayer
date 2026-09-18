@@ -635,29 +635,58 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
       }
     } else if (!profile && runtime.supabaseUrl && runtime.supabaseAnonKey) {
       const base = String(runtime.supabaseUrl).replace(/\/$/, '');
-      const patchBody = { id: identity.userId };
+      const patchBody = {};
       if (rawName !== undefined) patchBody.display_name = rawName;
       if (rawAvatarUrl !== undefined) patchBody.avatar_url = rawAvatarUrl;
-      // Use POST with resolution=merge-duplicates for a true upsert (insert or update on id conflict)
-      const upsertRes = await fetch(`${base}/rest/v1/profiles?on_conflict=id`, {
-        method: 'POST',
+
+      // 1. Try PATCH on existing profile
+      let patchRes = await fetch(`${base}/rest/v1/profiles?id=eq.${encodeURIComponent(identity.userId)}`, {
+        method: 'PATCH',
         headers: {
           apikey: runtime.supabaseAnonKey,
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          Prefer: 'return=representation,resolution=merge-duplicates'
+          Prefer: 'return=representation'
         },
         body: JSON.stringify(patchBody)
       });
-      if (!upsertRes.ok) {
-        if (upsertRes.status === 409) {
-          return res.status(409).json({ error: 'DISPLAY_NAME_TAKEN' });
+
+      if (patchRes.ok) {
+        const rows = await patchRes.json().catch(() => []);
+        if (Array.isArray(rows) && rows[0]) {
+          profile = rows[0];
         }
-        const errText = await upsertRes.text();
-        return res.status(upsertRes.status).json({ error: 'PROFILE_UPDATE_FAILED', details: errText });
+      } else if (patchRes.status === 409) {
+        return res.status(409).json({ error: 'DISPLAY_NAME_TAKEN' });
       }
-      const rows = await upsertRes.json();
-      profile = Array.isArray(rows) && rows[0] ? rows[0] : { id: identity.userId, display_name: rawName };
+
+      // 2. If no existing row was updated, insert via upsert
+      if (!profile) {
+        const upsertBody = {
+          id: identity.userId,
+          display_name: rawName || identity.displayName || 'Player',
+          ...patchBody
+        };
+        const upsertRes = await fetch(`${base}/rest/v1/profiles?on_conflict=id`, {
+          method: 'POST',
+          headers: {
+            apikey: runtime.supabaseAnonKey,
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation,resolution=merge-duplicates'
+          },
+          body: JSON.stringify(upsertBody)
+        });
+        if (!upsertRes.ok) {
+          if (upsertRes.status === 409) {
+            return res.status(409).json({ error: 'DISPLAY_NAME_TAKEN' });
+          }
+          const errText = await upsertRes.text();
+          return res.status(upsertRes.status).json({ error: 'PROFILE_UPDATE_FAILED', details: errText });
+        }
+        const rows = await upsertRes.json().catch(() => []);
+        profile = Array.isArray(rows) && rows[0] ? rows[0] : { id: identity.userId, display_name: rawName };
+      }
     }
 
     if (!profile && !admin && !runtime.supabaseUrl) {

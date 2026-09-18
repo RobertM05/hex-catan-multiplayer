@@ -24,3 +24,5 @@ dist/
 coverage/
 scratch/
 .worktrees/
+.agents/
+skills-lock.json
