@@ -398,9 +398,7 @@ export class CatanAIAgent {
     const discardedCombined = { ...discardedResources, ...discardedCommodities };
     this.log(`[AI-Agent] Discarding ${discardTarget} cards on 7-roll`);
     await this.sendAction('discard_cards', {
-      discarded: discardedCombined,
-      resources: discardedResources,
-      commodities: discardedCommodities
+      cards: discardedCombined
     });
   }
 
@@ -474,7 +472,7 @@ export class CatanAIAgent {
     }
 
     this.log(`[AI-Agent] Moving robber to hex ${bestHexId} (Target: ${targetPlayerId || 'none'})`);
-    await this.sendAction('move_robber', { hexId: bestHexId, targetPlayerId });
+    await this.sendAction('move_robber', { hexId: bestHexId, victimPlayerId: targetPlayerId });
   }
 
   async handleAction(state, me) {
