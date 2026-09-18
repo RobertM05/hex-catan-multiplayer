@@ -47,6 +47,14 @@ function attachBuilding(engine, playerId, resource, type) {
     return v.hexes.includes(hex.id) && !v.building;
   });
   const vertex = engine.grid.vertices.get(vertexId);
+  for (const otherHexId of vertex.hexes) {
+    if (otherHexId !== hex.id) {
+      const otherHex = engine.grid.hexes.get(otherHexId);
+      if (otherHex && otherHex.token === hex.token) {
+        otherHex.token = hex.token === 2 ? 12 : hex.token === 12 ? 2 : hex.token - 1;
+      }
+    }
+  }
   vertex.building = { type, playerId, color: '#e63946' };
   const player = engine.players.find(p => p.id === playerId);
   if (type === 'city') player.citiesBuilt.push(vertexId);
