@@ -27,6 +27,22 @@ export class LobbyAuth {
       || (this.user?.email ? this.user.email.split('@')[0] : null);
   }
 
+  get avatarUrl() {
+    return this.session?.customAvatar
+      || this.user?.user_metadata?.avatar_url
+      || this.user?.user_metadata?.picture
+      || '/assets/avatars/settler.jpg';
+  }
+
+  setCustomAvatar(avatarPath) {
+    if (!this.session) {
+      this.session = {};
+    }
+    this.session.customAvatar = avatarPath;
+    this.persistSession();
+    if (this.onChange) this.onChange();
+  }
+
   async init() {
     try {
       const res = await fetch('/api/auth/config');
@@ -36,7 +52,8 @@ export class LobbyAuth {
     }
     if (!this.config?.enabled) return this;
     this.restoreSession();
-    this.captureRedirectSession();
+    await this.captureRedirectSession();
+    await this.ensureValidSession();
     if (this.accessToken) {
       await this.refreshProfileName();
     }
@@ -60,41 +77,193 @@ export class LobbyAuth {
     localStorage.setItem(SESSION_KEY, JSON.stringify(this.session));
   }
 
-  captureRedirectSession() {
+  async captureRedirectSession() {
     if (typeof window === 'undefined') return;
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const search = new URLSearchParams(window.location.search);
+    const hashStr = window.location.hash.replace(/^#/, '');
+    const hash = new URLSearchParams(hashStr);
+
+    const code = search.get('code') || hash.get('code');
     const accessToken = hash.get('access_token');
     const refreshToken = hash.get('refresh_token');
     const expiresIn = hash.get('expires_in');
-    if (!accessToken) return;
-    this.session = {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: expiresIn ? Date.now() + Number(expiresIn) * 1000 : null,
-      user: parseJwtUser(accessToken)
-    };
-    this.persistSession();
-    history.replaceState(null, '', window.location.pathname + window.location.search);
+    const errorParam = search.get('error') || hash.get('error');
+
+    // Log OAuth errors from Supabase/Google for easier debugging
+    if (errorParam) {
+      const desc = search.get('error_description') || hash.get('error_description') || '';
+      console.warn(`[auth] OAuth error returned: ${errorParam} — ${desc}`);
+      search.delete('error');
+      search.delete('error_description');
+      history.replaceState(null, '', window.location.pathname + (search.toString() ? `?${search}` : ''));
+      return;
+    }
+
+    // PKCE flow: ?code= is in the URL. The Supabase client holds the code_verifier
+    // in sessionStorage (set during signInWithOAuth). We load the client first so its
+    // storage is intact, then call exchangeCodeForSession which reads the verifier internally.
+    if (code) {
+      try {
+        const client = await this.loadClient();
+        if (client) {
+          const { data, error } = await client.auth.exchangeCodeForSession(code);
+          if (!error && data?.session) {
+            this.session = {
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: data.session.expires_at ? data.session.expires_at * 1000 : null,
+              user: data.session.user
+            };
+            this.persistSession();
+          } else if (error) {
+            console.warn('[auth] exchangeCodeForSession error:', error.message);
+          }
+        }
+      } catch (err) {
+        console.warn('[auth] exchangeCodeForSession failed:', err);
+      } finally {
+        search.delete('code');
+        const cleanSearch = search.toString() ? `?${search.toString()}` : '';
+        history.replaceState(null, '', window.location.pathname + cleanSearch);
+      }
+      return;
+    }
+
+    // Implicit flow fallback: #access_token= in hash (older Supabase / magic link)
+    if (accessToken) {
+      this.session = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresIn ? Date.now() + Number(expiresIn) * 1000 : null,
+        user: parseJwtUser(accessToken)
+      };
+      this.persistSession();
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }
+
+  async ensureValidSession() {
+    if (!this.session) return null;
+    if (this.session.expires_at && (Date.now() + 60_000) > this.session.expires_at && this.session.refresh_token) {
+      try {
+        const client = await this.loadClient();
+        if (client) {
+          const { data, error } = await client.auth.refreshSession({ refresh_token: this.session.refresh_token });
+          if (!error && data?.session) {
+            this.session = {
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: data.session.expires_at ? data.session.expires_at * 1000 : null,
+              user: data.session.user,
+              profileDisplayName: this.session.profileDisplayName
+            };
+            this.persistSession();
+          }
+        }
+      } catch (err) {
+        console.warn('[auth] token refresh error:', err);
+      }
+    }
+    return this.session;
   }
 
   async loadClient() {
     if (this.client) return this.client;
     if (!this.config.enabled) return null;
     await loadSupabaseScript();
+    // persistSession: true is required for PKCE — the code_verifier is stored in
+    // sessionStorage during signInWithOAuth() and must survive the Google redirect
+    // round-trip so that exchangeCodeForSession() can complete successfully.
+    // detectSessionInUrl: true lets Supabase auto-detect ?code= or #access_token= on return.
     this.client = window.supabase.createClient(this.config.url, this.config.anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      auth: {
+        persistSession: true,
+        autoRefreshToken: false,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+      }
     });
     return this.client;
+  }
+
+  async checkUserExists(email) {
+    if (!this.config.enabled) return false;
+    try {
+      const res = await fetch(`${this.config.url}/rest/v1/rpc/check_user_exists`, {
+        method: 'POST',
+        headers: {
+          apikey: this.config.anonKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ p_email: email })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return Boolean(data);
+    } catch (err) {
+      console.warn('[auth] checkUserExists failed:', err);
+      return false;
+    }
   }
 
   async signInWithGoogle() {
     const client = await this.loadClient();
     if (!client) throw new Error('AUTH_NOT_CONFIGURED');
+    // redirectTo must be the exact origin (no trailing slash, no path).
+    // Add profile+email scopes so Google returns avatar_url in user_metadata.
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin }
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'openid email profile',
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
+      }
     });
     if (error) throw error;
+  }
+
+  async signInWithPassword(email, password) {
+    const client = await this.loadClient();
+    if (!client) throw new Error('AUTH_NOT_CONFIGURED');
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (data?.session) {
+      this.session = {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at ? data.session.expires_at * 1000 : null,
+        user: data.session.user
+      };
+      this.persistSession();
+      await this.refreshProfileName();
+      this.onChange?.(this.session);
+    }
+    return this.session;
+  }
+
+  async signUpWithPassword(email, password) {
+    const client = await this.loadClient();
+    if (!client) throw new Error('AUTH_NOT_CONFIGURED');
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) throw error;
+    // Supabase anti-enumeration: when an account already exists, it returns identities: []
+    if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      const err = new Error('USER_ALREADY_EXISTS');
+      err.code = 'USER_ALREADY_EXISTS';
+      throw err;
+    }
+    if (data?.session) {
+      this.session = {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at ? data.session.expires_at * 1000 : null,
+        user: data.session.user
+      };
+      this.persistSession();
+      await this.refreshProfileName();
+      this.onChange?.(this.session);
+    }
+    return data;
   }
 
   async signInWithMagicLink(email) {
@@ -145,6 +314,7 @@ export class LobbyAuth {
   }
 
   async saveDisplayName(displayName) {
+    await this.ensureValidSession();
     const res = await fetch('/api/me/profile', {
       method: 'PATCH',
       headers: {
@@ -163,7 +333,16 @@ export class LobbyAuth {
     return body.profile;
   }
 
+  async updatePassword(newPassword) {
+    const client = await this.loadClient();
+    if (!client) throw new Error('AUTH_NOT_CONFIGURED');
+    const { data, error } = await client.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return data;
+  }
+
   async fetchStats() {
+    await this.ensureValidSession();
     const res = await fetch('/api/me/stats', {
       headers: { Authorization: `Bearer ${this.accessToken}` }
     });
