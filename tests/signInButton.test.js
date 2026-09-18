@@ -52,11 +52,13 @@ class FakeElement {
   }
 
   focus() {}
+  querySelectorAll(sel) { return []; }
 }
 
 class FakeDocument {
   constructor() {
     this.elements = new Map();
+    this.listeners = {};
   }
 
   getElementById(id) {
@@ -68,6 +70,11 @@ class FakeDocument {
 
   querySelectorAll(selector) {
     return [];
+  }
+
+  addEventListener(event, fn) {
+    if (!this.listeners[event]) this.listeners[event] = [];
+    this.listeners[event].push(fn);
   }
 }
 
@@ -130,3 +137,160 @@ test('HTML: index.html contains required auth and sign-in button IDs', () => {
   assert.match(html, /id="auth-step-login"/);
   assert.match(html, /id="btn-auth-forgot-password"/);
 });
+
+test('UI: Regular login flow with email and password for existing user', async () => {
+  const fakeDoc = new FakeDocument();
+  globalThis.document = fakeDoc;
+
+  const authModal = fakeDoc.getElementById('auth-modal');
+  const emailStep = fakeDoc.getElementById('auth-step-email');
+  const loginStep = fakeDoc.getElementById('auth-step-login');
+  const registerStep = fakeDoc.getElementById('auth-step-register');
+  const emailInput = fakeDoc.getElementById('auth-email-input');
+  const emailForm = fakeDoc.getElementById('form-auth-email');
+  const passInput = fakeDoc.getElementById('auth-login-password');
+  const loginForm = fakeDoc.getElementById('form-auth-login');
+  const emailChip = fakeDoc.getElementById('auth-chip-email');
+
+  let signedInUser = null;
+  let reconnectedToken = null;
+  let toastMsg = null;
+
+  const mockAuth = {
+    onChange: null,
+    accessToken: null,
+    displayName: 'RegularPlayer',
+    async checkUserExists(email) {
+      return email === 'player@example.com';
+    },
+    async signInWithPassword(email, password) {
+      if (password === 'correctpass') {
+        this.accessToken = 'jwt_test_token_123';
+        signedInUser = { email };
+        return { user: signedInUser };
+      }
+      throw new Error('Invalid login credentials');
+    }
+  };
+
+  const mockNetwork = {
+    setAccessToken(tok) {},
+    async reconnectWithAuth(tok) {
+      reconnectedToken = tok;
+    }
+  };
+
+  const lobby = new LobbyView({
+    auth: mockAuth,
+    network: mockNetwork,
+    showToast: (msg, isErr) => { toastMsg = msg; },
+    showView: () => {}
+  });
+
+  lobby.setupAuthUi();
+
+  // Open auth modal
+  fakeDoc.getElementById('btn-header-sign-in').click();
+  assert.equal(authModal.classList.contains('active'), true);
+  assert.equal(emailStep.classList.contains('is-hidden'), false);
+
+  // 1. Submit email for existing user
+  emailInput.value = 'player@example.com';
+  emailForm.dispatchEvent({ type: 'submit', preventDefault: () => {} });
+  await new Promise(r => setTimeout(r, 10));
+
+  // Should navigate to login step
+  assert.equal(emailStep.classList.contains('is-hidden'), true);
+  assert.equal(loginStep.classList.contains('is-hidden'), false);
+  assert.equal(registerStep.classList.contains('is-hidden'), true);
+  assert.equal(emailChip.textContent, 'player@example.com');
+
+  // 2. Submit wrong password
+  passInput.value = 'wrongpassword';
+  loginForm.dispatchEvent({ type: 'submit', preventDefault: () => {} });
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.match(toastMsg, /Invalid password/i);
+  assert.equal(authModal.classList.contains('active'), true, 'Modal remains open on wrong password');
+  assert.equal(signedInUser, null);
+
+  // 3. Submit correct password
+  passInput.value = 'correctpass';
+  loginForm.dispatchEvent({ type: 'submit', preventDefault: () => {} });
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(signedInUser?.email, 'player@example.com');
+  assert.equal(reconnectedToken, 'jwt_test_token_123');
+  assert.equal(authModal.classList.contains('active'), false, 'Modal should close after successful regular login');
+});
+
+test('UI: Regular registration flow for new user', async () => {
+  const fakeDoc = new FakeDocument();
+  globalThis.document = fakeDoc;
+
+  const authModal = fakeDoc.getElementById('auth-modal');
+  const emailStep = fakeDoc.getElementById('auth-step-email');
+  const loginStep = fakeDoc.getElementById('auth-step-login');
+  const registerStep = fakeDoc.getElementById('auth-step-register');
+  const emailInput = fakeDoc.getElementById('auth-email-input');
+  const emailForm = fakeDoc.getElementById('form-auth-email');
+  const regPassInput = fakeDoc.getElementById('auth-register-password');
+  const regForm = fakeDoc.getElementById('form-auth-register');
+  const regChip = fakeDoc.getElementById('auth-chip-email-reg');
+
+  let signedUpUser = null;
+  let reconnectedToken = null;
+
+  const mockAuth = {
+    onChange: null,
+    accessToken: null,
+    displayName: 'NewPlayer',
+    async checkUserExists(email) {
+      return false; // new user
+    },
+    async signUpWithPassword(email, password) {
+      this.accessToken = 'jwt_new_token_456';
+      signedUpUser = { email };
+      return { user: signedUpUser };
+    }
+  };
+
+  const mockNetwork = {
+    setAccessToken(tok) {},
+    async reconnectWithAuth(tok) {
+      reconnectedToken = tok;
+    }
+  };
+
+  const lobby = new LobbyView({
+    auth: mockAuth,
+    network: mockNetwork,
+    showToast: () => {},
+    showView: () => {}
+  });
+
+  lobby.setupAuthUi();
+
+  // Open modal
+  fakeDoc.getElementById('btn-header-sign-in').click();
+
+  // Submit email for new user
+  emailInput.value = 'newbie@example.com';
+  emailForm.dispatchEvent({ type: 'submit', preventDefault: () => {} });
+  await new Promise(r => setTimeout(r, 10));
+
+  // Should transition to register step
+  assert.equal(loginStep.classList.contains('is-hidden'), true);
+  assert.equal(registerStep.classList.contains('is-hidden'), false);
+  assert.equal(regChip.textContent, 'newbie@example.com');
+
+  // Submit registration password
+  regPassInput.value = 'supersecret123';
+  regForm.dispatchEvent({ type: 'submit', preventDefault: () => {} });
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(signedUpUser?.email, 'newbie@example.com');
+  assert.equal(reconnectedToken, 'jwt_new_token_456');
+  assert.equal(authModal.classList.contains('active'), false, 'Modal should close after signup');
+});
+

@@ -523,6 +523,11 @@ app.use(express.static(publicDir, {
   }
 }));
 
+app.get(['/reset-password', '/reset-password/'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
+
 // Optional Socket.IO JWT (guest when unset / no token)
 io.use(async (socket, next) => {
   try {
@@ -593,6 +598,9 @@ app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
     }
 
     const base = String(runtime.supabaseUrl).replace(/\/$/, '');
+    const hostUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const redirectTo = `${hostUrl.replace(/\/$/, '')}/reset-password`;
+
     // Generate a recovery link using Supabase Admin API
     const linkRes = await fetch(`${base}/auth/v1/admin/generate_link`, {
       method: 'POST',
@@ -605,7 +613,7 @@ app.post('/api/auth/forgot-password', express.json(), async (req, res) => {
         type: 'recovery',
         email,
         options: {
-          redirect_to: `${process.env.PUBLIC_URL || 'https://peer-interventions-upcoming-demo.trycloudflare.com'}/reset-password`
+          redirect_to: redirectTo
         }
       })
     });

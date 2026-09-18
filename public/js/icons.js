@@ -90,6 +90,7 @@ export function ico(name, extraClass = '') {
 }
 
 export function mountIcons(root = document) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
   root.querySelectorAll('[data-icon]').forEach((el) => {
     const name = el.getAttribute('data-icon');
     const svg = ICONS[name];

@@ -28,7 +28,7 @@ export class LobbyView {
     this.showToast = options.showToast || ((msg, isErr) => console.log(msg));
     this.showView = options.showView || ((viewId) => {});
     this.syncRulesModal = options.syncRulesModal || ((mode) => {});
-    this.syncAuthChrome = options.syncAuthChrome || (() => {});
+    this.syncAppAuthChrome = options.syncAuthChrome || (() => {});
     this.onHostRoom = options.onHostRoom || null;
     this.onJoinRoom = options.onJoinRoom || null;
     this.onStartGame = options.onStartGame || null;
@@ -107,6 +107,7 @@ export class LobbyView {
       document.getElementById('auth-step-login')?.classList.toggle('is-hidden', step !== 'login');
       document.getElementById('auth-step-register')?.classList.toggle('is-hidden', step !== 'register');
       document.getElementById('auth-step-forgot')?.classList.toggle('is-hidden', step !== 'forgot');
+      document.getElementById('auth-step-reset')?.classList.toggle('is-hidden', step !== 'reset');
       if (step === 'email') {
         setTimeout(() => document.getElementById('auth-email-input')?.focus(), 50);
       } else if (step === 'login') {
@@ -128,6 +129,12 @@ export class LobbyView {
         if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; btn.style.display = ''; }
         const chip = document.getElementById('auth-chip-email-forgot');
         if (chip) chip.textContent = this.authState.email || '';
+      } else if (step === 'reset') {
+        const p = document.getElementById('auth-reset-password');
+        const c = document.getElementById('auth-reset-password-confirm');
+        if (p) p.value = '';
+        if (c) c.value = '';
+        setTimeout(() => p?.focus(), 50);
       }
     };
 
@@ -161,6 +168,26 @@ export class LobbyView {
     });
     document.getElementById('btn-auth-change-email')?.addEventListener('click', () => showAuthStep('email'));
     document.getElementById('btn-auth-change-email-reg')?.addEventListener('click', () => showAuthStep('email'));
+
+    // Password visibility toggle — delegated listener handles all .btn-toggle-password buttons
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-toggle-password');
+      if (!btn) return;
+      const targetId = btn.dataset.target;
+      const input = targetId ? document.getElementById(targetId) : btn.closest('.password-input-wrap')?.querySelector('input');
+      if (!input) return;
+      const isNowText = input.type === 'password';
+      input.type = isNowText ? 'text' : 'password';
+      btn.querySelector('.icon-eye').style.display = isNowText ? 'none' : '';
+      btn.querySelector('.icon-eye-off').style.display = isNowText ? '' : 'none';
+      btn.setAttribute('aria-label', isNowText ? 'Hide password' : 'Toggle password visibility');
+    });
+
+    // If arriving from a password-recovery email link, open the reset step immediately
+    if (this.auth.isRecovery) {
+      showAuthStep('reset');
+      authModal?.classList.add('active');
+    }
 
     const handleGoogleAuth = async () => {
       try {
@@ -255,6 +282,43 @@ export class LobbyView {
       } catch {
         this.showToast('Could not send reset email. Try again later.', true);
         if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+      }
+    });
+
+    // Password Reset flow (after clicking link in email)
+    document.getElementById('form-auth-reset')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPass = document.getElementById('auth-reset-password')?.value;
+      const confirm = document.getElementById('auth-reset-password-confirm')?.value;
+      const passErr = this.validateAuthPassword(newPass);
+      if (passErr) {
+        this.showToast(passErr, true);
+        document.getElementById('auth-reset-password')?.focus();
+        return;
+      }
+      if (newPass !== confirm) {
+        this.showToast('Passwords do not match. Please try again.', true);
+        document.getElementById('auth-reset-password-confirm')?.focus();
+        return;
+      }
+      const submitBtn = document.getElementById('btn-auth-reset-submit');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Updating...'; }
+      try {
+        await this.auth.updatePassword(newPass);
+        this.auth.clearRecoveryState();
+        // Clean up /reset-password from address bar
+        if (window.location.pathname === '/reset-password') {
+          history.replaceState(null, '', '/');
+        }
+        this.showToast('Password updated successfully! You are now signed in.');
+        this.network.setAccessToken(this.auth.accessToken);
+        await this.network.reconnectWithAuth(this.auth.accessToken);
+        this.syncAuthChrome();
+        authModal?.classList.remove('active');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to update password. Please try again.', true);
+      } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update Password'; }
       }
     });
 
@@ -592,7 +656,7 @@ export class LobbyView {
     return this.openProfilePage('history');
   }
 
-  syncAuthChrome() {
+  syncLobbyChrome() {
     const authed = Boolean(this.auth.accessToken);
     const guest = Boolean(this.auth.isGuest);
     const user = this.auth.user;
@@ -640,6 +704,13 @@ export class LobbyView {
       if (authStatus) authStatus.classList.add('is-hidden');
       document.getElementById('auth-logged-in-panel')?.classList.add('is-hidden');
       document.getElementById('auth-logged-out-panel')?.classList.remove('is-hidden');
+    }
+  }
+
+  syncAuthChrome() {
+    this.syncLobbyChrome();
+    if (this.syncAppAuthChrome) {
+      this.syncAppAuthChrome();
     }
   }
 

@@ -237,7 +237,6 @@ export class CatanApp {
     this.setupLobbyTabs();
     this.setupRankedQueueUi();
     this.setupLobbyActions();
-    this.setupAuthUi();
     this.setupWaitingRoomActions();
     this.setupInGameActions();
     this.setupHudOverlays();
@@ -248,7 +247,9 @@ export class CatanApp {
     this.setupDevCardsModal();
     this.setupProgressCardUi();
 
+    // Init auth FIRST so config.enabled=true before wiring auth UI buttons
     await lobbyAuth.init();
+    this.setupAuthUi();
     network.setAccessToken(lobbyAuth.accessToken);
     network.onInvalidAuth = () => {
       // Stale JWT must not hard-block reconnects — clear session and continue as guest.
@@ -360,6 +361,8 @@ export class CatanApp {
     if (profileInput && authed && lobbyAuth.displayName && !profileInput.value) {
       profileInput.value = lobbyAuth.displayName;
     }
+
+    this.lobbyView?.syncLobbyChrome();
   }
 
   showToast(message, isError = false) {
@@ -652,7 +655,10 @@ export class CatanApp {
     return this.lobbyView.openStatsPage();
   }
 
-  syncAuthChrome() {
+  // Note: app-level syncAuthChrome() at line ~311 handles the full header/modal chrome.
+  // LobbyView.syncAuthChrome() handles lobby-panel chrome only (auth-trigger chip, etc.).
+  // This stub is kept for backward-compat but the real method is defined above.
+  _syncLobbyChrome() {
     this.lobbyView.syncAuthChrome();
   }
 

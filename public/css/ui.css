@@ -4401,4 +4401,54 @@ body.mode-cities-knights .progress-cards-panel.ck-hud-widget {
 .auth-forgot-sent-msg {
   color: #86efac;
   margin: 0;
+}
+
+/* Password Input with Visibility Toggle */
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrap .form-input {
+  width: 100%;
+  padding-right: 42px !important;
+}
+
+.btn-toggle-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  padding: 6px;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  transition: color var(--transition-fast, 0.15s ease), background var(--transition-fast, 0.15s ease), transform var(--transition-fast, 0.15s ease);
+  z-index: 2;
+}
+
+.btn-toggle-password:hover {
+  color: var(--text-primary, #ffffff);
+  background: oklch(1 0 0 / 0.08);
+}
+
+.btn-toggle-password:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+.btn-toggle-password:focus-visible {
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: 2px;
+}
+
+.btn-toggle-password svg {
+  display: block;
+  pointer-events: none;
 }

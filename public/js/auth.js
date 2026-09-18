@@ -11,6 +11,9 @@ export class LobbyAuth {
     this.client = null;
     this.session = null;
     this.onChange = null;
+    this._initPromise = null;
+    /** True when the current page load originated from a password-recovery email link. */
+    this.isRecovery = false;
   }
 
   get accessToken() {
@@ -44,20 +47,32 @@ export class LobbyAuth {
   }
 
   async init() {
-    try {
-      const res = await fetch('/api/auth/config');
-      this.config = await res.json();
-    } catch {
-      this.config = { enabled: false, url: null, anonKey: null };
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = (async () => {
+      try {
+        const res = await fetch('/api/auth/config');
+        this.config = await res.json();
+      } catch {
+        this.config = { enabled: false, url: null, anonKey: null };
+      }
+      if (!this.config?.enabled) return this;
+      this.restoreSession();
+      await this.captureRedirectSession();
+      await this.ensureValidSession();
+      if (this.accessToken) {
+        await this.refreshProfileName();
+      }
+      return this;
+    })();
+    return this._initPromise;
+  }
+
+  async ensureInitialized() {
+    if (this._initPromise) {
+      await this._initPromise;
+    } else {
+      await this.init();
     }
-    if (!this.config?.enabled) return this;
-    this.restoreSession();
-    await this.captureRedirectSession();
-    await this.ensureValidSession();
-    if (this.accessToken) {
-      await this.refreshProfileName();
-    }
-    return this;
   }
 
   restoreSession() {
@@ -87,6 +102,7 @@ export class LobbyAuth {
     const accessToken = hash.get('access_token');
     const refreshToken = hash.get('refresh_token');
     const expiresIn = hash.get('expires_in');
+    const tokenType = hash.get('type');          // 'recovery' | 'signup' | null
     const errorParam = search.get('error') || hash.get('error');
 
     // Log OAuth errors from Supabase/Google for easier debugging
@@ -115,6 +131,10 @@ export class LobbyAuth {
               user: data.session.user
             };
             this.persistSession();
+            // Detect recovery type from PKCE metadata if available
+            if (data.user?.recovery_sent_at || data.session?.user?.recovery_sent_at) {
+              this.isRecovery = true;
+            }
           } else if (error) {
             console.warn('[auth] exchangeCodeForSession error:', error.message);
           }
@@ -129,7 +149,7 @@ export class LobbyAuth {
       return;
     }
 
-    // Implicit flow fallback: #access_token= in hash (older Supabase / magic link)
+    // Implicit flow fallback: #access_token= in hash (older Supabase / magic link / recovery)
     if (accessToken) {
       this.session = {
         access_token: accessToken,
@@ -138,8 +158,17 @@ export class LobbyAuth {
         user: parseJwtUser(accessToken)
       };
       this.persistSession();
+      // Mark as recovery flow so LobbyView can show the reset step
+      if (tokenType === 'recovery') {
+        this.isRecovery = true;
+      }
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
+  }
+
+  /** Clear the recovery flag once the user has successfully set their new password. */
+  clearRecoveryState() {
+    this.isRecovery = false;
   }
 
   async ensureValidSession() {
@@ -169,6 +198,7 @@ export class LobbyAuth {
 
   async loadClient() {
     if (this.client) return this.client;
+    await this.ensureInitialized();
     if (!this.config.enabled) return null;
     await loadSupabaseScript();
     // persistSession: true is required for PKCE — the code_verifier is stored in
@@ -187,6 +217,7 @@ export class LobbyAuth {
   }
 
   async checkUserExists(email) {
+    await this.ensureInitialized();
     if (!this.config.enabled) return false;
     try {
       const res = await fetch(`${this.config.url}/rest/v1/rpc/check_user_exists`, {

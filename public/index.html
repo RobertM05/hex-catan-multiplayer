@@ -375,7 +375,13 @@
                 <div class="form-group">
                   <label for="account-new-password">Change Password</label>
                   <div class="input-with-action">
-                    <input type="password" id="account-new-password" class="form-input" minlength="6" placeholder="New password (min 6 chars)">
+                    <div class="password-input-wrap">
+                      <input type="password" id="account-new-password" class="form-input" minlength="6" placeholder="New password (min 6 chars)">
+                      <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="account-new-password">
+                        <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </button>
+                    </div>
                     <button type="submit" id="btn-save-account-password" class="btn-glass">Update</button>
                   </div>
                 </div>
@@ -1508,8 +1514,14 @@
               <button type="button" id="btn-auth-change-email" class="auth-chip-change">Change</button>
             </div>
             <form id="form-auth-login" class="auth-email-form" novalidate>
-              <input type="password" id="auth-login-password" class="form-input" placeholder="Enter your password"
-                minlength="6" required>
+              <div class="password-input-wrap">
+                <input type="password" id="auth-login-password" class="form-input" placeholder="Enter your password"
+                  minlength="6" required>
+                <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="auth-login-password">
+                  <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
               <button type="submit" id="btn-auth-login-submit" class="btn-glass btn-primary btn-block"
                 data-i18n="SIGN_IN">Sign In</button>
               <button type="button" id="btn-auth-forgot-password" class="btn-glass btn-secondary btn-block">Forgot password?</button>
@@ -1539,10 +1551,40 @@
             </div>
             <p class="modal-subtext">No account found with this email. Choose a password to create one:</p>
             <form id="form-auth-register" class="auth-email-form" novalidate>
-              <input type="password" id="auth-register-password" class="form-input"
-                placeholder="Create password (min 6 chars)" minlength="6" required>
+              <div class="password-input-wrap">
+                <input type="password" id="auth-register-password" class="form-input"
+                  placeholder="Create password (min 6 chars)" minlength="6" required>
+                <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="auth-register-password">
+                  <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
               <button type="submit" id="btn-auth-register-submit" class="btn-glass btn-primary btn-block">Create
                 Account</button>
+            </form>
+          </div>
+
+          <!-- Step 2C: Password Reset (after clicking recovery email link) -->
+          <div id="auth-step-reset" class="auth-step is-hidden">
+            <p class="modal-subtext" style="text-align:center;margin-bottom:4px;">🔐 Set a new password for your account.</p>
+            <form id="form-auth-reset" class="auth-email-form" novalidate>
+              <div class="password-input-wrap">
+                <input type="password" id="auth-reset-password" class="form-input"
+                  placeholder="New password (min 6 chars)" minlength="6" required>
+                <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="auth-reset-password">
+                  <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <div class="password-input-wrap">
+                <input type="password" id="auth-reset-password-confirm" class="form-input"
+                  placeholder="Confirm new password" minlength="6" required>
+                <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="auth-reset-password-confirm">
+                  <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
+              <button type="submit" id="btn-auth-reset-submit" class="btn-glass btn-primary btn-block">Update Password</button>
             </form>
           </div>
         </div>
@@ -1557,8 +1599,14 @@
           </div>
           <div class="form-group">
             <label for="profile-new-password">Change password (optional)</label>
-            <input type="password" id="profile-new-password" class="form-input" placeholder="New password (min 6 chars)"
-              minlength="6">
+            <div class="password-input-wrap">
+              <input type="password" id="profile-new-password" class="form-input" placeholder="New password (min 6 chars)"
+                minlength="6">
+              <button type="button" class="btn-toggle-password" aria-label="Toggle password visibility" data-target="profile-new-password">
+                <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
           </div>
           <button type="submit" class="btn-glass btn-primary btn-block" data-i18n="SAVE_DISPLAY_NAME">Save
             changes</button>
