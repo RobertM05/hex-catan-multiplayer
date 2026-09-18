@@ -1,4 +1,4 @@
-﻿/**
+/**
  * app.js
  * Main client controller for Hexagonal Strategy Game.
  * Ties together UI, i18n, Web Audio, SVG Renderer, and Socket.IO networking.
@@ -3579,7 +3579,7 @@ export class CatanApp {
     if (type === 'resource_monopoly') {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_RESOURCE')}</div>
         <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px;">
-          ${['wood', 'brick', 'wool', 'wheat', 'ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${this.cardLabel(r)}</button>`).join('')}
+          ${['wood','brick','wool','wheat','ore'].map(r => `<button type="button" class="btn-glass res-choice-btn" data-res="${r}">${this.cardLabel(r)}</button>`).join('')}
         </div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.res-choice-btn').forEach(b => {
@@ -3596,7 +3596,7 @@ export class CatanApp {
     if (type === 'trade_monopoly') {
       box.innerHTML = `<div>${i18n.t('PROGRESS_SELECT_COMMODITY')}</div>
         <div class="modal-res-buttons-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
-          ${['cloth', 'coin', 'paper'].map(c => `<button type="button" class="btn-glass res-choice-btn" data-com="${c}">${this.cardLabel(c)}</button>`).join('')}
+          ${['cloth','coin','paper'].map(c => `<button type="button" class="btn-glass res-choice-btn" data-com="${c}">${this.cardLabel(c)}</button>`).join('')}
         </div>`;
       if (playBtn) playBtn.disabled = true;
       box.querySelectorAll('.res-choice-btn').forEach(b => {
