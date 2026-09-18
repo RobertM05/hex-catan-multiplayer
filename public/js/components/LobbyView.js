@@ -51,7 +51,7 @@ export class LobbyView {
   }
 
   setupLobbyTabs() {
-    const tabs = ['host', 'join', 'public'];
+    const tabs = ['host', 'join', 'public', 'ranked'];
     tabs.forEach(tab => {
       const btn = document.getElementById(`tab-btn-${tab}`);
       if (btn) {
