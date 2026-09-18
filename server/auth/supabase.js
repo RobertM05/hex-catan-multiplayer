@@ -69,10 +69,17 @@ export function createSupabaseAdmin({ url, serviceRole, fetchImpl = fetch } = {}
       const body = {};
       if (displayName !== undefined) body.display_name = displayName;
       if (avatarUrl !== undefined) body.avatar_url = avatarUrl;
-      const rows = await rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
+      let rows = await rest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
         method: 'PATCH',
         body
       });
+      if (!Array.isArray(rows) || !rows[0]) {
+        rows = await rest('profiles?on_conflict=id', {
+          method: 'POST',
+          extraHeaders: { Prefer: 'return=representation,resolution=merge-duplicates' },
+          body: { id: userId, ...body }
+        });
+      }
       return Array.isArray(rows) && rows[0] ? rows[0] : null;
     },
 

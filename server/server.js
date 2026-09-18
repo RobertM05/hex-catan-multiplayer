@@ -35,6 +35,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, '..', 'public');
 
+export function isValidAvatarUrl(url) {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.length > 500) return false;
+  return trimmed.startsWith('/assets/avatars/') || trimmed.startsWith('https://');
+}
+
+export function sanitizeAvatarUrl(url) {
+  if (typeof url === 'string') {
+    const trimmed = url.trim();
+    if (isValidAvatarUrl(trimmed)) return trimmed;
+  }
+  return null;
+}
+
 const app = express();
 // SEC-08: never `trust proxy: true`. Default is loopback (Cloudflare tunnel).
 // Bare Node ignores client-supplied forwarded headers because the peer is not loopback.
@@ -550,31 +565,61 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
   try {
     const identity = await resolveAccessToken(token);
     if (!identity.userId) return res.status(401).json({ error: 'AUTH_REQUIRED' });
-    const rawName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim() : '';
-    if (!rawName || rawName.length > 32) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
 
-    // Validate avatarUrl if provided: must be a relative /assets/avatars/ path or an https:// URL
-    let rawAvatarUrl = null;
-    if (typeof req.body?.avatarUrl === 'string' && req.body.avatarUrl.trim()) {
-      const av = req.body.avatarUrl.trim();
-      if (av.startsWith('/assets/avatars/') || av.startsWith('https://')) {
-        rawAvatarUrl = av;
+    let rawName = undefined;
+    if (req.body?.displayName !== undefined) {
+      if (typeof req.body.displayName !== 'string' || !req.body.displayName.trim()) {
+        return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+      }
+      try {
+        rawName = validateDisplayName(req.body.displayName, '');
+      } catch {
+        return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+      }
+      if (!rawName) return res.status(400).json({ error: 'INVALID_PLAYER_NAME' });
+    }
+
+    // Validate avatarUrl if provided: null/empty string clears it, string must match /assets/avatars/ or https://
+    let rawAvatarUrl = undefined;
+    if (req.body?.avatarUrl !== undefined) {
+      if (req.body.avatarUrl === null || req.body.avatarUrl === '') {
+        rawAvatarUrl = null;
+      } else if (typeof req.body.avatarUrl === 'string') {
+        const trimmed = req.body.avatarUrl.trim();
+        if (isValidAvatarUrl(trimmed)) {
+          rawAvatarUrl = trimmed;
+        } else {
+          return res.status(400).json({ error: 'INVALID_AVATAR_URL' });
+        }
       } else {
         return res.status(400).json({ error: 'INVALID_AVATAR_URL' });
       }
     }
 
+    if (rawName === undefined && rawAvatarUrl === undefined) {
+      return res.status(400).json({ error: 'NO_UPDATES_PROVIDED' });
+    }
+
     const runtime = getAuthRuntime();
     const admin = runtime.admin;
     let profile = null;
+    const updates = {};
+    if (rawName !== undefined) updates.displayName = rawName;
+    if (rawAvatarUrl !== undefined) updates.avatarUrl = rawAvatarUrl;
+
     if (admin?.updateProfile) {
-      profile = await admin.updateProfile(identity.userId, { displayName: rawName, avatarUrl: rawAvatarUrl ?? undefined });
-    } else if (admin?.upsertProfile) {
-      profile = await admin.upsertProfile(identity.userId, rawName);
-    } else if (runtime.supabaseUrl && runtime.supabaseAnonKey) {
+      profile = await admin.updateProfile(identity.userId, updates);
+    }
+    if (!profile && admin?.upsertProfile) {
+      profile = await admin.upsertProfile(identity.userId, rawName || identity.displayName || 'Player');
+      if (profile && rawAvatarUrl !== undefined && admin?.updateProfile) {
+        profile = await admin.updateProfile(identity.userId, { avatarUrl: rawAvatarUrl });
+      }
+    } else if (!profile && runtime.supabaseUrl && runtime.supabaseAnonKey) {
       const base = String(runtime.supabaseUrl).replace(/\/$/, '');
-      const patchBody = { id: identity.userId, display_name: rawName };
-      if (rawAvatarUrl !== null) patchBody.avatar_url = rawAvatarUrl;
+      const patchBody = { id: identity.userId };
+      if (rawName !== undefined) patchBody.display_name = rawName;
+      if (rawAvatarUrl !== undefined) patchBody.avatar_url = rawAvatarUrl;
       // Use POST with resolution=merge-duplicates for a true upsert (insert or update on id conflict)
       const upsertRes = await fetch(`${base}/rest/v1/profiles?on_conflict=id`, {
         method: 'POST',
@@ -595,11 +640,20 @@ app.patch('/api/me/profile', express.json(), async (req, res) => {
       }
       const rows = await upsertRes.json();
       profile = Array.isArray(rows) && rows[0] ? rows[0] : { id: identity.userId, display_name: rawName };
-    } else {
+    }
+
+    if (!profile && !admin && !runtime.supabaseUrl) {
       return res.status(503).json({ error: 'AUTH_NOT_CONFIGURED' });
     }
+
     clearTokenCache(token);
-    res.json({ profile: { id: profile.id || identity.userId, display_name: profile.display_name || rawName, avatar_url: profile.avatar_url || rawAvatarUrl } });
+    res.json({
+      profile: {
+        id: profile?.id || identity.userId,
+        display_name: profile?.display_name || rawName || identity.displayName,
+        avatar_url: profile?.avatar_url ?? (rawAvatarUrl !== undefined ? rawAvatarUrl : null)
+      }
+    });
   } catch (err) {
     const status = err.message === 'INVALID_PLAYER_NAME' ? 400 : 401;
     res.status(status).json({ error: err.message || 'INVALID_AUTH_TOKEN' });
@@ -903,7 +957,7 @@ io.on('connection', (socket) => {
           socketId: socket.id,
           reconnectTokenHash: session.reconnectTokenHash,
           userId: identity.userId,
-          avatar: data.avatar || null
+          avatar: sanitizeAvatarUrl(data?.avatar)
         },
         {
           name: data.roomName,
@@ -960,7 +1014,7 @@ io.on('connection', (socket) => {
         reconnectTokenHash: session.reconnectTokenHash,
         allowLegacyId: false,
         userId: identity.userId,
-        avatar: data.avatar || null
+        avatar: sanitizeAvatarUrl(data?.avatar)
       });
 
       if (result.error) {
@@ -1119,14 +1173,23 @@ io.on('connection', (socket) => {
 
   socket.on('set_avatar', (data, callback) => {
     try {
+      const avatar = data?.avatar;
+      let validAvatar = null;
+      if (avatar !== null && avatar !== undefined && avatar !== '') {
+        if (!isValidAvatarUrl(avatar)) {
+          if (callback) callback({ success: false, error: 'INVALID_AVATAR_URL' });
+          return;
+        }
+        validAvatar = avatar.trim();
+      }
       const code = ((data && (data.code || data.roomCode)) || currentRoomCode)?.toUpperCase();
-      const ok = Boolean(code) && roomManager.setPlayerAvatar(code, currentPlayerId, data?.avatar);
+      const ok = Boolean(code) && roomManager.setPlayerAvatar(code, currentPlayerId, validAvatar);
       if (ok) {
         const room = roomManager.getRoom(code);
         roomManager.broadcastLobbyState(room);
         if (callback) callback({ success: true });
       } else {
-        if (callback) callback({ success: false });
+        if (callback) callback({ success: false, error: 'FAILED_TO_SET_AVATAR' });
       }
     } catch (err) {
       if (callback) callback({ success: false, error: err.message });
