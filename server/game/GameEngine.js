@@ -4,6 +4,7 @@
  */
 
 import { HexGrid, RESOURCE_TYPES } from './HexGrid.js';
+import { BoardManager } from './BoardManager.js';
 
 export const GAME_MODES = {
   BASE: 'base',
@@ -220,7 +221,7 @@ export class GameEngine {
     this.currentTurnPlayerIndex = 0;
     this.turnNumber = 1;
     this.phase = GAME_PHASES.LOBBY;
-    this.grid = null;
+    this.board = new BoardManager();
 
     this.dice = [1, 1];
     this.eventDie = null;
@@ -299,6 +300,21 @@ export class GameEngine {
     for (let i = this.devCardDeck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [this.devCardDeck[i], this.devCardDeck[j]] = [this.devCardDeck[j], this.devCardDeck[i]];
+    }
+  }
+
+  get grid() {
+    return this.board ? this.board.grid : null;
+  }
+
+  set grid(value) {
+    if (value instanceof BoardManager) {
+      this.board = value;
+    } else {
+      if (!this.board) {
+        this.board = new BoardManager();
+      }
+      this.board.grid = value;
     }
   }
 
@@ -461,10 +477,17 @@ export class GameEngine {
       throw new Error('At least 2 players needed to start');
     }
 
-    this.grid = new HexGrid({
-      playerCount: this.players.length,
-      mapSize: mapSize || (this.players.length <= 4 ? 'standard' : this.players.length <= 6 ? 'extended' : 'large')
-    });
+    const selectedMapSize = mapSize || (this.players.length <= 4 ? 'standard' : this.players.length <= 6 ? 'extended' : 'large');
+    if (selectedMapSize === 'extended') {
+      this.board.generateExtendedGrid({ playerCount: this.players.length });
+    } else if (selectedMapSize === 'standard') {
+      this.board.generateStandardGrid({ playerCount: this.players.length });
+    } else {
+      this.board.initGrid({
+        playerCount: this.players.length,
+        mapSize: selectedMapSize
+      });
+    }
 
     this.phase = GAME_PHASES.SETUP_ROUND_1;
     this.currentTurnPlayerIndex = 0;
@@ -518,34 +541,35 @@ export class GameEngine {
    * VALIDATIONS & RULES
    * ========================================================= */
 
+  canPlaceSettlement(playerId, vertexId, isSetup = false) {
+    return this.board.canPlaceSettlement(playerId, vertexId, isSetup);
+  }
+
+  canPlaceCity(playerId, vertexId) {
+    return this.board.canPlaceCity(playerId, vertexId);
+  }
+
+  canPlaceRoad(playerId, edgeId, isSetup = false, setupSettlementVertexId = null) {
+    return this.board.canPlaceRoad(playerId, edgeId, isSetup, setupSettlementVertexId);
+  }
+
+  generateStandardGrid(options = {}) {
+    return this.board.generateStandardGrid(options);
+  }
+
+  generateExtendedGrid(options = {}) {
+    return this.board.generateExtendedGrid(options);
+  }
+
   canBuildSettlement(playerId, vertexId, isSetup = false) {
     const player = this.players.find(p => p.id === playerId);
     if (!player || player.settlementsRemaining <= 0) return { ok: false, reason: 'NO_SETTLEMENTS_LEFT' };
 
-    const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex || vertex.building || vertex.knight) return { ok: false, reason: 'VERTEX_OCCUPIED' };
-
-    // Distance rule: no settlement/city/knight on adjacent vertices
-    if (this.violatesDistanceRule(vertexId)) {
-      return { ok: false, reason: 'DISTANCE_RULE_VIOLATION' };
-    }
+    const boardCheck = this.board.canPlaceSettlement(playerId, vertexId, isSetup);
+    if (!boardCheck.ok) return boardCheck;
 
     if (isSetup) {
       return { ok: true };
-    }
-
-    // Normal game: must connect to a player's road
-    let hasConnectingRoad = false;
-    for (const edgeId of vertex.adjacentEdges) {
-      const edge = this.grid.edges.get(edgeId);
-      if (edge && edge.road && edge.road.playerId === playerId) {
-        hasConnectingRoad = true;
-        break;
-      }
-    }
-
-    if (!hasConnectingRoad) {
-      return { ok: false, reason: 'MUST_CONNECT_TO_ROAD' };
     }
 
     // Cost check
@@ -560,48 +584,11 @@ export class GameEngine {
     const player = this.players.find(p => p.id === playerId);
     if (!player || player.roadsRemaining <= 0) return { ok: false, reason: 'NO_ROADS_LEFT' };
 
-    const edge = this.grid.edges.get(edgeId);
-    if (!edge || edge.road) return { ok: false, reason: 'EDGE_OCCUPIED' };
+    const boardCheck = this.board.canPlaceRoad(playerId, edgeId, isSetup, setupSettlementVertexId);
+    if (!boardCheck.ok) return boardCheck;
 
     if (isSetup) {
-      // Must connect to the settlement placed right before
-      if (setupSettlementVertexId) {
-        if (edge.v1 === setupSettlementVertexId || edge.v2 === setupSettlementVertexId) {
-          return { ok: true };
-        }
-        return { ok: false, reason: 'MUST_CONNECT_TO_SETUP_SETTLEMENT' };
-      }
       return { ok: true };
-    }
-
-    // Normal game: must connect to own road or own building
-    let connects = false;
-    const v1 = this.grid.vertices.get(edge.v1);
-    const v2 = this.grid.vertices.get(edge.v2);
-
-    if ((v1.building && v1.building.playerId === playerId) || (v2.building && v2.building.playerId === playerId)) {
-      connects = true;
-    }
-
-    if (!connects) {
-      for (const adjEdgeId of edge.adjacentEdges) {
-        const adjEdge = this.grid.edges.get(adjEdgeId);
-        if (adjEdge && adjEdge.road && adjEdge.road.playerId === playerId) {
-          // Check if an opponent's settlement/city or knight blocks this intersection
-          const sharedVertexId = (edge.v1 === adjEdge.v1 || edge.v1 === adjEdge.v2) ? edge.v1 : edge.v2;
-          const sharedVertex = this.grid.vertices.get(sharedVertexId);
-          const blockedByBuilding = sharedVertex.building && sharedVertex.building.playerId !== playerId;
-          const blockedByKnight = sharedVertex.knight && sharedVertex.knight.playerId !== playerId;
-          if (!blockedByBuilding && !blockedByKnight) {
-            connects = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!connects) {
-      return { ok: false, reason: 'MUST_CONNECT_TO_NETWORK' };
     }
 
     if (this.freeRoadsRemaining > 0) {
@@ -641,23 +628,11 @@ export class GameEngine {
   }
 
   violatesDistanceRule(vertexId, ignoreVertexIds = []) {
-    const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex) return true;
-    const ignored = new Set(ignoreVertexIds);
-    for (const adjVId of vertex.adjacentVertices) {
-      if (ignored.has(adjVId)) continue;
-      const adjVertex = this.grid.vertices.get(adjVId);
-      if (adjVertex && adjVertex.building) return true;
-    }
-    return false;
+    return this.board ? this.board.violatesDistanceRule(vertexId, ignoreVertexIds) : false;
   }
 
   vertexHasPlayerRoad(vertex, playerId) {
-    for (const edgeId of vertex.adjacentEdges) {
-      const edge = this.grid.edges.get(edgeId);
-      if (edge && edge.road && edge.road.playerId === playerId) return true;
-    }
-    return false;
+    return this.board ? this.board.vertexHasPlayerRoad(vertex, playerId) : false;
   }
 
   listLegalKnightPlacementVertices(playerId) {
@@ -671,14 +646,7 @@ export class GameEngine {
   }
 
   verticesSharePlayerRoad(fromId, toId, playerId) {
-    const from = this.grid.vertices.get(fromId);
-    if (!from) return false;
-    for (const edgeId of from.adjacentEdges) {
-      const edge = this.grid.edges.get(edgeId);
-      if (!edge || !edge.road || edge.road.playerId !== playerId) continue;
-      if (edge.v1 === toId || edge.v2 === toId) return true;
-    }
-    return false;
+    return this.board ? this.board.verticesSharePlayerRoad(fromId, toId, playerId) : false;
   }
 
   hasResources(player, cost) {
@@ -736,21 +704,11 @@ export class GameEngine {
   }
 
   playerBuildingTouchesHex(player, hexId) {
-    const ids = (player.settlementsBuilt || []).concat(player.citiesBuilt || []);
-    return ids.some((vid) => this.grid.vertices.get(vid)?.hexes?.includes(hexId));
+    return this.board ? this.board.playerBuildingTouchesHex(player, hexId) : false;
   }
 
   getPlayersAdjacentToHex(hexId) {
-    const seen = new Set();
-    const adjacent = [];
-    for (const vertex of this.grid.vertices.values()) {
-      if (!vertex.hexes?.includes(hexId) || !vertex.building) continue;
-      const owner = this.players.find(p => p.id === vertex.building.playerId);
-      if (!owner || seen.has(owner.id)) continue;
-      seen.add(owner.id);
-      adjacent.push(owner);
-    }
-    return adjacent;
+    return this.board ? this.board.getPlayersAdjacentToHex(hexId, this.players) : [];
   }
 
   getRobberStealVictims(hexId, thiefPlayerId) {
@@ -780,23 +738,7 @@ export class GameEngine {
   }
 
   isOpenRoad(edgeId) {
-    const edge = this.grid.edges.get(edgeId);
-    if (!edge?.road) return false;
-    const ownerId = edge.road.playerId;
-
-    const isEndClosed = (vertexId) => {
-      const vertex = this.grid.vertices.get(vertexId);
-      if (!vertex) return false;
-      if (vertex.building && vertex.building.playerId === ownerId) return true;
-      for (const adjId of vertex.adjacentEdges || []) {
-        if (adjId === edgeId) continue;
-        const adj = this.grid.edges.get(adjId);
-        if (adj?.road?.playerId === ownerId) return true;
-      }
-      return false;
-    };
-
-    return !isEndClosed(edge.v1) || !isEndClosed(edge.v2);
+    return this.board ? this.board.isOpenRoad(edgeId) : false;
   }
 
   removeRoadSegment(edgeId) {
@@ -814,14 +756,7 @@ export class GameEngine {
   }
 
   playerControlsAdjacentVertex(playerId, vertexId) {
-    const vertex = this.grid.vertices.get(vertexId);
-    if (!vertex) return false;
-    for (const adjId of vertex.adjacentVertices || []) {
-      const adj = this.grid.vertices.get(adjId);
-      if (adj?.building?.playerId === playerId) return true;
-      if (adj?.knight?.playerId === playerId) return true;
-    }
-    return this.vertexHasPlayerRoad(vertex, playerId);
+    return this.board ? this.board.playerControlsAdjacentVertex(playerId, vertexId) : false;
   }
 
   isTradableType(type) {
@@ -3684,43 +3619,11 @@ export class GameEngine {
   }
 
   calculatePlayerLongestRoad(playerId) {
-    const playerRoads = this.grid ? Array.from(this.grid.edges.values()).filter(e => e.road && e.road.playerId === playerId) : [];
-    if (playerRoads.length === 0) return 0;
+    return this.board ? this.board.calculateLongestRoad(playerId) : 0;
+  }
 
-    let maxLength = 0;
-    const visitedEdges = new Set();
-
-    const dfs = (vertexId, currentLength) => {
-      maxLength = Math.max(maxLength, currentLength);
-      const vertex = this.grid.vertices.get(vertexId);
-      if (!vertex) return;
-
-      // Opponent settlement/city or knight blocks road passing through unless it's the start
-      if (currentLength > 0 && ((vertex.building && vertex.building.playerId !== playerId) || (vertex.knight && vertex.knight.playerId !== playerId))) {
-        return;
-      }
-
-      for (const eId of vertex.adjacentEdges) {
-        if (!visitedEdges.has(eId)) {
-          const edge = this.grid.edges.get(eId);
-          if (edge && edge.road && edge.road.playerId === playerId) {
-            visitedEdges.add(eId);
-            const nextVertexId = edge.v1 === vertexId ? edge.v2 : edge.v1;
-            dfs(nextVertexId, currentLength + 1);
-            visitedEdges.delete(eId);
-          }
-        }
-      }
-    };
-
-    for (const road of playerRoads) {
-      visitedEdges.add(road.id);
-      dfs(road.v1, 1);
-      dfs(road.v2, 1);
-      visitedEdges.delete(road.id);
-    }
-
-    return maxLength;
+  calculateLongestRoad(playerId) {
+    return this.calculatePlayerLongestRoad(playerId);
   }
 
   recalculateLargestArmy() {
