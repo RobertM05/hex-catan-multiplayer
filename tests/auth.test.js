@@ -155,13 +155,50 @@ describe('AUTH HTTP + socket freeze', () => {
   let url;
 
   before(async () => {
+    const profiles = new Map([
+      ['user-alice', { id: 'user-alice', display_name: 'AliceProfile', avatar_url: null }],
+      ['user-bob', { id: 'user-bob', display_name: 'BobProfile', avatar_url: null }]
+    ]);
+
     configureAuthRuntime({
       jwtSecret: SECRET,
       admin: {
         async getProfile(userId) {
-          if (userId === 'user-alice') return { id: userId, display_name: 'AliceProfile' };
-          if (userId === 'user-bob') return { id: userId, display_name: 'BobProfile' };
+          return profiles.get(userId) || null;
+        },
+        async updateProfile(userId, { displayName, avatarUrl } = {}) {
+          const p = profiles.get(userId);
+          if (!p) return null;
+          if (displayName !== undefined) p.display_name = displayName;
+          if (avatarUrl !== undefined) p.avatar_url = avatarUrl;
+          return { ...p };
+        },
+        async upsertProfile(userId, displayName) {
+          const p = profiles.get(userId) || { id: userId, avatar_url: null };
+          p.display_name = displayName;
+          profiles.set(userId, p);
+          return { ...p };
+        },
+        async getRating(userId) {
+          if (userId === 'user-alice') return { elo: 1250, games: 1 };
           return null;
+        },
+        async getRecentMatches(userId, limit = 10) {
+          if (userId !== 'user-alice') return [];
+          return [{
+            match_id: 'm-1',
+            vp: 13,
+            rank: 1,
+            abandoned: false,
+            matches: {
+              id: 'm-1',
+              ended_at: '2026-09-18T10:00:00Z',
+              mode: 'cities_knights',
+              ranked: true,
+              expansion_cities_knights: true,
+              match_players: [{ user_id: 'user-alice' }, { user_id: 'user-bob' }]
+            }
+          }];
         },
         async listOwnMatchPlayers(userId) {
           if (userId !== 'user-alice') return [];
@@ -315,5 +352,115 @@ describe('AUTH HTTP + socket freeze', () => {
     assert.equal(room.players[0].userId, null);
     roomManager.destroyRoom(created.roomCode);
     guest.close();
+  });
+
+  it('GET /api/me/stats returns elo, games, winRate, and recentMatches', async () => {
+    const alice = signHs256Jwt({ sub: 'user-alice' }, SECRET);
+    const res = await httpJson('GET', '/api/me/stats', { token: alice });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.elo, 1250);
+    assert.equal(res.json.games, 1);
+    assert.equal(res.json.wins, 1);
+    assert.equal(res.json.winRate, 100);
+    assert.equal(Array.isArray(res.json.recentMatches), true);
+    assert.equal(res.json.recentMatches.length, 1);
+    assert.equal(res.json.recentMatches[0].rank, 1);
+  });
+
+  it('PATCH /api/me/profile updates displayName and avatarUrl, rejecting XSS and invalid avatars', async () => {
+    const alice = signHs256Jwt({ sub: 'user-alice' }, SECRET);
+
+    // Rejects unauthenticated
+    const noAuth = await httpJson('PATCH', '/api/me/profile', { body: { displayName: 'Hacker' } });
+    assert.equal(noAuth.status, 401);
+
+    // Rejects XSS payload
+    const xss = await httpJson('PATCH', '/api/me/profile', { token: alice, body: { displayName: '<script>alert(1)</script>' } });
+    assert.equal(xss.status, 400);
+    assert.equal(xss.json.error, 'INVALID_PLAYER_NAME');
+
+    // Rejects name > 32 chars
+    const tooLong = await httpJson('PATCH', '/api/me/profile', { token: alice, body: { displayName: 'A'.repeat(33) } });
+    assert.equal(tooLong.status, 400);
+
+    // Rejects invalid avatar URL
+    const badAvatar = await httpJson('PATCH', '/api/me/profile', { token: alice, body: { avatarUrl: 'javascript:alert(1)' } });
+    assert.equal(badAvatar.status, 400);
+    assert.equal(badAvatar.json.error, 'INVALID_AVATAR_URL');
+
+    // Rejects empty update body
+    const empty = await httpJson('PATCH', '/api/me/profile', { token: alice, body: {} });
+    assert.equal(empty.status, 400);
+    assert.equal(empty.json.error, 'NO_UPDATES_PROVIDED');
+
+    // Valid update of both displayName and avatarUrl
+    const valid = await httpJson('PATCH', '/api/me/profile', {
+      token: alice,
+      body: { displayName: 'AliceUpdated', avatarUrl: '/assets/avatars/avatar-1.svg' }
+    });
+    assert.equal(valid.status, 200);
+    assert.equal(valid.json.profile.display_name, 'AliceUpdated');
+    assert.equal(valid.json.profile.avatar_url, '/assets/avatars/avatar-1.svg');
+
+    // Valid update of only avatarUrl without displayName
+    const avatarOnly = await httpJson('PATCH', '/api/me/profile', {
+      token: alice,
+      body: { avatarUrl: 'https://example.com/avatar.png' }
+    });
+    assert.equal(avatarOnly.status, 200);
+    assert.equal(avatarOnly.json.profile.avatar_url, 'https://example.com/avatar.png');
+
+    // Clearing avatarUrl with null
+    const clearAvatar = await httpJson('PATCH', '/api/me/profile', {
+      token: alice,
+      body: { avatarUrl: null }
+    });
+    assert.equal(clearAvatar.status, 200);
+    assert.equal(clearAvatar.json.profile.avatar_url, null);
+  });
+
+  it('PATCH /api/me/profile creates profile via upsert if user does not have an existing profile row', async () => {
+    const newUser = signHs256Jwt({ sub: 'user-new-without-profile' }, SECRET);
+    const res = await httpJson('PATCH', '/api/me/profile', {
+      token: newUser,
+      body: { displayName: 'BrandNewUser' }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.profile.display_name, 'BrandNewUser');
+  });
+
+  it('socket set_avatar updates avatar in lobby and rejects invalid avatar URLs', async () => {
+    const client = ioClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+    await new Promise((resolve) => client.on('connect', resolve));
+
+    const created = await new Promise((resolve) => {
+      client.emit('create_room', { hostName: 'AvatarTestHost', roomName: 'AvatarRoom', maxPlayers: 3, mode: 'base' }, resolve);
+    });
+    assert.equal(created.success, true);
+    const room = roomManager.getRoom(created.roomCode);
+
+    // Setting invalid avatar returns error
+    const badRes = await new Promise((resolve) => {
+      client.emit('set_avatar', { code: created.roomCode, avatar: 'javascript:bad' }, resolve);
+    });
+    assert.equal(badRes.success, false);
+    assert.equal(badRes.error, 'INVALID_AVATAR_URL');
+
+    // Setting valid avatar succeeds
+    const goodRes = await new Promise((resolve) => {
+      client.emit('set_avatar', { code: created.roomCode, avatar: '/assets/avatars/avatar-2.svg' }, resolve);
+    });
+    assert.equal(goodRes.success, true);
+    assert.equal(room.players[0].avatar, '/assets/avatars/avatar-2.svg');
+
+    // Clearing avatar succeeds
+    const clearRes = await new Promise((resolve) => {
+      client.emit('set_avatar', { code: created.roomCode, avatar: null }, resolve);
+    });
+    assert.equal(clearRes.success, true);
+    assert.equal(room.players[0].avatar, null);
+
+    roomManager.destroyRoom(created.roomCode);
+    client.close();
   });
 });
