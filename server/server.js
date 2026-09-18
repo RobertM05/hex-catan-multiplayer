@@ -317,7 +317,9 @@ export let isShuttingDown = false;
 // Graceful shutdown HTTP middleware
 app.use((req, res, next) => {
   if (isShuttingDown) {
-    if (req.path === '/health' || req.path === '/api/health') {
+    res.setHeader('Connection', 'close');
+    const path = req.path.replace(/\/+$/, '');
+    if (path === '/health' || path === '/api/health') {
       return res.status(503).json({ status: 'shutting_down' });
     }
     return res.status(503).send('Service Unavailable');
@@ -1481,29 +1483,56 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
     console.log(`Hexagonal Strategy Game Server running on http://localhost:${PORT}`);
     console.log(`Client IP trust proxy: ${describeTrustProxySetting(TRUST_PROXY_SETTING)}`);
   });
+
+  const handleSignal = (signal) => {
+    gracefulShutdown(server, io).catch(err => {
+      console.error(`Error during graceful shutdown on ${signal}:`, err);
+      process.exit(1);
+    });
+  };
+
+  process.on('SIGTERM', () => handleSignal('SIGTERM'));
+  process.on('SIGINT', () => handleSignal('SIGINT'));
+}
+
+export function _resetShutdownStateForTests() {
+  isShuttingDown = false;
 }
 
 export async function gracefulShutdown(serverObj, ioObj, options = {}) {
-  console.log('Initiating graceful shutdown...');
+  if (isShuttingDown) return;
   isShuttingDown = true;
+  console.log('Initiating graceful shutdown...');
 
   ioObj.emit('server_announcement', {
     type: 'SERVER_RESTARTING',
     message: 'Server is restarting for updates. Please rejoin shortly.'
   });
 
+  const agentExitPromises = [];
   for (const [roomCode, agents] of spawnedAgents.entries()) {
     for (const child of agents) {
       if (child && typeof child.kill === 'function' && !child.killed) {
-        child.kill('SIGTERM');
-        setTimeout(() => {
-          if (!child.killed) {
-            try { child.kill('SIGKILL'); } catch (e) {}
+        agentExitPromises.push(new Promise((resolve) => {
+          child.on('exit', resolve);
+          child.on('error', resolve);
+          try {
+            child.kill('SIGTERM');
+            setTimeout(() => {
+              if (!child.killed) {
+                try { child.kill('SIGKILL'); } catch (e) {}
+              }
+              resolve();
+            }, options.killTimeout || 2000).unref();
+          } catch (e) {
+            resolve();
           }
-        }, options.killTimeout || 2000).unref();
+        }));
       }
     }
   }
+  spawnedAgents.clear();
+  await Promise.all(agentExitPromises);
 
   const closePromises = [];
   closePromises.push(new Promise(resolve => {
@@ -1512,12 +1541,16 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
       resolve();
     });
   }));
-  closePromises.push(new Promise(resolve => {
-    serverObj.close(() => {
-      console.log('HTTP server closed.');
-      resolve();
-    });
-  }));
+  
+  if (serverObj.listening) {
+    serverObj.closeIdleConnections?.();
+    closePromises.push(new Promise(resolve => {
+      serverObj.close(() => {
+        console.log('HTTP server closed.');
+        resolve();
+      });
+    }));
+  }
 
   if (!options.noExit) {
     setTimeout(() => {
@@ -1533,8 +1566,5 @@ export async function gracefulShutdown(serverObj, ioObj, options = {}) {
     process.exit(0);
   }
 }
-
-process.on('SIGTERM', () => gracefulShutdown(server, io));
-process.on('SIGINT', () => gracefulShutdown(server, io));
 
 export { app, server, io, roomManager, spawnedAgents, RATE_LIMITS, RATE_LIMITED };

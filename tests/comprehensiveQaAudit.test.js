@@ -251,7 +251,11 @@ describe('QA Audit: Cities & Knights Progress Cards', () => {
     p1.settlementsBuilt = [];
 
     const wheatHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.WHEAT);
-    const vWheat = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(wheatHex.id) && !v.building);
+    const vWheat = Array.from(engine.grid.vertices.values()).find(v => 
+      !v.building && 
+      v.hexes.includes(wheatHex.id) && 
+      v.hexes.filter(hId => engine.grid.hexes.get(hId)?.resource === RESOURCE_TYPES.WHEAT).length === 1
+    );
     vWheat.building = { type: 'city', playerId: 'p1', color: p1.color };
     p1.citiesBuilt.push(vWheat.id);
 
@@ -262,8 +266,16 @@ describe('QA Audit: Cities & Knights Progress Cards', () => {
     engine.playProgressCard('p1', irrCard.id);
     assert.equal(p1.resources.wheat, wheatBefore + 2);
 
+    // Clear previous wheat city so only the ore city is evaluated for mining
+    vWheat.building = null;
+    p1.citiesBuilt = [];
+
     const oreHex = Array.from(engine.grid.hexes.values()).find(h => h.resource === RESOURCE_TYPES.ORE);
-    const vOre = Array.from(engine.grid.vertices.values()).find(v => v.hexes.includes(oreHex.id) && !v.building);
+    const vOre = Array.from(engine.grid.vertices.values()).find(v => 
+      !v.building && 
+      v.hexes.includes(oreHex.id) && 
+      v.hexes.filter(hId => engine.grid.hexes.get(hId)?.resource === RESOURCE_TYPES.ORE).length === 1
+    );
     vOre.building = { type: 'city', playerId: 'p1', color: p1.color };
     p1.citiesBuilt.push(vOre.id);
 

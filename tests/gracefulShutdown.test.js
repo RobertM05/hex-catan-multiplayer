@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { io as Client } from 'socket.io-client';
-import { server, io, gracefulShutdown, isShuttingDown } from '../server/server.js';
+import { server, io, gracefulShutdown, _resetShutdownStateForTests } from '../server/server.js';
 import http from 'http';
 
 function makeRequest(url, agent) {
@@ -38,6 +38,7 @@ describe('Graceful Shutdown & Socket Draining', () => {
   after(async () => {
     if (clientSocket) clientSocket.close();
     agent.destroy();
+    _resetShutdownStateForTests();
   });
 
   it('sockets receive server_announcement on shutdown and HTTP returns 503', async () => {
@@ -64,13 +65,16 @@ describe('Graceful Shutdown & Socket Draining', () => {
       const resRooms = await makeRequest(`${serverUrl}/api/rooms`, agent);
       assert.equal(resRooms.status, 503);
     } catch (err) {
-      // If connection closed abruptly, that's also acceptable during shutdown
+      if (err instanceof assert.AssertionError) throw err;
     }
     
     try {
       const resHealth = await makeRequest(`${serverUrl}/health`, agent);
       assert.equal(resHealth.status, 503);
-    } catch (err) {}
+      assert.equal(JSON.parse(resHealth.body).status, 'shutting_down');
+    } catch (err) {
+      if (err instanceof assert.AssertionError) throw err;
+    }
 
     await shutdownPromise;
     assert.equal(server.listening, false);
